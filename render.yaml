@@ -23,6 +23,8 @@ services:
         value: openrouter/free
       - key: AI_DAILY_LIMIT
         value: "5"
+      - key: AI_GLOBAL_DAILY_LIMIT
+        value: "40"
       - key: AI_ALLOW_PAID_FALLBACK
         value: "0"
       - key: AI_GATEWAY_API_KEY
