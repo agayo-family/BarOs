@@ -37,6 +37,9 @@
         {% endif %}
       </div>
     </nav>
+    {% if user and user.role == 'manager' and request.scope.get('baros_venue_status') == 'read_only' %}
+      <div class="notice restriction-banner reveal"><strong>Режим только для чтения.</strong> Изменения временно отключены владельцем BarOS.{% if request.scope.get('baros_venue_note') %} {{ request.scope.get('baros_venue_note') }}{% endif %}</div>
+    {% endif %}
     {% block content %}{% endblock %}
   </div>
   <script src="/static/app.js"></script>
