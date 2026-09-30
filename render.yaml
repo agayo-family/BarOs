@@ -24,7 +24,7 @@ services:
       - key: AI_DAILY_LIMIT
         value: "5"
       - key: AI_GLOBAL_DAILY_LIMIT
-        value: "40"
+        value: "20"
       - key: AI_ALLOW_PAID_FALLBACK
         value: "0"
       - key: AI_GATEWAY_API_KEY

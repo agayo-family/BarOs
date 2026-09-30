@@ -27,5 +27,5 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/ap
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 AI_ALLOW_PAID_FALLBACK = os.getenv("AI_ALLOW_PAID_FALLBACK", "0").lower() in {"1", "true", "yes", "on"}
 AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "5"))
-AI_GLOBAL_DAILY_LIMIT = int(os.getenv("AI_GLOBAL_DAILY_LIMIT", "40"))
+AI_GLOBAL_DAILY_LIMIT = int(os.getenv("AI_GLOBAL_DAILY_LIMIT", "20"))
 AI_CONTEXT_LIMIT_CHARS = int(os.getenv("AI_CONTEXT_LIMIT_CHARS", "120000"))
