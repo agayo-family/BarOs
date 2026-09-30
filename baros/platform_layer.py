@@ -324,6 +324,9 @@ async def baros_security_and_platform_middleware(request: Request, call_next):
             with SessionLocal() as db:
                 user = db.get(User, session.get("uid"))
                 if user and user.role in {"manager", "manager_pending"}:
+                    vc = venue_control(db, user.organization_id)
+                    request.scope["baros_venue_status"] = vc.status
+                    request.scope["baros_venue_note"] = vc.note or ""
                     if not can_manager_view(db, user):
                         return _secure_response(RedirectResponse("/restricted", 303))
                     capability = _management_capability(method, path)
