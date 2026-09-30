@@ -28,7 +28,7 @@ from .access import (
     venue_permissions,
 )
 from .config import COOKIE_SECURE, PUBLIC_BASE_URL
-from .ai_service import get_ai_status
+from .ai_service import get_ai_status, get_ai_usage
 from .core import app, current_user, get_db, render
 from .db import SessionLocal
 from .models import (
@@ -493,6 +493,7 @@ def platform_dashboard(request: Request, db: Session = Depends(get_db)):
             "courses": db.scalar(select(func.count(Course.id)).where(Course.organization_id == org.id)) or 0,
             "uploads": db.scalar(select(func.count(Upload.id)).where(Upload.organization_id == org.id)) or 0,
             "interview_done": bool((org.interview_json or "{}").strip() not in {"", "{}"}),
+            "ai_usage": get_ai_usage(db, org.id),
         })
 
     logs = db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(30)).all()
@@ -505,6 +506,7 @@ def platform_dashboard(request: Request, db: Session = Depends(get_db)):
         "created": request.query_params.get("created"),
         "venue_permission_labels": VENUE_PERMISSION_LABELS,
         "manager_permission_labels": MANAGER_PERMISSION_LABELS,
+        "ai_status": get_ai_status(),
     })
 
 
