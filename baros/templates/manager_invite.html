@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Приглашение управляющего — BarOS{% endblock %}
+{% block content %}
+<div class="auth reveal">
+  <div class="brand-mark large-brand"><img src="/static/baros-icon-192.png" alt=""><span>BarOS</span></div>
+  {% if invalid %}
+  <div class="card premium-card restriction-card"><h1>Приглашение недействительно</h1><p class="muted">Ссылка уже использована или срок действия истёк. Попросите владельца BarOS выпустить новое приглашение.</p></div>
+  {% else %}
+  <div class="card premium-card">
+    <span class="badge accent-badge">ПРИГЛАШЕНИЕ УПРАВЛЯЮЩЕГО</span>
+    <h2>{{ org.name }}</h2>
+    <p class="muted">{{ manager.name }}, задайте пароль. Ссылка действует один раз.</p>
+    {% if request.query_params.get('error') == 'password' %}<div class="notice attention">Минимум 10 символов, одна буква и одна цифра.</div>{% endif %}
+    <form method="post">
+      <div class="field"><label>Email</label><input value="{{ manager.email }}" disabled></div>
+      <div class="field"><label>Новый пароль</label><input name="password" type="password" minlength="10" required autocomplete="new-password"></div>
+      <button class="btn">Активировать аккаунт</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
