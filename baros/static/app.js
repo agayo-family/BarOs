@@ -82,3 +82,95 @@
   else if(new URLSearchParams(location.search).get('error')) activate('create',false);
   else activate('venues',false);
 })();
+
+
+(function(){
+  const forms=[...document.querySelectorAll('.ajax-create-form')];
+  if(!forms.length) return;
+
+  const toast=document.getElementById('editor-toast');
+  let toastTimer=null;
+  function showToast(message,kind='ok'){
+    if(!toast) return;
+    toast.textContent=message;
+    toast.dataset.kind=kind;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(()=>toast.classList.remove('show'),2200);
+  }
+
+  function appendLesson(data){
+    const list=document.getElementById('lesson-list');
+    const empty=document.getElementById('lesson-empty');
+    if(empty) empty.remove();
+    if(!list) return;
+    const item=document.createElement('div');
+    item.className='file editor-item editor-item-new';
+    item.dataset.lessonId=data.id;
+    const strong=document.createElement('strong');
+    strong.textContent=data.sort_order+'. '+data.title;
+    const preview=document.createElement('div');
+    preview.className='muted small';
+    const body=data.body||'';
+    preview.textContent=body.length>220?body.slice(0,219)+'…':body;
+    item.append(strong,preview);
+    list.appendChild(item);
+    const count=document.getElementById('lesson-count');
+    if(count) count.textContent=String(Number(count.textContent||0)+1);
+  }
+
+  function appendQuestion(data,countValue){
+    const list=document.getElementById('question-list');
+    const empty=document.getElementById('question-empty');
+    if(empty) empty.remove();
+    if(!list) return;
+    const item=document.createElement('div');
+    item.className='file editor-item question-item editor-item-new';
+    item.dataset.questionId=data.id;
+    const pill=document.createElement('span');
+    pill.className='pill';
+    pill.textContent=data.type_label||data.question_type||'question';
+    const text=document.createElement('span');
+    text.textContent=data.prompt;
+    item.append(pill,document.createTextNode(' '),text);
+    list.appendChild(item);
+    ['question-count','question-count-inline'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.textContent=String(countValue);
+    });
+  }
+
+  forms.forEach(form=>{
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const button=form.querySelector('button[type="submit"]');
+      const label=button?.querySelector('.button-label');
+      const original=label?.textContent||button?.textContent||'Сохранить';
+      if(button) button.disabled=true;
+      if(label) label.textContent='Сохраняю…';
+
+      try{
+        const response=await fetch(form.action,{
+          method:'POST',
+          body:new FormData(form),
+          headers:{'X-BarOS-Ajax':'1','Accept':'application/json'},
+          credentials:'same-origin'
+        });
+        if(!response.ok) throw new Error('HTTP '+response.status);
+        const payload=await response.json();
+        if(!payload.ok) throw new Error('Save failed');
+        if(form.dataset.createKind==='lesson') appendLesson(payload.lesson);
+        if(form.dataset.createKind==='question') appendQuestion(payload.question,payload.count);
+        form.reset();
+        const first=form.querySelector('input:not([type="hidden"]),textarea,select');
+        if(first) first.focus({preventScroll:true});
+        showToast(form.dataset.createKind==='lesson'?'Урок добавлен без перезагрузки':'Вопрос добавлен без перезагрузки');
+      }catch(error){
+        showToast('Не удалось сохранить. Попробуйте ещё раз.','error');
+      }finally{
+        if(button) button.disabled=false;
+        if(label) label.textContent=original;
+      }
+    });
+  });
+})();
