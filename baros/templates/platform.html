@@ -1,73 +1,168 @@
 {% extends "base.html" %}
-{% block title %}Владелец BarOS{% endblock %}
+{% block title %}Control Center — BarOS{% endblock %}
 {% block content %}
-<div class="hero">
-  <span class="badge">PLATFORM OWNER</span>
-  <h1>Системная панель BarOS</h1>
-  <p>Все заведения, управляющие и ключевые показатели в одном месте. Управляющие видят только своё заведение.</p>
+<div class="hero owner-hero reveal">
+  <span class="badge accent-badge">BAROS CONTROL CENTER</span>
+  <h1>Управление платформой.</h1>
+  <p>Заведения, доступы, управляющие, ограничения, поддержка и системный журнал — только для владельца BarOS.</p>
 </div>
 
-{% if created %}<div class="notice">Заведение и управляющий созданы.</div>{% endif %}
-{% if error == 'password' %}<div class="notice attention">Пароль управляющего: минимум 10 символов, хотя бы одна буква и одна цифра.</div>{% endif %}
-{% if error == 'email' %}<div class="notice attention">Пользователь с таким email уже существует.</div>{% endif %}
-{% if error == 'no_manager' %}<div class="notice attention">У заведения пока нет управляющего. Добавьте его перед входом.</div>{% endif %}
+{% if created %}<div class="notice success-notice reveal">Заведение создано. Ссылка-приглашение управляющему уже готова.</div>{% endif %}
+{% if error == 'email' %}<div class="notice attention reveal">Пользователь с таким email уже существует.</div>{% endif %}
+{% if error == 'confirm_delete' %}<div class="notice attention reveal">Название для полного удаления введено неверно.</div>{% endif %}
 
-<div class="grid grid-3">
-  <div class="card"><div class="muted">Заведений</div><div class="kpi">{{ venues|length }}</div></div>
-  <div class="card"><div class="muted">Защитный лимит</div><div class="kpi">{{ org_limit }}</div><div class="small muted">создать заведение может только владелец платформы</div></div>
-  <div class="card"><div class="muted">Режим регистрации</div><div class="kpi" style="font-size:26px">Закрытый</div><div class="small muted">публичного self-service создания заведений нет</div></div>
+<div class="grid grid-3 reveal">
+  <div class="card premium-card"><div class="muted">Заведений</div><div class="kpi">{{ venues|length }}</div><div class="small muted">из лимита {{ org_limit }}</div></div>
+  <div class="card premium-card"><div class="muted">Создание заведений</div><div class="kpi compact-kpi">Закрытое</div><div class="small muted">только через твой Control Center</div></div>
+  <div class="card premium-card"><div class="muted">PWA / приложение</div><div class="kpi compact-kpi">Ready</div><div class="small muted">можно устанавливать BarOS на телефон</div></div>
 </div>
 
-<section class="section">
-  <div class="section-title"><div><h2>Заведения</h2><div class="muted">Войти можно для диагностики, правок курсов, сотрудников, файлов и обучения.</div></div></div>
-  <div class="grid grid-2">
+<section class="section reveal">
+  <div class="section-title"><div><h2>Заведения</h2><div class="muted">Статус и права можно менять без удаления данных.</div></div></div>
+  <div class="venue-stack">
     {% for r in venues %}
-    <div class="card">
+    <article class="card premium-card venue-admin-card">
       <div class="row space mobile-stack">
         <div>
-          <h3 style="margin-bottom:4px">{{ r.org.name }}</h3>
+          <div class="row wrap">
+            <h3 class="venue-title">{{ r.org.name }}</h3>
+            {% if r.control.status == 'active' %}<span class="status-chip status-active">ACTIVE</span>
+            {% elif r.control.status == 'read_only' %}<span class="status-chip status-readonly">READ ONLY</span>
+            {% elif r.control.status == 'suspended' %}<span class="status-chip status-suspended">SUSPENDED</span>
+            {% else %}<span class="status-chip status-archived">ARCHIVED</span>{% endif %}
+          </div>
           <div class="muted small">ID {{ r.org.id }} · создано {{ r.org.created_at.strftime('%d.%m.%Y') }}</div>
         </div>
-        <form action="/platform/venues/{{ r.org.id }}/enter" method="post"><button class="btn">Войти в заведение</button></form>
+        <form action="/platform/venues/{{ r.org.id }}/enter" method="post">
+          <button class="btn">Открыть как поддержка</button>
+        </form>
       </div>
-      <div class="grid grid-3" style="margin-top:14px">
+
+      <div class="grid grid-3 venue-stats">
         <div><strong>{{ r.employees }}</strong><div class="small muted">сотрудников</div></div>
         <div><strong>{{ r.courses }}</strong><div class="small muted">курсов</div></div>
         <div><strong>{{ r.uploads }}</strong><div class="small muted">файлов</div></div>
       </div>
-      <div style="margin-top:14px">
-        <div class="small muted">Управляющие</div>
-        {% for m in r.managers %}<div class="file"><strong>{{ m.name }}</strong><div class="small muted">{{ m.email }}</div></div>{% else %}<div class="muted small">Пока нет управляющего</div>{% endfor %}
+
+      <div class="admin-split">
+        <div class="subcard">
+          <h4>Доступ заведения</h4>
+          <form action="/platform/venues/{{ r.org.id }}/control" method="post">
+            <div class="field">
+              <label>Режим</label>
+              <select name="status">
+                <option value="active" {% if r.control.status=='active' %}selected{% endif %}>Active — полный доступ</option>
+                <option value="read_only" {% if r.control.status=='read_only' %}selected{% endif %}>Read only — просмотр без изменений</option>
+                <option value="suspended" {% if r.control.status=='suspended' %}selected{% endif %}>Suspended — приостановить работу</option>
+                <option value="archived" {% if r.control.status=='archived' %}selected{% endif %}>Archived — убрать в архив</option>
+              </select>
+            </div>
+            <div class="permission-grid">
+              {% for key,label in venue_permission_labels.items() %}
+              <label class="permission-toggle">
+                <input type="checkbox" name="perm_{{ key }}" value="1" {% if r.permissions.get(key) %}checked{% endif %}>
+                <span><strong>{{ label }}</strong><small>{{ 'доступ к кабинету' if key=='manager_access' else 'доступ функции' }}</small></span>
+              </label>
+              {% endfor %}
+            </div>
+            <div class="field"><label>Комментарий / причина ограничения</label><input name="note" value="{{ r.control.note }}" placeholder="Например: оплата просрочена до 10 октября"></div>
+            <button class="btn secondary">Сохранить ограничения</button>
+          </form>
+        </div>
+
+        <div class="subcard">
+          <div class="row space"><h4>Управляющие</h4><span class="small muted">{{ r.managers|length }}</span></div>
+          {% for m in r.managers %}
+          <div class="manager-control">
+            <div class="row space mobile-stack">
+              <div>
+                <strong>{{ m.user.name }}</strong>
+                <div class="small muted">{{ m.user.email }}</div>
+                {% if m.user.role == 'manager_pending' %}<span class="pill warn-pill">ожидает активации</span>{% endif %}
+                {% if m.control.blocked %}<span class="pill danger-pill">заблокирован</span>{% endif %}
+              </div>
+              {% if m.invite_url %}
+              <button class="btn secondary small-btn copy-btn" type="button" data-copy="{{ m.invite_url }}">Скопировать инвайт</button>
+              {% endif %}
+            </div>
+            <details class="control-details">
+              <summary>Ограничить права</summary>
+              <form action="/platform/managers/{{ m.user.id }}/control" method="post" class="control-form">
+                <label class="permission-toggle critical-toggle">
+                  <input type="checkbox" name="blocked" value="1" {% if m.control.blocked %}checked{% endif %}>
+                  <span><strong>Полностью заблокировать управляющего</strong><small>не удаляет его и данные заведения</small></span>
+                </label>
+                <div class="permission-grid compact-permissions">
+                  {% for key,label in manager_permission_labels.items() %}
+                  <label class="permission-toggle">
+                    <input type="checkbox" name="perm_{{ key }}" value="1" {% if m.permissions.get(key) %}checked{% endif %}>
+                    <span>{{ label }}</span>
+                  </label>
+                  {% endfor %}
+                </div>
+                <div class="field"><label>Комментарий</label><input name="note" value="{{ m.control.note }}"></div>
+                <button class="btn secondary small-btn">Сохранить права</button>
+              </form>
+            </details>
+          </div>
+          {% else %}<p class="muted">Управляющих пока нет.</p>{% endfor %}
+
+          <details class="control-details add-manager">
+            <summary>+ Пригласить ещё управляющего</summary>
+            <form action="/platform/venues/{{ r.org.id }}/managers/invite" method="post" class="control-form">
+              <div class="field"><label>Имя</label><input name="manager_name" required></div>
+              <div class="field"><label>Email</label><input name="manager_email" type="email" required></div>
+              <button class="btn secondary">Создать приглашение на 72 часа</button>
+            </form>
+          </details>
+        </div>
       </div>
-      <details style="margin-top:12px">
-        <summary>Добавить управляющего</summary>
-        <form action="/platform/venues/{{ r.org.id }}/managers" method="post" style="margin-top:12px">
-          <div class="field"><label>Имя</label><input name="manager_name" required></div>
-          <div class="field"><label>Email</label><input name="manager_email" type="email" required></div>
-          <div class="field"><label>Временный пароль</label><input name="manager_password" type="password" minlength="10" required></div>
-          <button class="btn secondary">Создать управляющего</button>
-        </form>
+
+      <details class="danger-zone">
+        <summary>Опасная зона</summary>
+        <div class="danger-zone-body">
+          <p><strong>Архив</strong> выбирается в режиме выше и полностью обратим. <strong>Полное удаление</strong> необратимо.</p>
+          <form action="/platform/venues/{{ r.org.id }}/delete" method="post" class="hard-delete-form" data-confirm-name="{{ r.org.name }}">
+            <label>Для удаления введи точное название: <strong>{{ r.org.name }}</strong></label>
+            <div class="row mobile-stack">
+              <input name="confirm_name" required autocomplete="off" placeholder="{{ r.org.name }}">
+              <button class="btn danger" type="submit">Удалить навсегда</button>
+            </div>
+          </form>
+        </div>
       </details>
-    </div>
+    </article>
     {% else %}
-    <div class="card"><p class="muted">Заведений пока нет.</p></div>
+    <div class="card premium-card"><p class="muted">Пока нет ни одного заведения.</p></div>
     {% endfor %}
   </div>
 </section>
 
-<section class="section">
-  <div class="section-title"><div><h2>Добавить заведение</h2><div class="muted">Создание доступно только владельцу BarOS. Одновременно создаётся первый управляющий.</div></div></div>
-  <div class="card">
+<section class="section reveal">
+  <div class="section-title"><div><h2>Новое заведение</h2><div class="muted">Управляющий получит одноразовую ссылку и сам задаст пароль.</div></div></div>
+  <div class="card premium-card">
     <form action="/platform/venues" method="post">
-      <div class="grid grid-2">
+      <div class="grid grid-3">
         <div class="field"><label>Название заведения</label><input name="venue" required></div>
         <div class="field"><label>Имя управляющего</label><input name="manager_name" required></div>
         <div class="field"><label>Email управляющего</label><input name="manager_email" type="email" required></div>
-        <div class="field"><label>Временный пароль</label><input name="manager_password" type="password" minlength="10" required></div>
       </div>
-      <p class="muted small">Пароль: минимум 10 символов, буква и цифра. Позже добавим приглашение по email и обязательную смену временного пароля.</p>
-      <button class="btn">Создать заведение</button>
+      <button class="btn">Создать и выпустить приглашение</button>
     </form>
+  </div>
+</section>
+
+<section class="section reveal">
+  <div class="section-title"><div><h2>Audit log</h2><div class="muted">Последние системные действия. Полезно для безопасности и разбора спорных ситуаций.</div></div></div>
+  <div class="card premium-card table-wrap">
+    <table class="table">
+      <thead><tr><th>Время</th><th>Действие</th><th>Заведение</th><th>Пользователь</th><th>IP</th></tr></thead>
+      <tbody>
+      {% for log in logs %}
+      <tr><td>{{ log.created_at.strftime('%d.%m %H:%M') }}</td><td><code>{{ log.action }}</code></td><td>{{ log.organization_id or '—' }}</td><td>{{ log.actor_user_id or '—' }}</td><td class="muted">{{ log.ip or '—' }}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted">Журнал пока пуст.</td></tr>{% endfor %}
+      </tbody>
+    </table>
   </div>
 </section>
 {% endblock %}

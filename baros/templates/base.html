@@ -1,2 +1,48 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{% block title %}BarOS{% endblock %}</title><link rel="stylesheet" href="/static/app.css"></head><body>
-<div class="shell"><div class="nav"><div class="row"><div class="brand">BAROS</div><span class="badge">server 0.5</span></div>{% if user %}<div class="row">{% if request.cookies.get('baros_platform_session') %}<form action="/platform/exit" method="post"><button class="btn secondary" type="submit">← Все заведения</button></form>{% elif user.role == 'platform_owner' %}<a class="btn secondary" href="/platform">Панель владельца</a>{% endif %}<span class="muted small">{{ user.name }}</span><form action="/logout" method="post"><button class="btn secondary" type="submit">Выйти</button></form></div>{% endif %}</div>{% block content %}{% endblock %}</div><script src="/static/app.js"></script>{% block scripts %}{% endblock %}</body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="application-name" content="BarOS">
+  <meta name="apple-mobile-web-app-title" content="BarOS">
+  <title>{% block title %}BarOS{% endblock %}</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/baros-icon-32.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="/static/baros-icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/baros-icon-180.png">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <div class="shell page-shell">
+    <nav class="nav glass-nav">
+      <a class="brand-mark" href="/">
+        <img src="/static/baros-icon-192.png" alt="BarOS">
+        <span>BarOS</span>
+      </a>
+      <div class="row nav-actions">
+        <button class="btn secondary small-btn pwa-install" id="pwa-install" type="button" hidden>Установить</button>
+        {% if user %}
+          {% if request.cookies.get('baros_platform_session') %}
+            <form action="/platform/exit" method="post"><button class="btn secondary small-btn" type="submit">← Все заведения</button></form>
+          {% elif user.role == 'platform_owner' %}
+            <a class="btn secondary small-btn" href="/platform">Control Center</a>
+          {% endif %}
+          <span class="muted small user-chip">{{ user.name }}</span>
+          <form action="/logout" method="post"><button class="btn secondary small-btn" type="submit">Выйти</button></form>
+        {% endif %}
+      </div>
+    </nav>
+    {% if user and user.role == 'manager' and request.scope.get('baros_venue_status') == 'read_only' %}
+      <div class="notice restriction-banner reveal"><strong>Режим только для чтения.</strong> Изменения временно отключены владельцем BarOS.{% if request.scope.get('baros_venue_note') %} {{ request.scope.get('baros_venue_note') }}{% endif %}</div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </div>
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

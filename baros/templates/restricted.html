@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Доступ ограничен — BarOS{% endblock %}
+{% block content %}
+<div class="auth reveal">
+  <div class="brand-mark large-brand"><img src="/static/baros-icon-192.png" alt=""><span>BarOS</span></div>
+  <div class="card premium-card restriction-card">
+    <span class="status-chip status-suspended">ACCESS CONTROL</span>
+    <h1>{{ title }}</h1>
+    <p class="muted">{{ message }}</p>
+    {% if user %}<form action="/logout" method="post"><button class="btn secondary">Выйти из аккаунта</button></form>{% endif %}
+  </div>
+</div>
+{% endblock %}
