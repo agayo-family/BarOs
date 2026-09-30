@@ -353,7 +353,7 @@ def web_manifest():
         "theme_color": "#d9ff4f",
         "icons": [
             {"src": "/static/baros-icon-192.png", "sizes": "192x192", "type": "image/png"},
-            {"src": "/static/baros-icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/baros-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
         ],
     }, media_type="application/manifest+json")
 
@@ -362,7 +362,7 @@ def web_manifest():
 def service_worker():
     js = """
 const CACHE='baros-static-v1';
-const ASSETS=['/static/app.css','/static/app.js','/static/baros-icon-192.png','/static/baros-icon-512.png'];
+const ASSETS=['/static/app.css','/static/app.js','/static/baros-icon-192.png','/static/baros-icon.svg'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{
