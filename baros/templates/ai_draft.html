@@ -94,6 +94,16 @@
   </div>
 </form>
 {% else %}
-<div class="card premium-card reveal"><p class="muted">Курсы не созданы. Посмотрите предупреждения выше и попробуйте генерацию после исправления причины.</p></div>
+<div class="card premium-card reveal">
+  <p class="muted">Курсы не созданы. Эта генерация сохранена в истории и сама не изменится после исправления AI.</p>
+  {% if generation and generation.status == 'error' %}
+  <div class="row wrap" style="margin-top:14px">
+    <form method="post" action="/ai/training-draft/{{ generation_id }}/retry">
+      <button class="btn" type="submit">Повторить генерацию с теми же данными</button>
+    </form>
+    <a class="btn ghost" href="/app#ai">Изменить роль или материалы</a>
+  </div>
+  {% endif %}
+</div>
 {% endif %}
 {% endblock %}
