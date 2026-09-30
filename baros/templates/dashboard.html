@@ -38,20 +38,28 @@
     <div>
       <div class="row wrap">
         <h2 style="margin:0">AI-методист</h2>
-        {% if ai_configured %}<span class="status-chip status-active">AI CONNECTED</span>{% else %}<span class="status-chip status-readonly">AI NOT CONNECTED</span>{% endif %}
+        {% if ai_configured %}
+          <span class="status-chip status-active">{{ ai_status.provider|upper }} · {{ ai_status.mode|upper }}</span>
+        {% else %}
+          <span class="status-chip status-readonly">AI NOT CONNECTED</span>
+        {% endif %}
       </div>
-      <div class="muted">Берёт интервью + выбранные материалы и создаёт только черновик для проверки менеджером. Факты о меню, аллергенах и стандартах нельзя додумывать.</div>
+      <div class="muted">Берёт интервью + выбранные материалы, делает проверяемый черновик курсов, уроков, вопросов и словаря. Ничего не публикуется автоматически.</div>
     </div>
   </div>
   <div class="card premium-card">
-    <div class="row space mobile-stack" style="margin-bottom:14px">
-      <div><strong>Модель</strong><div class="small muted">{{ ai_model }}</div></div>
-      <div class="small {% if ai_configured %}ready{% else %}notready{% endif %}">{% if ai_configured %}API готов к генерации{% else %}Нужен AI Gateway API key{% endif %}</div>
+    <div class="ai-status-grid">
+      <div><span class="small muted">Провайдер</span><strong>{{ ai_status.provider }}</strong></div>
+      <div><span class="small muted">Модель</span><strong>{{ ai_model }}</strong></div>
+      <div><span class="small muted">Генерации за 24 ч</span><strong>{{ ai_usage.used }} / {{ ai_usage.limit }}</strong></div>
+      <div><span class="small muted">Платный fallback</span><strong>{{ 'включён' if ai_status.paid_fallback_enabled else 'выключен' }}</strong></div>
     </div>
-    {% if not ai_configured %}
-      <div class="notice attention" style="margin-bottom:14px">AI-методист уже встроен в BarOS, но сервер пока не видит секретный <code>AI_GATEWAY_API_KEY</code>. До подключения ключа генерация намеренно заблокирована.</div>
+    {% if ai_configured %}
+      <div class="notice success-notice" style="margin:14px 0">AI готов. Осталось {{ ai_usage.remaining }} из {{ ai_usage.limit }} генераций на это заведение в текущем 24-часовом окне.</div>
+    {% else %}
+      <div class="notice attention" style="margin:14px 0">Подключите бесплатный <code>OPENROUTER_API_KEY</code>. BarOS автоматически выберет <code>openrouter/free</code>. Платный Vercel fallback по умолчанию выключен.</div>
     {% endif %}
-    <form action="/ai/training-draft" method="post">
+    <form action="/ai/training-draft" method="post" class="ai-generation-form">
       <div class="field"><label>Для какой роли сделать черновик?</label><select name="target_role">{% for key,label in positions %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
       {% if uploads %}
         <label>Какие материалы использовать?</label>
@@ -59,7 +67,7 @@
       {% else %}
         <div class="notice" style="margin-bottom:14px">Сначала загрузите меню, раскладки или стандарты.</div>
       {% endif %}
-      <button class="btn" {% if not uploads or not ai_configured %}disabled{% endif %}>Сгенерировать структуру, вопросы и словарь</button>
+      <button class="btn" {% if not uploads or not ai_configured or ai_usage.remaining <= 0 %}disabled{% endif %}>Сгенерировать AI-черновик</button>
     </form>
   </div>
 </section>
