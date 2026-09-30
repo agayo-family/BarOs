@@ -394,8 +394,8 @@ def web_manifest():
         "background_color": "#0b0d10",
         "theme_color": "#d9ff4f",
         "icons": [
-            {"src": "/static/baros-icon-192.png?v=2", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-            {"src": "/static/baros-icon.svg?v=2", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
+            {"src": "/static/baros-icon-192.png?v=3", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/baros-icon.svg?v=3", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
         ],
     }, media_type="application/manifest+json")
 
@@ -403,8 +403,8 @@ def web_manifest():
 @app.get("/sw.js")
 def service_worker():
     js = """
-const CACHE='baros-static-v2';
-const ASSETS=['/static/app.css','/static/app.js','/static/baros-icon-32.png?v=2','/static/baros-icon-180.png?v=2','/static/baros-icon-192.png?v=2','/static/baros-icon.svg?v=2'];
+const CACHE='baros-static-v3';
+const ASSETS=['/static/app.css?v=3','/static/app.js?v=3','/static/baros-icon-32.png?v=3','/static/baros-icon-180.png?v=3','/static/baros-icon-192.png?v=3','/static/baros-icon.svg?v=3'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{
