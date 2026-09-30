@@ -21,3 +21,6 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m compileall -q baros
       - run: python -c "from baros.main import app; print(app.title)"
+      - run: python -c "from baros.ai_service import get_ai_status; s=get_ai_status(); assert s['model']=='openrouter/free'; assert s['global_daily_limit']==40; print(s)"
+      - run: python -c "from baros.main import app; p={r.path for r in app.routes}; assert '/health/ai' in p; assert '/ai/training-draft/{generation_id}/import' in p; assert '/courses/{course_id}/lessons' in p; assert '/courses/{course_id}/questions' in p"
+      - run: python -c "from baros.core import templates; [templates.env.get_template(x) for x in ['course_editor.html','dashboard.html','ai_draft.html','platform.html']]"
