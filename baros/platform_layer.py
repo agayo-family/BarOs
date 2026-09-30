@@ -28,7 +28,7 @@ from .access import (
     venue_permissions,
 )
 from .config import COOKIE_SECURE, PUBLIC_BASE_URL
-from .ai_service import get_ai_status, get_ai_usage
+from .ai_service import get_ai_status, get_ai_usage, mark_stale_ai_generations
 from .core import app, current_user, get_db, render
 from .db import SessionLocal
 from .models import (
@@ -274,6 +274,9 @@ def platform_startup():
     log.warning("AI methodologist configured=%s provider=%s model=%s mode=%s", ai_status["configured"], ai_status["provider"], ai_status["model"], ai_status["mode"])
     with SessionLocal() as db:
         _ensure_platform_state(db)
+        interrupted = mark_stale_ai_generations(db, minutes=0)
+        if interrupted:
+            log.warning("Marked %s orphaned AI background jobs as interrupted after restart", interrupted)
         latest_ai_error = db.scalar(
             select(AIGeneration)
             .where(AIGeneration.status == "error")
@@ -402,8 +405,8 @@ def web_manifest():
         "background_color": "#0b0d10",
         "theme_color": "#d9ff4f",
         "icons": [
-            {"src": "/static/baros-icon-192.png?v=3", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-            {"src": "/static/baros-icon.svg?v=3", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
+            {"src": "/static/baros-icon-192.png?v=4", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/baros-icon.svg?v=4", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
         ],
     }, media_type="application/manifest+json")
 
@@ -411,8 +414,8 @@ def web_manifest():
 @app.get("/sw.js")
 def service_worker():
     js = """
-const CACHE='baros-static-v3';
-const ASSETS=['/static/app.css?v=3','/static/app.js?v=3','/static/baros-icon-32.png?v=3','/static/baros-icon-180.png?v=3','/static/baros-icon-192.png?v=3','/static/baros-icon.svg?v=3'];
+const CACHE='baros-static-v4';
+const ASSETS=['/static/app.css?v=4','/static/app.js?v=4','/static/baros-icon-32.png?v=4','/static/baros-icon-180.png?v=4','/static/baros-icon-192.png?v=4','/static/baros-icon.svg?v=4'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{

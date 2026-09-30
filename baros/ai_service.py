@@ -24,6 +24,7 @@ from .config import (
     PUBLIC_BASE_URL,
 )
 from .models import AIGeneration
+from .db import SessionLocal
 
 
 SYSTEM = """Ты — методист корпоративного обучения HoReCa. Создавай только черновики, которые менеджер обязан проверить. Не выдумывай факты о меню, аллергенах, технологиях, составе или правилах: используй только входные материалы. Если данных недостаточно — укажи это в warnings и не заполняй пробел догадкой.
@@ -387,15 +388,98 @@ async def _call_provider(provider: dict, context: str):
     return result, meta
 
 
-async def generate_training_draft(
+AI_PHASES = {
+    "queued": (8, "Черновик поставлен в очередь"),
+    "preparing": (20, "Подготавливаем материалы"),
+    "requesting": (55, "AI изучает материалы и проектирует обучение"),
+    "retrying": (60, "Первая попытка не подошла — пробуем другую бесплатную модель"),
+    "validating": (78, "Проверяем структуру уроков и вопросов"),
+    "saving": (92, "Сохраняем черновик в BarOS"),
+    "complete": (100, "Черновик готов"),
+    "error": (100, "Генерация завершилась ошибкой"),
+    "interrupted": (100, "Генерация была прервана перезапуском сервера"),
+}
+
+
+def _read_meta(rec: AIGeneration) -> dict:
+    try:
+        data = json.loads(rec.usage_json or "{}")
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_progress(db: Session, rec: AIGeneration, phase: str, **extra):
+    progress, message = AI_PHASES.get(phase, (0, phase))
+    meta = _read_meta(rec)
+    meta.update({
+        "phase": phase,
+        "progress": progress,
+        "phase_message": message,
+        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    })
+    meta.update(extra)
+    rec.usage_json = json.dumps(meta, ensure_ascii=False)
+    db.commit()
+
+
+def generation_progress(rec: AIGeneration) -> dict:
+    meta = _read_meta(rec)
+    phase = meta.get("phase")
+    if not phase:
+        if rec.status in {"complete", "imported"}:
+            phase = "complete"
+        elif rec.status == "error":
+            phase = "error"
+        else:
+            phase = "queued"
+    progress, default_message = AI_PHASES.get(phase, (0, phase))
+    return {
+        "phase": phase,
+        "progress": int(meta.get("progress", progress)),
+        "message": str(meta.get("phase_message") or default_message),
+        "target_role": meta.get("target_role", "all"),
+        "upload_names": meta.get("upload_names", []),
+        "attempt": meta.get("attempt"),
+        "updated_at": meta.get("updated_at"),
+        "routed_model": meta.get("routed_model"),
+    }
+
+
+def mark_stale_ai_generations(db: Session, organization_id: int | None = None, minutes: int = 12):
+    cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    query = select(AIGeneration).where(
+        AIGeneration.feature == "training_draft",
+        AIGeneration.status == "pending",
+        AIGeneration.created_at < cutoff,
+    )
+    if organization_id is not None:
+        query = query.where(AIGeneration.organization_id == organization_id)
+    stale = db.scalars(query).all()
+    for rec in stale:
+        rec.status = "error"
+        rec.error = "Фоновая генерация была прервана перезапуском или остановкой сервера."
+        rec.result = json.dumps({
+            "summary": "Генерация была прервана.",
+            "courses": [],
+            "glossary": [],
+            "warnings": ["Запустите черновик повторно — исходные материалы сохранены."],
+        }, ensure_ascii=False)
+        _write_progress(db, rec, "interrupted")
+    return len(stale)
+
+
+def create_training_generation(
     db: Session,
     organization_id: int,
     user_id: int | None,
     context: str,
+    metadata: dict | None = None,
 ):
     gid = uuid.uuid4().hex
     candidates = _provider_candidates()
     status = get_ai_status()
+    metadata = dict(metadata or {})
 
     if not candidates:
         rec = AIGeneration(
@@ -413,9 +497,10 @@ async def generate_training_draft(
             "glossary": [],
             "warnings": ["Добавьте OPENROUTER_API_KEY. Бесплатный OpenRouter будет использоваться первым."],
         }, ensure_ascii=False)
+        rec.usage_json = json.dumps({**metadata, "phase": "error", "progress": 100, "phase_message": "AI-провайдер не подключён"}, ensure_ascii=False)
         db.add(rec)
         db.commit()
-        return gid, json.loads(rec.result)
+        return rec, False
 
     usage = get_ai_usage(db, organization_id)
     if usage["effective_remaining"] <= 0:
@@ -434,9 +519,10 @@ async def generate_training_draft(
             "glossary": [],
             "warnings": [f"Лимит staging: {AI_DAILY_LIMIT} генераций на заведение и {AI_GLOBAL_DAILY_LIMIT} на всю платформу за 24 часа."],
         }, ensure_ascii=False)
+        rec.usage_json = json.dumps({**metadata, "phase": "error", "progress": 100, "phase_message": "Достигнут лимит AI"}, ensure_ascii=False)
         db.add(rec)
         db.commit()
-        return gid, json.loads(rec.result)
+        return rec, False
 
     first = candidates[0]
     rec = AIGeneration(
@@ -447,61 +533,152 @@ async def generate_training_draft(
         model=f"{first['provider']}:{first['model']}",
         prompt=context,
         status="pending",
+        usage_json=json.dumps({
+            **metadata,
+            "phase": "queued",
+            "progress": 8,
+            "phase_message": AI_PHASES["queued"][1],
+            "created_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        }, ensure_ascii=False),
     )
     db.add(rec)
     db.commit()
+    return rec, True
 
-    errors = []
-    attempt_log = []
-    for provider_index, provider in enumerate(candidates):
-        max_attempts = 2 if provider["provider"] == "openrouter" else 1
-        for attempt in range(1, max_attempts + 1):
-            try:
-                result, call_meta = await _call_provider(provider, context)
-                rec.model = f"{provider['provider']}:{call_meta.get('routed_model') or provider['model']}"
-                rec.status = "complete"
-                rec.result = json.dumps(result, ensure_ascii=False)
-                attempt_log.append({
-                    "provider": provider["provider"],
-                    "requested_model": provider["model"],
-                    "routed_model": call_meta.get("routed_model"),
-                    "attempt": attempt,
-                    "finish_reason": call_meta.get("finish_reason"),
-                    "status": "complete",
-                    "usage": call_meta.get("usage", {}),
-                })
-                rec.usage_json = json.dumps({
-                    "provider": provider["provider"],
-                    "requested_model": provider["model"],
-                    "routed_model": call_meta.get("routed_model"),
-                    "attempts": attempt_log,
-                    "fallback_used": provider_index > 0,
-                }, ensure_ascii=False)
-                rec.error = ""
-                db.commit()
-                return gid, result
-            except Exception as exc:
-                err = f"{provider['provider']} attempt {attempt}: {type(exc).__name__}: {exc}"
-                errors.append(err)
-                attempt_log.append({
-                    "provider": provider["provider"],
-                    "requested_model": provider["model"],
-                    "attempt": attempt,
-                    "status": "error",
-                    "error": f"{type(exc).__name__}: {exc}"[:1000],
-                })
 
-    rec.status = "error"
-    rec.error = "\n".join(errors)[:4000]
-    rec.usage_json = json.dumps({"attempts": attempt_log}, ensure_ascii=False)
-    result = {
-        "summary": "AI-методист не смог завершить генерацию.",
-        "courses": [],
-        "glossary": [],
-        "warnings": [
-            "Черновик не был импортирован. Проверьте подключение AI-провайдера или попробуйте ещё раз позже."
-        ],
-    }
-    rec.result = json.dumps(result, ensure_ascii=False)
-    db.commit()
-    return gid, result
+async def process_training_generation(generation_id: str):
+    with SessionLocal() as db:
+        rec = db.get(AIGeneration, generation_id)
+        if not rec or rec.status != "pending":
+            return
+
+        candidates = _provider_candidates()
+        if not candidates:
+            rec.status = "error"
+            rec.error = "AI provider is no longer configured"
+            _write_progress(db, rec, "error")
+            return
+
+        _write_progress(db, rec, "preparing")
+        context = rec.prompt or ""
+        errors = []
+        attempt_log = []
+
+        for provider_index, provider in enumerate(candidates):
+            max_attempts = 2 if provider["provider"] == "openrouter" else 1
+            for attempt in range(1, max_attempts + 1):
+                phase = "requesting" if attempt == 1 else "retrying"
+                _write_progress(
+                    db,
+                    rec,
+                    phase,
+                    attempt=attempt,
+                    provider=provider["provider"],
+                    requested_model=provider["model"],
+                    attempts=attempt_log,
+                )
+                try:
+                    result, call_meta = await _call_provider(provider, context)
+                    _write_progress(
+                        db,
+                        rec,
+                        "validating",
+                        attempt=attempt,
+                        provider=provider["provider"],
+                        requested_model=provider["model"],
+                        routed_model=call_meta.get("routed_model"),
+                        attempts=attempt_log,
+                    )
+
+                    attempt_log.append({
+                        "provider": provider["provider"],
+                        "requested_model": provider["model"],
+                        "routed_model": call_meta.get("routed_model"),
+                        "attempt": attempt,
+                        "finish_reason": call_meta.get("finish_reason"),
+                        "status": "complete",
+                        "usage": call_meta.get("usage", {}),
+                    })
+
+                    _write_progress(
+                        db,
+                        rec,
+                        "saving",
+                        attempt=attempt,
+                        provider=provider["provider"],
+                        requested_model=provider["model"],
+                        routed_model=call_meta.get("routed_model"),
+                        attempts=attempt_log,
+                    )
+
+                    rec.model = f"{provider['provider']}:{call_meta.get('routed_model') or provider['model']}"
+                    rec.status = "complete"
+                    rec.result = json.dumps(result, ensure_ascii=False)
+                    rec.error = ""
+                    meta = _read_meta(rec)
+                    meta.update({
+                        "provider": provider["provider"],
+                        "requested_model": provider["model"],
+                        "routed_model": call_meta.get("routed_model"),
+                        "attempts": attempt_log,
+                        "fallback_used": provider_index > 0,
+                        "phase": "complete",
+                        "progress": 100,
+                        "phase_message": AI_PHASES["complete"][1],
+                        "completed_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    })
+                    rec.usage_json = json.dumps(meta, ensure_ascii=False)
+                    db.commit()
+                    return
+                except Exception as exc:
+                    err = f"{provider['provider']} attempt {attempt}: {type(exc).__name__}: {exc}"
+                    errors.append(err)
+                    attempt_log.append({
+                        "provider": provider["provider"],
+                        "requested_model": provider["model"],
+                        "attempt": attempt,
+                        "status": "error",
+                        "error": f"{type(exc).__name__}: {exc}"[:1000],
+                    })
+
+        rec.status = "error"
+        rec.error = "\n".join(errors)[:4000]
+        result = {
+            "summary": "AI-методист не смог завершить генерацию.",
+            "courses": [],
+            "glossary": [],
+            "warnings": [
+                "Черновик не был создан. Можно повторить генерацию с теми же материалами."
+            ],
+        }
+        rec.result = json.dumps(result, ensure_ascii=False)
+        meta = _read_meta(rec)
+        meta.update({
+            "attempts": attempt_log,
+            "phase": "error",
+            "progress": 100,
+            "phase_message": AI_PHASES["error"][1],
+            "completed_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        })
+        rec.usage_json = json.dumps(meta, ensure_ascii=False)
+        db.commit()
+
+
+async def generate_training_draft(
+    db: Session,
+    organization_id: int,
+    user_id: int | None,
+    context: str,
+):
+    rec, should_run = create_training_generation(
+        db, organization_id, user_id, context
+    )
+    if should_run:
+        await process_training_generation(rec.id)
+        db.expire_all()
+        rec = db.get(AIGeneration, rec.id)
+    try:
+        result = json.loads(rec.result or "{}")
+    except Exception:
+        result = {}
+    return rec.id, result

@@ -2,7 +2,7 @@ from __future__ import annotations
 import json, random, re
 from pathlib import Path
 from urllib.parse import quote
-from fastapi import FastAPI, Request, Depends, Form, UploadFile, File, HTTPException
+from fastapi import FastAPI, Request, Depends, Form, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,7 +14,7 @@ from .models import Organization, User, Employee, Upload, Course, Lesson, Glossa
 from .security import hash_password, verify_password, make_session, read_session, invite_token
 from .storage import storage
 from .extractors import extract_text
-from .ai_service import generate_training_draft, get_ai_status, get_ai_usage
+from .ai_service import create_training_generation, process_training_generation, generation_progress, mark_stale_ai_generations, get_ai_status, get_ai_usage
 from .config import MAX_UPLOAD_MB, FIRST_RUN_TOKEN, COOKIE_SECURE
 
 BASE = Path(__file__).resolve().parent
@@ -253,6 +253,39 @@ def onboarding_post(request: Request, venue_type: str=Form(...), concept: str=Fo
         db.add(Question(course_id=intro.id,prompt=p,choices_json=json.dumps(c,ensure_ascii=False),correct_index=i,question_type=qt,explanation=ex))
     db.commit(); return RedirectResponse("/app",303)
 
+def _ai_generation_card(rec: AIGeneration):
+    progress = generation_progress(rec)
+    result = {}
+    try:
+        result = json.loads(rec.result or "{}")
+        if not isinstance(result, dict):
+            result = {}
+    except Exception:
+        result = {}
+    courses = result.get("courses") or []
+    glossary = result.get("glossary") or []
+    lesson_count = sum(len(c.get("lessons") or []) for c in courses if isinstance(c, dict))
+    question_count = sum(len(c.get("questions") or []) for c in courses if isinstance(c, dict))
+    role = progress.get("target_role") or "all"
+    return {
+        "id": rec.id,
+        "short_id": rec.id[:8],
+        "status": rec.status,
+        "model": rec.model,
+        "created_at": rec.created_at.isoformat() + "Z" if rec.created_at else None,
+        "created_at_label": rec.created_at.strftime("%d.%m %H:%M") if rec.created_at else "",
+        "progress": progress,
+        "summary": str(result.get("summary") or ""),
+        "courses": len(courses),
+        "lessons": lesson_count,
+        "questions": question_count,
+        "glossary": len(glossary),
+        "role": role,
+        "role_label": POSITION_LABELS.get(role, role),
+        "openable": rec.status in {"complete", "error", "imported", "limited", "disabled"},
+    }
+
+
 @app.get("/app", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session=Depends(get_db)):
     u=current_user(request,db)
@@ -327,11 +360,20 @@ def dashboard(request: Request, db: Session=Depends(get_db)):
         "avg_score":round(sum(latest_scores)/len(latest_scores),1) if latest_scores else None,
         "latest_pass_rate":round(total_latest_passed/max(1,total_latest_attempts)*100,1) if total_latest_attempts else None,
     }
+    mark_stale_ai_generations(db, org.id)
     ai_status=get_ai_status(); ai_usage=get_ai_usage(db,org.id)
+    generations=db.scalars(
+        select(AIGeneration)
+        .where(AIGeneration.organization_id==org.id,AIGeneration.feature=="training_draft")
+        .order_by(AIGeneration.created_at.desc())
+        .limit(12)
+    ).all()
+    ai_generations=[_ai_generation_card(x) for x in generations]
     return render(request,"dashboard.html",{
         "user":u,"org":org,"employees":rows,"courses":courses,"uploads":uploads,"glossary":glossary,
         "positions":POSITIONS,"stats":stats,"question_bank_target":QUESTION_BANK_TARGET,"quiz_size":QUIZ_SIZE,
-        "ai_configured":ai_status["configured"],"ai_model":ai_status["model"],"ai_status":ai_status,"ai_usage":ai_usage
+        "ai_configured":ai_status["configured"],"ai_model":ai_status["model"],"ai_status":ai_status,"ai_usage":ai_usage,
+        "ai_generations":ai_generations
     })
 
 @app.post("/employees")
@@ -409,7 +451,13 @@ def add_question(course_id:int,request:Request,prompt:str=Form(...),choice1:str=
     return RedirectResponse(f"/courses/{c.id}#questions-section",303)
 
 @app.post("/ai/training-draft")
-async def ai_training_draft(request: Request, upload_ids: list[int]=Form(default=[]), target_role: str=Form("all"), db: Session=Depends(get_db)):
+async def ai_training_draft(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    upload_ids: list[int]=Form(default=[]),
+    target_role: str=Form("all"),
+    db: Session=Depends(get_db)
+):
     u=current_user(request,db)
     if not u: raise HTTPException(401)
     org=db.get(Organization,u.organization_id)
@@ -418,28 +466,105 @@ async def ai_training_draft(request: Request, upload_ids: list[int]=Form(default
         docs=db.scalars(select(Upload).where(Upload.organization_id==org.id,Upload.id.in_(upload_ids))).all()
     else:
         docs=db.scalars(select(Upload).where(Upload.organization_id==org.id).order_by(Upload.created_at.desc()).limit(5)).all()
-    context="ИНТЕРВЬЮ ЗАВЕДЕНИЯ:\n"+(org.interview_json or "{}")+f"\n\nЦЕЛЕВАЯ РОЛЬ: {target_role}\n\nМАТЕРИАЛЫ:\n"
-    for d in docs: context+=f"\n--- {d.filename} / {d.category} / role={d.target_role} ---\n{d.extracted_text[:30000]}\n"
-    gid,result=await generate_training_draft(db,org.id,u.id,context)
-    generation=db.get(AIGeneration,gid)
-    return render(request,"ai_draft.html",{"user":u,"generation_id":gid,"generation":generation,"result":result,"ai_status":get_ai_status()})
 
-@app.post("/ai/training-draft/{generation_id}/retry")
-async def retry_ai_training_draft(generation_id:str,request:Request,db:Session=Depends(get_db)):
+    context="ИНТЕРВЬЮ ЗАВЕДЕНИЯ:\n"+(org.interview_json or "{}")+f"\n\nЦЕЛЕВАЯ РОЛЬ: {target_role}\n\nМАТЕРИАЛЫ:\n"
+    for d in docs:
+        context+=f"\n--- {d.filename} / {d.category} / role={d.target_role} ---\n{d.extracted_text[:30000]}\n"
+
+    rec,should_run=create_training_generation(
+        db,org.id,u.id,context,
+        metadata={
+            "target_role":target_role,
+            "upload_names":[d.filename for d in docs],
+            "upload_ids":[d.id for d in docs],
+        }
+    )
+    if should_run:
+        background_tasks.add_task(process_training_generation,rec.id)
+
+    card=_ai_generation_card(rec)
+    payload={
+        "ok":True,
+        "generation":card,
+        "status_url":f"/ai/training-draft/{rec.id}/status",
+        "detail_url":f"/ai/training-draft/{rec.id}",
+    }
+    if request.headers.get("x-baros-ajax")=="1" or "application/json" in request.headers.get("accept",""):
+        return JSONResponse(payload)
+    return RedirectResponse("/app#ai",303)
+
+
+@app.get("/ai/training-draft/{generation_id}/status")
+def ai_training_draft_status(generation_id:str,request:Request,db:Session=Depends(get_db)):
     u=current_user(request,db)
     if not u: raise HTTPException(401)
+    mark_stale_ai_generations(db,u.organization_id)
     rec=db.get(AIGeneration,generation_id)
-    if not rec or rec.organization_id!=u.organization_id or rec.status!="error":
+    if not rec or rec.organization_id!=u.organization_id:
         raise HTTPException(404)
-    gid,result=await generate_training_draft(db,u.organization_id,u.id,rec.prompt or "")
-    generation=db.get(AIGeneration,gid)
+    card=_ai_generation_card(rec)
+    return JSONResponse({
+        "ok":True,
+        "generation":card,
+        "detail_url":f"/ai/training-draft/{rec.id}",
+    })
+
+
+@app.get("/ai/training-draft/{generation_id}",response_class=HTMLResponse)
+def ai_training_draft_detail(generation_id:str,request:Request,db:Session=Depends(get_db)):
+    u=current_user(request,db)
+    if not u: return RedirectResponse("/",302)
+    mark_stale_ai_generations(db,u.organization_id)
+    rec=db.get(AIGeneration,generation_id)
+    if not rec or rec.organization_id!=u.organization_id:
+        raise HTTPException(404)
+    if rec.status=="pending":
+        return RedirectResponse("/app#ai",303)
+    try:
+        result=json.loads(rec.result or "{}")
+        if not isinstance(result,dict): result={}
+    except Exception:
+        result={}
     return render(request,"ai_draft.html",{
         "user":u,
-        "generation_id":gid,
-        "generation":generation,
+        "generation_id":rec.id,
+        "generation":rec,
         "result":result,
         "ai_status":get_ai_status()
     })
+
+
+@app.post("/ai/training-draft/{generation_id}/retry")
+async def retry_ai_training_draft(
+    generation_id:str,
+    request:Request,
+    background_tasks:BackgroundTasks,
+    db:Session=Depends(get_db)
+):
+    u=current_user(request,db)
+    if not u: raise HTTPException(401)
+    old=db.get(AIGeneration,generation_id)
+    if not old or old.organization_id!=u.organization_id or old.status!="error":
+        raise HTTPException(404)
+    old_progress=generation_progress(old)
+    rec,should_run=create_training_generation(
+        db,u.organization_id,u.id,old.prompt or "",
+        metadata={
+            "target_role":old_progress.get("target_role","all"),
+            "upload_names":old_progress.get("upload_names",[]),
+            "retry_of":old.id,
+        }
+    )
+    if should_run:
+        background_tasks.add_task(process_training_generation,rec.id)
+    if request.headers.get("x-baros-ajax")=="1" or "application/json" in request.headers.get("accept",""):
+        return JSONResponse({
+            "ok":True,
+            "generation":_ai_generation_card(rec),
+            "status_url":f"/ai/training-draft/{rec.id}/status",
+            "detail_url":f"/ai/training-draft/{rec.id}",
+        })
+    return RedirectResponse("/app#ai",303)
 
 
 @app.post("/ai/training-draft/{generation_id}/import")

@@ -178,15 +178,190 @@
 
 (function(){
   const form=document.querySelector('.ai-generation-form');
-  if(!form) return;
-  form.addEventListener('submit',()=>{
+  const list=document.getElementById('ai-generation-list');
+  if(!form || !list) return;
+
+  const countEl=document.getElementById('ai-generation-count');
+  const polling=new Map();
+
+  function statusInfo(status){
+    if(status==='pending') return {label:'В ПРОЦЕССЕ',cls:'status-readonly'};
+    if(status==='complete') return {label:'ГОТОВ',cls:'status-active'};
+    if(status==='imported') return {label:'ИМПОРТИРОВАН',cls:'status-active'};
+    if(status==='error') return {label:'ОШИБКА',cls:'status-suspended'};
+    if(status==='limited') return {label:'ЛИМИТ',cls:'status-readonly'};
+    if(status==='disabled') return {label:'AI OFF',cls:'status-archived'};
+    return {label:String(status||'').toUpperCase(),cls:'status-archived'};
+  }
+
+  function createCard(g,statusUrl,detailUrl){
+    const empty=document.getElementById('ai-empty-history');
+    if(empty) empty.remove();
+
+    const card=document.createElement('article');
+    card.className='card premium-card ai-generation-card ai-generation-card-new';
+    card.dataset.generationId=g.id;
+    card.dataset.status=g.status;
+    card.dataset.statusUrl=statusUrl||('/ai/training-draft/'+g.id+'/status');
+
+    card.innerHTML=
+      '<div class="row space mobile-stack">'+
+        '<div class="ai-generation-main">'+
+          '<div class="row wrap"><strong class="ai-generation-title"></strong><span class="status-chip ai-gen-status"></span></div>'+
+          '<div class="small muted ai-generation-subtitle"></div>'+
+        '</div>'+
+        '<div class="ai-generation-actions"><a class="btn secondary small-btn ai-open-draft">Готовится…</a></div>'+
+      '</div>'+
+      '<div class="ai-progress-wrap">'+
+        '<div class="row space"><span class="small ai-phase-message"></span><span class="small muted ai-progress-label"></span></div>'+
+        '<div class="ai-progress"><span></span></div>'+
+      '</div>'+
+      '<div class="ai-generation-meta"></div>';
+
+    list.prepend(card);
+    if(countEl) countEl.textContent=String(Number(countEl.textContent||0)+1);
+    updateCard(card,g,detailUrl);
+    return card;
+  }
+
+  function updateCard(card,g,detailUrl){
+    card.dataset.status=g.status;
+    const info=statusInfo(g.status);
+    const title=card.querySelector('.ai-generation-title');
+    const chip=card.querySelector('.ai-gen-status');
+    const subtitle=card.querySelector('.ai-generation-subtitle');
+    const phase=card.querySelector('.ai-phase-message');
+    const progressLabel=card.querySelector('.ai-progress-label');
+    const progressBar=card.querySelector('.ai-progress span');
+    const open=card.querySelector('.ai-open-draft');
+    const meta=card.querySelector('.ai-generation-meta');
+
+    if(title) title.textContent='Черновик '+(g.short_id||String(g.id).slice(0,8));
+    if(chip){
+      chip.textContent=info.label;
+      chip.className='status-chip ai-gen-status '+info.cls;
+    }
+    if(subtitle){
+      const files=(g.progress?.upload_names||[]).length;
+      subtitle.textContent=(g.role_label||g.role||'Все роли')+' · '+(g.created_at_label||'только что')+(files?' · '+files+' файл(а)':'');
+    }
+    const p=Math.max(0,Math.min(100,Number(g.progress?.progress||0)));
+    if(phase) phase.textContent=g.progress?.message||'Обновляем статус…';
+    if(progressLabel) progressLabel.textContent=p+'%';
+    if(progressBar) progressBar.style.width=p+'%';
+
+    if(open){
+      const canOpen=Boolean(g.openable);
+      open.textContent=canOpen?'Открыть':'Готовится…';
+      open.classList.toggle('is-disabled',!canOpen);
+      open.setAttribute('aria-disabled',canOpen?'false':'true');
+      if(canOpen) open.href=detailUrl||('/ai/training-draft/'+g.id);
+      else open.removeAttribute('href');
+    }
+
+    if(meta){
+      meta.replaceChildren();
+      if(g.status==='pending'){
+        const live=document.createElement('span');
+        live.className='ai-live-indicator';
+        live.innerHTML='<i></i><span></span>';
+        live.querySelector('span').textContent='AI работает в фоне — можно продолжать работу в BarOS';
+        meta.appendChild(live);
+      }else if(g.status==='complete' || g.status==='imported'){
+        [
+          [g.courses,'курсов'],
+          [g.lessons,'уроков'],
+          [g.questions,'вопросов'],
+          [g.glossary,'терминов']
+        ].forEach(([value,label])=>{
+          const span=document.createElement('span');
+          const strong=document.createElement('strong');
+          strong.textContent=String(value||0);
+          span.append(strong,document.createTextNode(' '+label));
+          meta.appendChild(span);
+        });
+      }else if(g.status==='error'){
+        const span=document.createElement('span');
+        span.className='danger';
+        span.textContent='Генерация не завершилась. Откройте карточку, чтобы увидеть результат и повторить.';
+        meta.appendChild(span);
+      }else{
+        const span=document.createElement('span');
+        span.className='muted';
+        span.textContent=g.summary||'Генерация завершена.';
+        meta.appendChild(span);
+      }
+    }
+  }
+
+  function schedulePoll(card,delay=1800){
+    const id=card.dataset.generationId;
+    if(!id || polling.has(id) || card.dataset.status!=='pending') return;
+    const run=async()=>{
+      polling.delete(id);
+      if(card.dataset.status!=='pending') return;
+      try{
+        const response=await fetch(card.dataset.statusUrl,{
+          headers:{'Accept':'application/json'},
+          credentials:'same-origin',
+          cache:'no-store'
+        });
+        if(!response.ok) throw new Error('HTTP '+response.status);
+        const payload=await response.json();
+        if(payload.ok && payload.generation){
+          updateCard(card,payload.generation,payload.detail_url);
+        }
+      }catch(_){
+        const phase=card.querySelector('.ai-phase-message');
+        if(phase) phase.textContent='Связь с сервером временно потеряна. Повторяем проверку…';
+      }
+      if(card.dataset.status==='pending'){
+        const next=document.hidden?5000:1800;
+        const timer=setTimeout(run,next);
+        polling.set(id,timer);
+      }
+    };
+    const timer=setTimeout(run,delay);
+    polling.set(id,timer);
+  }
+
+  list.querySelectorAll('.ai-generation-card[data-status="pending"]').forEach(card=>schedulePoll(card,400));
+
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();
     if(form.classList.contains('is-loading')) return;
-    form.classList.add('is-loading');
+
     const button=form.querySelector('button[type="submit"]');
-    if(button){
-      button.disabled=true;
-      button.dataset.originalText=button.textContent;
-      button.textContent='AI-методист работает…';
+    const label=button?.querySelector('.button-label');
+    const original=label?.textContent||'Создать AI-черновик';
+    form.classList.add('is-loading');
+    if(button) button.disabled=true;
+    if(label) label.textContent='Запускаю задачу…';
+
+    try{
+      const response=await fetch(form.action,{
+        method:'POST',
+        body:new FormData(form),
+        headers:{'X-BarOS-Ajax':'1','Accept':'application/json'},
+        credentials:'same-origin'
+      });
+      if(!response.ok) throw new Error('HTTP '+response.status);
+      const payload=await response.json();
+      if(!payload.ok || !payload.generation) throw new Error('Invalid response');
+
+      const card=createCard(payload.generation,payload.status_url,payload.detail_url);
+      card.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});
+      schedulePoll(card,500);
+    }catch(_){
+      const notice=document.createElement('div');
+      notice.className='notice attention ai-start-error';
+      notice.textContent='Не удалось запустить AI-задачу. Обновите страницу и попробуйте ещё раз.';
+      form.appendChild(notice);
+      setTimeout(()=>notice.remove(),4500);
+    }finally{
+      form.classList.remove('is-loading');
+      if(button) button.disabled=false;
+      if(label) label.textContent=original;
     }
   });
 })();
