@@ -15,7 +15,7 @@ from .security import hash_password, verify_password, make_session, read_session
 from .storage import storage
 from .extractors import extract_text
 from .ai_service import generate_training_draft
-from .config import MAX_UPLOAD_MB, FIRST_RUN_TOKEN, COOKIE_SECURE
+from .config import AI_GATEWAY_API_KEY, AI_MODEL, MAX_UPLOAD_MB, FIRST_RUN_TOKEN, COOKIE_SECURE
 
 BASE = Path(__file__).resolve().parent
 app = FastAPI(title="BarOS", version="0.5")
@@ -329,7 +329,8 @@ def dashboard(request: Request, db: Session=Depends(get_db)):
     }
     return render(request,"dashboard.html",{
         "user":u,"org":org,"employees":rows,"courses":courses,"uploads":uploads,"glossary":glossary,
-        "positions":POSITIONS,"stats":stats,"question_bank_target":QUESTION_BANK_TARGET,"quiz_size":QUIZ_SIZE
+        "positions":POSITIONS,"stats":stats,"question_bank_target":QUESTION_BANK_TARGET,"quiz_size":QUIZ_SIZE,
+        "ai_configured":bool(AI_GATEWAY_API_KEY),"ai_model":AI_MODEL
     })
 
 @app.post("/employees")
