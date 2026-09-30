@@ -27,7 +27,8 @@ from .access import (
     venue_control,
     venue_permissions,
 )
-from .config import AI_GATEWAY_API_KEY, AI_MODEL, COOKIE_SECURE, PUBLIC_BASE_URL
+from .config import COOKIE_SECURE, PUBLIC_BASE_URL
+from .ai_service import get_ai_status
 from .core import app, current_user, get_db, render
 from .db import SessionLocal
 from .models import (
@@ -269,7 +270,8 @@ def _shadow_user(db: Session, org: Organization) -> User:
 
 @app.on_event("startup")
 def platform_startup():
-    log.warning("AI methodologist configured=%s model=%s", bool(AI_GATEWAY_API_KEY), AI_MODEL)
+    ai_status = get_ai_status()
+    log.warning("AI methodologist configured=%s provider=%s model=%s mode=%s", ai_status["configured"], ai_status["provider"], ai_status["model"], ai_status["mode"])
     with SessionLocal() as db:
         _ensure_platform_state(db)
 
@@ -364,11 +366,10 @@ def platform_health():
 
 @app.get("/health/ai")
 def ai_health():
+    status = get_ai_status()
     return {
-        "status": "configured" if bool(AI_GATEWAY_API_KEY) else "not_configured",
-        "configured": bool(AI_GATEWAY_API_KEY),
-        "model": AI_MODEL,
-        "provider": "vercel-ai-gateway",
+        "status": "configured" if status["configured"] else "not_configured",
+        **status,
     }
 
 
