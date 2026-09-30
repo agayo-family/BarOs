@@ -429,7 +429,7 @@ async def import_ai_training_draft(generation_id:str,request:Request,db:Session=
     u=current_user(request,db)
     if not u: raise HTTPException(401)
     rec=db.get(AIGeneration,generation_id)
-    if not rec or rec.organization_id!=u.organization_id or rec.status not in {"complete","imported"}:
+    if not rec or rec.organization_id!=u.organization_id or rec.status!="complete":
         raise HTTPException(404)
     try:
         result=json.loads(rec.result or "{}")
