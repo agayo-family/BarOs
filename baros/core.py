@@ -424,6 +424,24 @@ async def ai_training_draft(request: Request, upload_ids: list[int]=Form(default
     generation=db.get(AIGeneration,gid)
     return render(request,"ai_draft.html",{"user":u,"generation_id":gid,"generation":generation,"result":result,"ai_status":get_ai_status()})
 
+@app.post("/ai/training-draft/{generation_id}/retry")
+async def retry_ai_training_draft(generation_id:str,request:Request,db:Session=Depends(get_db)):
+    u=current_user(request,db)
+    if not u: raise HTTPException(401)
+    rec=db.get(AIGeneration,generation_id)
+    if not rec or rec.organization_id!=u.organization_id or rec.status!="error":
+        raise HTTPException(404)
+    gid,result=await generate_training_draft(db,u.organization_id,u.id,rec.prompt or "")
+    generation=db.get(AIGeneration,gid)
+    return render(request,"ai_draft.html",{
+        "user":u,
+        "generation_id":gid,
+        "generation":generation,
+        "result":result,
+        "ai_status":get_ai_status()
+    })
+
+
 @app.post("/ai/training-draft/{generation_id}/import")
 async def import_ai_training_draft(generation_id:str,request:Request,db:Session=Depends(get_db)):
     u=current_user(request,db)
