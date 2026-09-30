@@ -81,6 +81,13 @@ async def baros_security_and_platform_middleware(request: Request, call_next):
     method = request.method.upper()
     ip = _client_ip(request)
 
+    if method in {"POST", "PUT", "PATCH", "DELETE"}:
+        origin = request.headers.get("origin")
+        if origin:
+            expected = f"{request.url.scheme}://{request.headers.get('host', '')}"
+            if origin.rstrip("/") != expected.rstrip("/"):
+                return _secure_response(HTMLResponse("Запрос отклонён защитой BarOS.", status_code=403))
+
     if method == "POST" and path == "/login" and _is_rate_limited(f"login:{ip}", 20, 15 * 60):
         return _secure_response(HTMLResponse("Слишком много попыток входа. Попробуйте позже.", status_code=429))
 
