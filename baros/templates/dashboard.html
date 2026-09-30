@@ -44,9 +44,10 @@
           <span class="status-chip status-readonly">AI NOT CONNECTED</span>
         {% endif %}
       </div>
-      <div class="muted">Берёт интервью + выбранные материалы, делает проверяемый черновик курсов, уроков, вопросов и словаря. Ничего не публикуется автоматически.</div>
+      <div class="muted">Запускает генерацию в фоне: можно продолжать работать в BarOS, пока AI изучает материалы. Готовый черновик появится ниже.</div>
     </div>
   </div>
+
   <div class="card premium-card">
     <div class="ai-status-grid">
       <div><span class="small muted">Провайдер</span><strong>{{ ai_status.provider }}</strong></div>
@@ -57,9 +58,10 @@
     {% if ai_configured %}
       <div class="notice success-notice" style="margin:14px 0">AI готов. Осталось {{ ai_usage.effective_remaining }} доступных генераций сейчас. Лимит заведения: {{ ai_usage.used }}/{{ ai_usage.limit }}, общий staging: {{ ai_usage.global_used }}/{{ ai_usage.global_limit }}.</div>
     {% else %}
-      <div class="notice attention" style="margin:14px 0">Подключите бесплатный <code>OPENROUTER_API_KEY</code>. BarOS автоматически выберет <code>openrouter/free</code>. Платный Vercel fallback по умолчанию выключен.</div>
+      <div class="notice attention" style="margin:14px 0">Подключите бесплатный <code>OPENROUTER_API_KEY</code>. BarOS автоматически выберет <code>openrouter/free</code>. Платный fallback выключен.</div>
     {% endif %}
-    <form action="/ai/training-draft" method="post" class="ai-generation-form">
+
+    <form action="/ai/training-draft" method="post" class="ai-generation-form" id="ai-generation-form">
       <div class="field"><label>Для какой роли сделать черновик?</label><select name="target_role">{% for key,label in positions %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
       {% if uploads %}
         <label>Какие материалы использовать?</label>
@@ -67,8 +69,65 @@
       {% else %}
         <div class="notice" style="margin-bottom:14px">Сначала загрузите меню, раскладки или стандарты.</div>
       {% endif %}
-      <button class="btn" {% if not uploads or not ai_configured or ai_usage.effective_remaining <= 0 %}disabled{% endif %}>Сгенерировать AI-черновик</button>
+      <div class="row wrap">
+        <button class="btn" type="submit" {% if not uploads or not ai_configured or ai_usage.effective_remaining <= 0 %}disabled{% endif %}><span class="button-label">Создать AI-черновик</span></button>
+        <span class="small muted">После запуска перехода на другую страницу не будет.</span>
+      </div>
     </form>
+  </div>
+
+  <div class="ai-generation-head">
+    <div>
+      <h3>Черновики</h3>
+      <div class="muted small">Текущие задачи и последние результаты. Карточки обновляются автоматически.</div>
+    </div>
+    <span class="pill" id="ai-generation-count">{{ ai_generations|length }}</span>
+  </div>
+
+  <div class="ai-generation-list" id="ai-generation-list" aria-live="polite">
+    {% for g in ai_generations %}
+    <article class="card premium-card ai-generation-card" data-generation-id="{{ g.id }}" data-status="{{ g.status }}" data-status-url="/ai/training-draft/{{ g.id }}/status">
+      <div class="row space mobile-stack">
+        <div class="ai-generation-main">
+          <div class="row wrap">
+            <strong>Черновик {{ g.short_id }}</strong>
+            {% if g.status == 'pending' %}<span class="status-chip status-readonly ai-gen-status">В ПРОЦЕССЕ</span>
+            {% elif g.status == 'complete' %}<span class="status-chip status-active ai-gen-status">ГОТОВ</span>
+            {% elif g.status == 'imported' %}<span class="status-chip status-active ai-gen-status">ИМПОРТИРОВАН</span>
+            {% elif g.status == 'error' %}<span class="status-chip status-suspended ai-gen-status">ОШИБКА</span>
+            {% else %}<span class="status-chip status-archived ai-gen-status">{{ g.status|upper }}</span>{% endif %}
+          </div>
+          <div class="small muted">{{ g.role_label }} · {{ g.created_at.strftime('%d.%m %H:%M') }}{% if g.progress.upload_names %} · {{ g.progress.upload_names|length }} файл(а){% endif %}</div>
+        </div>
+        <div class="ai-generation-actions">
+          {% if g.openable %}<a class="btn secondary small-btn ai-open-draft" href="/ai/training-draft/{{ g.id }}">Открыть</a>{% else %}<button class="btn secondary small-btn ai-open-draft" disabled>Готовится…</button>{% endif %}
+        </div>
+      </div>
+
+      <div class="ai-progress-wrap">
+        <div class="row space">
+          <span class="small ai-phase-message">{{ g.progress.message }}</span>
+          <span class="small muted ai-progress-label">{{ g.progress.progress }}%</span>
+        </div>
+        <div class="ai-progress"><span style="width:{{ g.progress.progress }}%"></span></div>
+      </div>
+
+      <div class="ai-generation-meta">
+        {% if g.status in ['complete','imported'] %}
+          <span><strong class="ai-count-courses">{{ g.courses }}</strong> курсов</span>
+          <span><strong class="ai-count-lessons">{{ g.lessons }}</strong> уроков</span>
+          <span><strong class="ai-count-questions">{{ g.questions }}</strong> вопросов</span>
+          <span><strong class="ai-count-glossary">{{ g.glossary }}</strong> терминов</span>
+        {% elif g.status == 'pending' %}
+          <span class="ai-live-indicator"><i></i> AI работает в фоне — страницу можно не держать открытой</span>
+        {% elif g.status == 'error' %}
+          <span class="danger">Генерация не завершилась. Откройте карточку для повтора.</span>
+        {% endif %}
+      </div>
+    </article>
+    {% else %}
+    <div class="card premium-card ai-empty-history" id="ai-empty-history"><p class="muted">Черновиков пока нет. Первая генерация появится здесь сразу после запуска.</p></div>
+    {% endfor %}
   </div>
 </section>
 {% endblock %}
