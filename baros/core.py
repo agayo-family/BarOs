@@ -112,7 +112,9 @@ def first_run_post(name: str=Form(...), email: str=Form(...), password: str=Form
     if db.scalar(select(func.count(User.id))) > 0: return RedirectResponse("/",302)
     if FIRST_RUN_TOKEN and setup_token != FIRST_RUN_TOKEN:
         raise HTTPException(403, "Неверный токен первоначальной настройки")
-    if len(password) < 10 or not re.search(r"[A-Za-zА-Яа-яЁё]", password) or not re.search(r"\\d", password):\n        raise HTTPException(400, "Пароль должен быть не короче 10 символов и содержать букву и цифру")\n    org=Organization(name=venue); db.add(org); db.flush()
+    if len(password) < 10 or not re.search(r"[A-Za-zА-Яа-яЁё]", password) or not re.search(r"\d", password):
+        raise HTTPException(400, "Пароль должен быть не короче 10 символов и содержать букву и цифру")
+    org=Organization(name=venue); db.add(org); db.flush()
     u=User(organization_id=org.id,email=email.lower().strip(),name=name,password_hash=hash_password(password),role="platform_owner")
     db.add(u); db.commit()
     r=RedirectResponse("/onboarding",303); r.set_cookie("baros_session",make_session(u.id),httponly=True,samesite="lax",secure=COOKIE_SECURE,max_age=60*60*24*14)
