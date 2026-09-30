@@ -269,6 +269,7 @@ def _shadow_user(db: Session, org: Organization) -> User:
 
 @app.on_event("startup")
 def platform_startup():
+    log.warning("AI methodologist configured=%s model=%s", bool(AI_GATEWAY_API_KEY), AI_MODEL)
     with SessionLocal() as db:
         _ensure_platform_state(db)
 
