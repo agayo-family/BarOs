@@ -59,3 +59,26 @@
     window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
   }
 })();
+
+
+(function(){
+  const tabs=[...document.querySelectorAll('[data-platform-tab]')];
+  const panels=[...document.querySelectorAll('[data-platform-panel]')];
+  if(!tabs.length || !panels.length) return;
+
+  function activate(name, updateHash=true){
+    tabs.forEach(t=>t.classList.toggle('is-active',t.dataset.platformTab===name));
+    panels.forEach(p=>{
+      const active=p.dataset.platformPanel===name;
+      p.classList.toggle('is-active',active);
+      p.hidden=!active;
+    });
+    if(updateHash && history.replaceState) history.replaceState(null,'','#'+name);
+  }
+
+  tabs.forEach(tab=>tab.addEventListener('click',()=>activate(tab.dataset.platformTab)));
+  const initial=(location.hash||'').replace('#','');
+  if(['venues','create','audit'].includes(initial)) activate(initial,false);
+  else if(new URLSearchParams(location.search).get('error')) activate('create',false);
+  else activate('venues',false);
+})();
