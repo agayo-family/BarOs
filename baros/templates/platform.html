@@ -103,6 +103,9 @@
                 <div class="field"><label>Комментарий</label><input name="note" value="{{ m.control.note }}"></div>
                 <button class="btn secondary small-btn">Сохранить права</button>
               </form>
+              <form action="/platform/managers/{{ m.user.id }}/delete" method="post" class="confirm-form" data-confirm-text="Удалить управляющего {{ m.user.name }}? Заведение и его данные останутся.">
+                <button class="btn danger small-btn" type="submit">Удалить управляющего</button>
+              </form>
             </details>
           </div>
           {% else %}<p class="muted">Управляющих пока нет.</p>{% endfor %}

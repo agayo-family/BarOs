@@ -176,9 +176,9 @@ def _management_capability(method: str, path: str) -> str | None:
         return None
     if path == "/onboarding":
         return "onboarding_edit"
-    if path == "/uploads":
+    if path == "/uploads" or re.fullmatch(r"/uploads/\d+/delete", path):
         return "uploads_manage"
-    if path == "/glossary":
+    if path == "/glossary" or re.fullmatch(r"/glossary/\d+/delete", path):
         return "glossary_manage"
     if path.startswith("/ai/"):
         return "ai_use"
@@ -334,6 +334,24 @@ async def baros_security_and_platform_middleware(request: Request, call_next):
                         return _secure_response(RedirectResponse(f"/restricted?cap={capability}", 303))
 
     response = await call_next(request)
+
+    if method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400 and _is_management_path(path) and not path.startswith("/platform/"):
+        try:
+            with SessionLocal() as db:
+                actor = _audit_actor(request, db)
+                if actor:
+                    audit(
+                        db,
+                        "manager_write",
+                        actor_user_id=actor.id,
+                        organization_id=actor.organization_id,
+                        details={"method": method, "path": path, "status": response.status_code},
+                        ip=ip,
+                    )
+                    db.commit()
+        except Exception:
+            log.exception("Failed to write generic management audit event")
+
     if method == "POST" and path == "/logout":
         response.delete_cookie("baros_platform_session")
     return _secure_response(response)
@@ -826,3 +844,72 @@ def delete_course(course_id: int, request: Request, db: Session = Depends(get_db
     )
     db.commit()
     return RedirectResponse("/app#courses", 303)
+
+
+@app.post("/platform/managers/{user_id}/delete")
+def platform_delete_manager(user_id: int, request: Request, db: Session = Depends(get_db)):
+    owner = _platform_owner(request, db)
+    manager = db.get(User, user_id)
+    if not manager or manager.role not in {"manager", "manager_pending"}:
+        raise HTTPException(404)
+    org_id = manager.organization_id
+    email = manager.email
+    db.execute(delete(ManagerInvite).where(ManagerInvite.user_id == manager.id))
+    db.execute(delete(ManagerControl).where(ManagerControl.user_id == manager.id))
+    db.delete(manager)
+    audit(
+        db,
+        "manager_deleted",
+        actor_user_id=owner.id,
+        organization_id=org_id,
+        details={"manager_user_id": user_id, "email": email},
+        ip=_client_ip(request),
+    )
+    db.commit()
+    return RedirectResponse("/platform", 303)
+
+
+@app.post("/uploads/{upload_id}/delete")
+def delete_upload(upload_id: int, request: Request, db: Session = Depends(get_db)):
+    user = current_user(request, db)
+    if not user:
+        raise HTTPException(401)
+    rec = db.get(Upload, upload_id)
+    if not rec or rec.organization_id != user.organization_id:
+        raise HTTPException(404)
+    actor = _audit_actor(request, db)
+    filename = rec.filename
+    db.delete(rec)
+    audit(
+        db,
+        "upload_deleted",
+        actor_user_id=actor.id if actor else None,
+        organization_id=user.organization_id,
+        details={"upload_id": upload_id, "filename": filename},
+        ip=_client_ip(request),
+    )
+    db.commit()
+    return RedirectResponse("/app#files", 303)
+
+
+@app.post("/glossary/{term_id}/delete")
+def delete_glossary_term(term_id: int, request: Request, db: Session = Depends(get_db)):
+    user = current_user(request, db)
+    if not user:
+        raise HTTPException(401)
+    term = db.get(GlossaryTerm, term_id)
+    if not term or term.organization_id != user.organization_id:
+        raise HTTPException(404)
+    actor = _audit_actor(request, db)
+    term_text = term.term
+    db.delete(term)
+    audit(
+        db,
+        "glossary_term_deleted",
+        actor_user_id=actor.id if actor else None,
+        organization_id=user.organization_id,
+        details={"term_id": term_id, "term": term_text},
+        ip=_client_ip(request),
+    )
+    db.commit()
+    return RedirectResponse("/app#glossary", 303)
