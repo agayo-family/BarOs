@@ -160,7 +160,7 @@
   <div class="section-title"><div><h2>Новое заведение</h2><div class="muted">Создание вынесено отдельно, чтобы Control Center не превращался в бесконечную страницу.</div></div></div>
   <div class="card premium-card compact-create-card">
     <form action="/platform/venues" method="post">
-      <div class="grid grid-3">
+      <div class="grid grid-3 ai-owner-summary">
         <div class="field"><label>Название заведения</label><input name="venue" required></div>
         <div class="field"><label>Имя управляющего</label><input name="manager_name" required></div>
         <div class="field"><label>Email управляющего</label><input name="manager_email" type="email" required></div>
@@ -179,6 +179,7 @@
     <div class="card premium-card"><div class="muted small">Провайдер</div><div class="kpi compact-kpi">{{ ai_status.provider }}</div><div class="small muted">{{ ai_status.mode }} mode</div></div>
     <div class="card premium-card"><div class="muted small">Модель</div><div class="kpi compact-kpi ai-owner-model">{{ ai_status.model }}</div><div class="small muted">текущая конфигурация</div></div>
     <div class="card premium-card"><div class="muted small">Платный fallback</div><div class="kpi compact-kpi">{{ 'ON' if ai_status.paid_fallback_enabled else 'OFF' }}</div><div class="small muted">по умолчанию выключен</div></div>
+    <div class="card premium-card"><div class="muted small">Глобальный лимит</div><div class="kpi compact-kpi">{{ ai_status.global_daily_limit }}</div><div class="small muted">генераций / 24 часа на staging</div></div>
   </div>
 
   {% if not ai_status.configured %}
