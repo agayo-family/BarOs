@@ -1,0 +1,29 @@
+name: Live BarOS probe
+
+on:
+  push:
+    branches: [baros-live-probe]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: AI health
+        run: |
+          echo "AI_HEALTH_BEGIN"
+          curl --fail --silent --show-error https://baros-staging.onrender.com/health/ai
+          echo
+          echo "AI_HEALTH_END"
+      - name: Manifest
+        run: |
+          echo "MANIFEST_BEGIN"
+          curl --fail --silent --show-error https://baros-staging.onrender.com/manifest.webmanifest
+          echo
+          echo "MANIFEST_END"
+      - name: Icons
+        run: |
+          curl --fail --silent --show-error -o /tmp/favicon.png https://baros-staging.onrender.com/static/baros-icon-32.png?v=2
+          curl --fail --silent --show-error -o /tmp/apple.png https://baros-staging.onrender.com/static/baros-icon-180.png?v=2
+          file /tmp/favicon.png /tmp/apple.png
+          test "$(stat -c%s /tmp/favicon.png)" -gt 500
+          test "$(stat -c%s /tmp/apple.png)" -gt 500
