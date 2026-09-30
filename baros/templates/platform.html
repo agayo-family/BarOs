@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Владелец BarOS{% endblock %}
+{% block content %}
+<div class="hero">
+  <span class="badge">PLATFORM OWNER</span>
+  <h1>Системная панель BarOS</h1>
+  <p>Все заведения, управляющие и ключевые показатели в одном месте. Управляющие видят только своё заведение.</p>
+</div>
+
+{% if created %}<div class="notice">Заведение и управляющий созданы.</div>{% endif %}
+{% if error == 'password' %}<div class="notice attention">Пароль управляющего: минимум 10 символов, хотя бы одна буква и одна цифра.</div>{% endif %}
+{% if error == 'email' %}<div class="notice attention">Пользователь с таким email уже существует.</div>{% endif %}
+{% if error == 'no_manager' %}<div class="notice attention">У заведения пока нет управляющего. Добавьте его перед входом.</div>{% endif %}
+
+<div class="grid grid-3">
+  <div class="card"><div class="muted">Заведений</div><div class="kpi">{{ venues|length }}</div></div>
+  <div class="card"><div class="muted">Защитный лимит</div><div class="kpi">{{ org_limit }}</div><div class="small muted">создать заведение может только владелец платформы</div></div>
+  <div class="card"><div class="muted">Режим регистрации</div><div class="kpi" style="font-size:26px">Закрытый</div><div class="small muted">публичного self-service создания заведений нет</div></div>
+</div>
+
+<section class="section">
+  <div class="section-title"><div><h2>Заведения</h2><div class="muted">Войти можно для диагностики, правок курсов, сотрудников, файлов и обучения.</div></div></div>
+  <div class="grid grid-2">
+    {% for r in venues %}
+    <div class="card">
+      <div class="row space mobile-stack">
+        <div>
+          <h3 style="margin-bottom:4px">{{ r.org.name }}</h3>
+          <div class="muted small">ID {{ r.org.id }} · создано {{ r.org.created_at.strftime('%d.%m.%Y') }}</div>
+        </div>
+        <form action="/platform/venues/{{ r.org.id }}/enter" method="post"><button class="btn">Войти в заведение</button></form>
+      </div>
+      <div class="grid grid-3" style="margin-top:14px">
+        <div><strong>{{ r.employees }}</strong><div class="small muted">сотрудников</div></div>
+        <div><strong>{{ r.courses }}</strong><div class="small muted">курсов</div></div>
+        <div><strong>{{ r.uploads }}</strong><div class="small muted">файлов</div></div>
+      </div>
+      <div style="margin-top:14px">
+        <div class="small muted">Управляющие</div>
+        {% for m in r.managers %}<div class="file"><strong>{{ m.name }}</strong><div class="small muted">{{ m.email }}</div></div>{% else %}<div class="muted small">Пока нет управляющего</div>{% endfor %}
+      </div>
+      <details style="margin-top:12px">
+        <summary>Добавить управляющего</summary>
+        <form action="/platform/venues/{{ r.org.id }}/managers" method="post" style="margin-top:12px">
+          <div class="field"><label>Имя</label><input name="manager_name" required></div>
+          <div class="field"><label>Email</label><input name="manager_email" type="email" required></div>
+          <div class="field"><label>Временный пароль</label><input name="manager_password" type="password" minlength="10" required></div>
+          <button class="btn secondary">Создать управляющего</button>
+        </form>
+      </details>
+    </div>
+    {% else %}
+    <div class="card"><p class="muted">Заведений пока нет.</p></div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-title"><div><h2>Добавить заведение</h2><div class="muted">Создание доступно только владельцу BarOS. Одновременно создаётся первый управляющий.</div></div></div>
+  <div class="card">
+    <form action="/platform/venues" method="post">
+      <div class="grid grid-2">
+        <div class="field"><label>Название заведения</label><input name="venue" required></div>
+        <div class="field"><label>Имя управляющего</label><input name="manager_name" required></div>
+        <div class="field"><label>Email управляющего</label><input name="manager_email" type="email" required></div>
+        <div class="field"><label>Временный пароль</label><input name="manager_password" type="password" minlength="10" required></div>
+      </div>
+      <p class="muted small">Пароль: минимум 10 символов, буква и цифра. Позже добавим приглашение по email и обязательную смену временного пароля.</p>
+      <button class="btn">Создать заведение</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
