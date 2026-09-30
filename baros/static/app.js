@@ -78,7 +78,7 @@
 
   tabs.forEach(tab=>tab.addEventListener('click',()=>activate(tab.dataset.platformTab)));
   const initial=(location.hash||'').replace('#','');
-  if(['venues','create','audit'].includes(initial)) activate(initial,false);
+  if(['venues','create','ai','audit'].includes(initial)) activate(initial,false);
   else if(new URLSearchParams(location.search).get('error')) activate('create',false);
   else activate('venues',false);
 })();
