@@ -5,6 +5,8 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.11"
       - key: COOKIE_SECURE
         value: "1"
       - key: UPLOAD_DIR
