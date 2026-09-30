@@ -1,8 +1,29 @@
-import json, re, uuid
+from __future__ import annotations
+
+import json
+import re
+import uuid
+from datetime import datetime, timedelta
+
 import httpx
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from .config import AI_GATEWAY_API_KEY, AI_GATEWAY_BASE_URL, AI_MODEL
+
+from .config import (
+    AI_ALLOW_PAID_FALLBACK,
+    AI_CONTEXT_LIMIT_CHARS,
+    AI_DAILY_LIMIT,
+    AI_GATEWAY_API_KEY,
+    AI_GATEWAY_BASE_URL,
+    AI_MODEL,
+    AI_PROVIDER,
+    OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_MODEL,
+    PUBLIC_BASE_URL,
+)
 from .models import AIGeneration
+
 
 SYSTEM = """Ты — методист корпоративного обучения HoReCa. Создавай только черновики, которые менеджер обязан проверить. Не выдумывай факты о меню, аллергенах, технологиях, составе или правилах: используй только входные материалы. Если данных недостаточно — укажи это в warnings и не заполняй пробел догадкой.
 
@@ -18,7 +39,8 @@ SYSTEM = """Ты — методист корпоративного обучен�
 9. correct_index может быть 0–3; не ставь правильный ответ всегда первым.
 10. explanation кратко объясняет, почему правильный вариант верен и чем близкие дистракторы хуже.
 
-Верни ТОЛЬКО валидный JSON без markdown. Структура: {"summary":"","courses":[{"title":"","target_role":"all|bartender|waiter|manager|host|cook|barista","description":"","lessons":[{"title":"","body":""}],"questions":[{"prompt":"","choices":["","","",""],"correct_index":0,"type":"knowledge|understanding|scenario|sales","explanation":""}]}],"glossary":[{"term":"","definition":"","target_role":"all"}],"warnings":[""]}."""
+Верни ТОЛЬКО валидный JSON без markdown. Структура: {"summary":"","courses":[{"title":"","target_role":"all|bartender|waiter|manager|host|cook|barista|administrator","description":"","lessons":[{"title":"","body":""}],"questions":[{"prompt":"","choices":["","","",""],"correct_index":0,"type":"knowledge|understanding|scenario|sales","explanation":""}]}],"glossary":[{"term":"","definition":"","target_role":"all"}],"warnings":[""]}."""
+
 
 def _clean_result(result):
     if not isinstance(result, dict):
@@ -37,7 +59,7 @@ def _clean_result(result):
         result["warnings"] = [str(result["warnings"])]
 
     valid_types = {"knowledge", "understanding", "scenario", "sales"}
-    valid_roles = {"all", "bartender", "waiter", "manager", "host", "cook", "barista"}
+    valid_roles = {"all", "bartender", "waiter", "manager", "host", "cook", "barista", "administrator"}
 
     cleaned_courses = []
     for course in result["courses"][:12]:
@@ -71,12 +93,16 @@ def _clean_result(result):
             qtype = q.get("type", "knowledge")
             if qtype not in valid_types:
                 qtype = "knowledge"
+            prompt = str(q.get("prompt", "")).strip()
+            cleaned_choices = [str(x).strip() for x in choices]
+            if not prompt or any(not x for x in cleaned_choices):
+                continue
             clean_questions.append({
-                "prompt": str(q.get("prompt", "")),
-                "choices": [str(x) for x in choices],
+                "prompt": prompt,
+                "choices": cleaned_choices,
                 "correct_index": idx,
                 "type": qtype,
-                "explanation": str(q.get("explanation", "")),
+                "explanation": str(q.get("explanation", "")).strip(),
             })
         course["questions"] = clean_questions
         cleaned_courses.append(course)
@@ -84,11 +110,12 @@ def _clean_result(result):
 
     result["glossary"] = [
         {
-            "term": str(x.get("term", "")),
-            "definition": str(x.get("definition", "")),
+            "term": str(x.get("term", "")).strip(),
+            "definition": str(x.get("definition", "")).strip(),
             "target_role": x.get("target_role", "all") if x.get("target_role", "all") in valid_roles else "all",
         }
-        for x in result["glossary"][:250] if isinstance(x, dict)
+        for x in result["glossary"][:250]
+        if isinstance(x, dict) and str(x.get("term", "")).strip() and str(x.get("definition", "")).strip()
     ]
     result["warnings"] = [str(x) for x in result["warnings"][:50]]
     return result
@@ -96,52 +123,203 @@ def _clean_result(result):
 
 def _decode_json(text: str):
     text = (text or "").strip()
-    if text.startswith(chr(96)):
-        text = re.sub(r"^...(?:json)?\\s*", "", text, flags=re.I)
-        text = re.sub(r"\\s*...$", "", text)
+    fence = chr(96) * 3
+    if text.startswith(fence):
+        text = re.sub(r"^" + re.escape(fence) + r"(?:json)?\s*", "", text, flags=re.I)
+        text = re.sub(r"\s*" + re.escape(fence) + r"$", "", text)
     return _clean_result(json.loads(text))
 
 
-async def generate_training_draft(db: Session, organization_id: int, user_id: int | None, context: str):
+def _provider_candidates():
+    openrouter = {
+        "provider": "openrouter",
+        "key": OPENROUTER_API_KEY,
+        "base_url": OPENROUTER_BASE_URL,
+        "model": OPENROUTER_MODEL,
+        "paid": False,
+    }
+    vercel = {
+        "provider": "vercel-ai-gateway",
+        "key": AI_GATEWAY_API_KEY,
+        "base_url": AI_GATEWAY_BASE_URL.rstrip("/"),
+        "model": AI_MODEL,
+        "paid": True,
+    }
+
+    provider = AI_PROVIDER
+    if provider == "openrouter":
+        return [openrouter] if openrouter["key"] else []
+    if provider in {"vercel", "vercel-ai-gateway"}:
+        return [vercel] if vercel["key"] else []
+
+    if openrouter["key"]:
+        result = [openrouter]
+        if AI_ALLOW_PAID_FALLBACK and vercel["key"]:
+            result.append(vercel)
+        return result
+    if vercel["key"]:
+        return [vercel]
+    return []
+
+
+def get_ai_status():
+    candidates = _provider_candidates()
+    active = candidates[0] if candidates else None
+    return {
+        "configured": bool(active),
+        "provider": active["provider"] if active else "not-configured",
+        "model": active["model"] if active else OPENROUTER_MODEL,
+        "mode": "free" if active and not active["paid"] else ("paid" if active else "offline"),
+        "daily_limit": AI_DAILY_LIMIT,
+        "paid_fallback_enabled": bool(AI_ALLOW_PAID_FALLBACK and AI_GATEWAY_API_KEY),
+        "openrouter_configured": bool(OPENROUTER_API_KEY),
+        "vercel_configured": bool(AI_GATEWAY_API_KEY),
+    }
+
+
+def get_ai_usage(db: Session, organization_id: int):
+    since = datetime.utcnow() - timedelta(hours=24)
+    used = db.scalar(
+        select(func.count(AIGeneration.id)).where(
+            AIGeneration.organization_id == organization_id,
+            AIGeneration.feature == "training_draft",
+            AIGeneration.created_at >= since,
+            AIGeneration.status.in_(["pending", "complete", "error"]),
+        )
+    ) or 0
+    return {
+        "used": int(used),
+        "limit": AI_DAILY_LIMIT,
+        "remaining": max(0, AI_DAILY_LIMIT - int(used)),
+        "window_hours": 24,
+    }
+
+
+async def _call_provider(provider: dict, context: str):
+    payload = {
+        "model": provider["model"],
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": context[:AI_CONTEXT_LIMIT_CHARS]},
+        ],
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+    }
+    headers = {
+        "Authorization": f"Bearer {provider['key']}",
+        "Content-Type": "application/json",
+    }
+    if provider["provider"] == "openrouter":
+        if PUBLIC_BASE_URL:
+            headers["HTTP-Referer"] = PUBLIC_BASE_URL
+        headers["X-Title"] = "BarOS"
+
+    async with httpx.AsyncClient(timeout=150) as client:
+        response = await client.post(
+            f"{provider['base_url'].rstrip('/')}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    result_text = data["choices"][0]["message"]["content"]
+    return _decode_json(result_text), data.get("usage", {})
+
+
+async def generate_training_draft(
+    db: Session,
+    organization_id: int,
+    user_id: int | None,
+    context: str,
+):
     gid = uuid.uuid4().hex
-    rec = AIGeneration(id=gid, organization_id=organization_id, user_id=user_id, feature="training_draft", model=AI_MODEL, prompt=context, status="pending")
-    db.add(rec); db.commit()
-    if not AI_GATEWAY_API_KEY:
-        rec.status = "disabled"
-        rec.result = json.dumps({"summary":"AI не подключён. Добавьте AI_GATEWAY_API_KEY — архитектура и сохранение генераций уже готовы.","courses":[],"glossary":[],"warnings":["Черновик не создан без AI-ключа."]}, ensure_ascii=False)
-        db.commit()
-        return gid, json.loads(rec.result)
-    try:
-        payload = {
-            "model": AI_MODEL,
-            "messages": [
-                {"role":"system","content":SYSTEM},
-                {"role":"user","content":context[:120000]},
-            ],
-            "temperature": 0.2,
-            "response_format": {"type": "json_object"},
-        }
-        headers = {"Authorization": f"Bearer {AI_GATEWAY_API_KEY}", "Content-Type":"application/json"}
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(f"{AI_GATEWAY_BASE_URL.rstrip('/')}/chat/completions", headers=headers, json=payload)
-            r.raise_for_status()
-            data = r.json()
-        text = data["choices"][0]["message"]["content"]
-        result = _decode_json(text)
-        rec.status = "complete"
-        rec.result = json.dumps(result, ensure_ascii=False)
-        rec.usage_json = json.dumps(data.get("usage", {}), ensure_ascii=False)
-        db.commit()
-        return gid, result
-    except Exception as e:
-        rec.status = "error"
-        rec.error = str(e)[:2000]
-        result = {
-            "summary": "AI-методист не смог завершить генерацию.",
+    candidates = _provider_candidates()
+    status = get_ai_status()
+
+    if not candidates:
+        rec = AIGeneration(
+            id=gid,
+            organization_id=organization_id,
+            user_id=user_id,
+            feature="training_draft",
+            model=status["model"],
+            prompt=context,
+            status="disabled",
+        )
+        rec.result = json.dumps({
+            "summary": "AI-методист ещё не подключён.",
             "courses": [],
             "glossary": [],
-            "warnings": ["Генерация не сохранена как учебный материал. Попробуйте ещё раз или проверьте подключение AI Gateway."],
-        }
-        rec.result = json.dumps(result, ensure_ascii=False)
+            "warnings": ["Добавьте OPENROUTER_API_KEY. Бесплатный OpenRouter будет использоваться первым."],
+        }, ensure_ascii=False)
+        db.add(rec)
         db.commit()
-        return gid, result
+        return gid, json.loads(rec.result)
+
+    usage = get_ai_usage(db, organization_id)
+    if usage["remaining"] <= 0:
+        rec = AIGeneration(
+            id=gid,
+            organization_id=organization_id,
+            user_id=user_id,
+            feature="training_draft",
+            model=f"{status['provider']}:{status['model']}",
+            prompt=context,
+            status="limited",
+        )
+        rec.result = json.dumps({
+            "summary": "Дневной лимит AI-методиста исчерпан.",
+            "courses": [],
+            "glossary": [],
+            "warnings": [f"Для staging установлено {AI_DAILY_LIMIT} генераций на заведение за 24 часа."],
+        }, ensure_ascii=False)
+        db.add(rec)
+        db.commit()
+        return gid, json.loads(rec.result)
+
+    first = candidates[0]
+    rec = AIGeneration(
+        id=gid,
+        organization_id=organization_id,
+        user_id=user_id,
+        feature="training_draft",
+        model=f"{first['provider']}:{first['model']}",
+        prompt=context,
+        status="pending",
+    )
+    db.add(rec)
+    db.commit()
+
+    errors = []
+    for index, provider in enumerate(candidates):
+        try:
+            result, provider_usage = await _call_provider(provider, context)
+            rec.model = f"{provider['provider']}:{provider['model']}"
+            rec.status = "complete"
+            rec.result = json.dumps(result, ensure_ascii=False)
+            rec.usage_json = json.dumps({
+                "provider": provider["provider"],
+                "model": provider["model"],
+                "usage": provider_usage,
+                "fallback_used": index > 0,
+            }, ensure_ascii=False)
+            rec.error = ""
+            db.commit()
+            return gid, result
+        except Exception as exc:
+            errors.append(f"{provider['provider']}: {type(exc).__name__}: {exc}")
+
+    rec.status = "error"
+    rec.error = "\n".join(errors)[:4000]
+    result = {
+        "summary": "AI-методист не смог завершить генерацию.",
+        "courses": [],
+        "glossary": [],
+        "warnings": [
+            "Черновик не был импортирован. Проверьте подключение AI-провайдера или попробуйте ещё раз позже."
+        ],
+    }
+    rec.result = json.dumps(result, ensure_ascii=False)
+    db.commit()
+    return gid, result
