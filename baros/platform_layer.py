@@ -28,7 +28,7 @@ from .access import (
     venue_permissions,
 )
 from .config import COOKIE_SECURE, PUBLIC_BASE_URL
-from .ai_service import get_ai_status, get_ai_usage
+from .ai_service import get_ai_status, get_ai_usage, mark_stale_ai_generations
 from .core import app, current_user, get_db, render
 from .db import SessionLocal
 from .models import (
@@ -274,6 +274,9 @@ def platform_startup():
     log.warning("AI methodologist configured=%s provider=%s model=%s mode=%s", ai_status["configured"], ai_status["provider"], ai_status["model"], ai_status["mode"])
     with SessionLocal() as db:
         _ensure_platform_state(db)
+        interrupted = mark_stale_ai_generations(db, minutes=0)
+        if interrupted:
+            log.warning("Marked %s orphaned AI background jobs as interrupted after restart", interrupted)
         latest_ai_error = db.scalar(
             select(AIGeneration)
             .where(AIGeneration.status == "error")
