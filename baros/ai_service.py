@@ -184,7 +184,7 @@ def get_ai_usage(db: Session, organization_id: int):
             AIGeneration.organization_id == organization_id,
             AIGeneration.feature == "training_draft",
             AIGeneration.created_at >= since,
-            AIGeneration.status.in_(["pending", "complete", "error"]),
+            AIGeneration.status.in_(["pending", "complete", "imported", "error"]),
         )
     ) or 0
     return {
