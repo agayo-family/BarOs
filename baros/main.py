@@ -18,7 +18,7 @@ from .ai_service import generate_training_draft
 from .config import MAX_UPLOAD_MB, FIRST_RUN_TOKEN, COOKIE_SECURE
 
 BASE = Path(__file__).resolve().parent
-app = FastAPI(title="BarOS", version="0.3")
+app = FastAPI(title="BarOS", version="0.4")
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
@@ -26,6 +26,50 @@ POSITIONS = [
     ("bartender","Бармен"),("waiter","Официант"),("manager","Менеджер"),("host","Хостес"),
     ("cook","Кухня"),("barista","Бариста"),("administrator","Администратор"),("all","Все роли")
 ]
+POSITION_LABELS = dict(POSITIONS)
+QUESTION_TYPE_LABELS = {
+    "knowledge":"Знание",
+    "understanding":"Понимание",
+    "sales":"Продажа",
+    "scenario":"Ситуация",
+}
+QUIZ_SIZE = 30
+QUESTION_BANK_TARGET = 100
+QUIZ_TYPE_TARGETS = {"knowledge":12,"understanding":8,"sales":6,"scenario":4}
+
+def _short(text: str, limit: int = 120) -> str:
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+def make_question(prompt: str, correct: str, distractors: list[str], qtype: str, explanation: str):
+    """Build a question and randomize option order so correct answers are not positionally predictable."""
+    options = [correct] + distractors[:3]
+    random.shuffle(options)
+    return prompt, options, options.index(correct), qtype, explanation
+
+def balanced_quiz_questions(questions, limit: int = QUIZ_SIZE):
+    """Sample a mixed exam. Prefer 12/8/6/4 for knowledge/understanding/sales/scenario, then fill gaps randomly."""
+    questions = list(questions)
+    if len(questions) <= limit:
+        random.shuffle(questions)
+        return questions
+    by_type = {}
+    for q in questions:
+        by_type.setdefault(q.question_type or "knowledge", []).append(q)
+    selected = []
+    used = set()
+    for qtype, wanted in QUIZ_TYPE_TARGETS.items():
+        pool = by_type.get(qtype, [])[:]
+        random.shuffle(pool)
+        take = pool[:wanted]
+        selected.extend(take)
+        used.update(q.id for q in take)
+    if len(selected) < limit:
+        leftovers = [q for q in questions if q.id not in used]
+        random.shuffle(leftovers)
+        selected.extend(leftovers[:limit-len(selected)])
+    random.shuffle(selected)
+    return selected[:limit]
 
 @app.on_event("startup")
 def startup():
@@ -47,7 +91,7 @@ def render(request, name, ctx=None, status=200):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "baros", "version": "0.3-staging"}
+    return {"status": "ok", "service": "baros", "version": "0.4-staging"}
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
@@ -108,14 +152,103 @@ def onboarding_post(request: Request, venue_type: str=Form(...), concept: str=Fo
     for q in list(intro.questions): db.delete(q)
     body=f"Концепция: {concept}\n\nНаш гость: {guest_profile}\n\nСтиль сервиса: {service_style}\n\nДо первой самостоятельной смены сотрудник обязан знать: {must_know}\n\nОсобые правила: {special_rules or 'не указаны'}"
     db.add(Lesson(course_id=intro.id,title="Как устроено наше заведение",body=body,sort_order=1))
+    concept_s = _short(concept)
+    guest_s = _short(guest_profile)
+    service_s = _short(service_style)
+    must_s = _short(must_know)
+    rules_s = _short(special_rules) if special_rules else "действовать по утверждённому стандарту и при сомнении уточнить у менеджера"
     qs=[
-        ("Как лучше всего описать концепцию нашего заведения?",[concept,"Только быстрый сервис","Только доставка","Концепция не определена"],0,"knowledge"),
-        ("Что сотрудник обязан знать до самостоятельной смены?",[must_know,"Только расписание","Только имена коллег","Ничего"],0,"knowledge"),
-        ("Какой стиль сервиса мы поддерживаем?",[service_style,"Случайный, без стандарта","Только самообслуживание","Неважно"],0,"knowledge"),
-        ("Кто наш основной гость?",[guest_profile,"Только сотрудники заведения","Любой человек без понимания аудитории","Только поставщики"],0,"knowledge"),
-        ("Что делать, если ситуация противоречит особым правилам заведения?",[special_rules or "Следовать утверждённым правилам и уточнить у менеджера","Импровизировать без согласования","Игнорировать правило","Спорить с гостем"],0,"scenario"),
+        make_question(
+            "Какое описание точнее всего передаёт концепцию заведения?",
+            concept_s,
+            [
+                f"{venue_type}: основной акцент на скорости обслуживания, даже если формат общения с гостем меняется от смены к смене",
+                f"Заведение для аудитории «{guest_s}», где концепция определяется главным образом ассортиментом, а не опытом гостя",
+                f"Формат с сервисом «{service_s}», но без отдельной концепции и единых принципов подачи",
+            ],
+            "understanding",
+            "Концепция берётся из стартового интервью заведения."
+        ),
+        make_question(
+            "Новый сотрудник почти закончил стажировку. Что должно быть выполнено до допуска к самостоятельной смене?",
+            must_s,
+            [
+                "Достаточно уверенно знать свой участок; остальные обязательные стандарты можно доучить в первых самостоятельных сменах",
+                "Достаточно пройти вводный инструктаж и знать, к кому обратиться; детальное знание материалов не является условием допуска",
+                "Можно выходить самостоятельно после одной смены с наставником, если серьёзных ошибок не было",
+            ],
+            "scenario",
+            "Критерий допуска задаётся самим заведением в интервью."
+        ),
+        make_question(
+            "Как сотруднику лучше выстраивать общение с гостем в этом заведении?",
+            service_s,
+            [
+                f"Придерживаться нейтрального универсального сервиса, а стиль «{service_s}» использовать только с постоянными гостями",
+                "Подстраивать стиль полностью под каждого гостя, даже если это расходится с принятыми стандартами заведения",
+                "Сосредоточиться на скорости и точности заказа; стиль общения вторичен и остаётся на усмотрение сотрудника",
+            ],
+            "understanding",
+            "Стиль сервиса указан управляющим в стартовом интервью."
+        ),
+        make_question(
+            "На какого гостя в первую очередь рассчитан сервис и коммуникация заведения?",
+            guest_s,
+            [
+                f"На максимально широкую аудиторию; профиль «{guest_s}» нужен только для маркетинга и не влияет на сервис",
+                "В первую очередь на постоянных гостей; новым гостям используется стандартный нейтральный сценарий",
+                "На того гостя, который делает более высокий чек; остальные особенности аудитории вторичны",
+            ],
+            "understanding",
+            "Профиль гостя влияет на язык, темп и сценарии сервиса."
+        ),
+        make_question(
+            "Гость просит сделать исключение, которое конфликтует с особым правилом заведения. Как действовать?",
+            rules_s,
+            [
+                "Если просьба выглядит разумной, сделать исключение, а менеджеру сообщить уже после обслуживания",
+                "Сначала попробовать найти компромисс самостоятельно; обращаться к менеджеру только если гость продолжает настаивать",
+                "Следовать общему стандарту сервиса, даже если локальное правило заведения говорит иначе",
+            ],
+            "scenario",
+            "Локальные правила заведения имеют приоритет; спорные исключения согласуются, а не придумываются сотрудником."
+        ),
+        make_question(
+            "Сотрудник не уверен, как применить стандарт в нестандартной ситуации. Какой алгоритм наиболее корректный?",
+            "Свериться с утверждённым правилом и, если трактовка остаётся неоднозначной, уточнить у менеджера до действия",
+            [
+                "Применить наиболее похожий стандарт самостоятельно и сообщить менеджеру после ситуации",
+                "Выбрать решение, которое быстрее всего закроет запрос гостя, если оно не выглядит рискованным",
+                "Попросить коллегу принять решение вместо себя, чтобы не задерживать гостя",
+            ],
+            "scenario",
+            "BarOS проверяет не угадывание очевидного ответа, а понимание приоритета стандарта и эскалации."
+        ),
+        make_question(
+            "Как использовать знание профиля гостя в работе?",
+            "Как ориентир для подачи, рекомендаций и коммуникации, не превращая его в жёсткий шаблон для каждого человека",
+            [
+                "Как обязательный сценарий: каждому гостю из целевой аудитории нужно предлагать одинаковые позиции и формулировки",
+                "Только для выбора тона приветствия; на рекомендации, продажи и работу с возражениями профиль гостя не влияет",
+                "В основном для оценки платёжеспособности гостя и определения глубины дополнительной продажи",
+            ],
+            "sales",
+            "Профиль аудитории помогает сделать сервис релевантнее, но не заменяет индивидуальную работу с гостем."
+        ),
+        make_question(
+            "Что важнее при конфликте между личным стилем сотрудника и утверждённым стилем сервиса?",
+            "Сохранить утверждённый стиль сервиса, адаптируя только подачу без изменения ключевых стандартов",
+            [
+                "Использовать личный стиль, если он помогает быстрее установить контакт с гостем",
+                "Смешивать личный и утверждённый стиль поровну, чтобы общение не выглядело заученным",
+                "Полностью копировать формулировки из стандарта слово в слово, независимо от контекста",
+            ],
+            "understanding",
+            "Стандарт задаёт рамки поведения, но не требует роботизированного общения."
+        ),
     ]
-    for p,c,i,qt in qs: db.add(Question(course_id=intro.id,prompt=p,choices_json=json.dumps(c,ensure_ascii=False),correct_index=i,question_type=qt,explanation="Ответ сформирован из интервью заведения."))
+    for p,c,i,qt,ex in qs:
+        db.add(Question(course_id=intro.id,prompt=p,choices_json=json.dumps(c,ensure_ascii=False),correct_index=i,question_type=qt,explanation=ex))
     db.commit(); return RedirectResponse("/app",303)
 
 @app.get("/app", response_class=HTMLResponse)
@@ -128,17 +261,74 @@ def dashboard(request: Request, db: Session=Depends(get_db)):
     uploads=db.scalars(select(Upload).where(Upload.organization_id==org.id).order_by(Upload.created_at.desc())).all()
     glossary=db.scalars(select(GlossaryTerm).where(GlossaryTerm.organization_id==org.id).order_by(GlossaryTerm.term)).all()
     rows=[]
+    latest_scores=[]
+    total_latest_passed=0
+    total_latest_attempts=0
+    ready_count=0
+    not_started_count=0
     for e in employees:
         relevant=[c for c in courses if c.published and c.required and c.target_role in ("all",e.position)]
-        passed=0; scores=[]
+        passed=0; scores=[]; attempts_total=0; last_activity=None; attention=[]; course_details=[]; weak_counter={}
+        employee_attempts=db.scalars(select(Attempt).where(Attempt.employee_id==e.id).order_by(Attempt.created_at.desc())).all()
+        attempts_total=len(employee_attempts)
+        if employee_attempts:
+            last_activity=employee_attempts[0].created_at
+            for a in employee_attempts:
+                try:
+                    for w in json.loads(a.weak_topics_json or "[]"):
+                        weak_counter[w]=weak_counter.get(w,0)+1
+                except Exception:
+                    pass
         for c in relevant:
-            a=db.scalar(select(Attempt).where(Attempt.employee_id==e.id,Attempt.course_id==c.id).order_by(Attempt.created_at.desc()))
-            if a:
-                scores.append(a.score)
-                if a.passed: passed+=1
+            course_attempts=[a for a in employee_attempts if a.course_id==c.id]
+            latest=course_attempts[0] if course_attempts else None
+            best=max((a.score for a in course_attempts),default=None)
+            if latest:
+                scores.append(latest.score); latest_scores.append(latest.score); total_latest_attempts+=1
+                if latest.passed:
+                    passed+=1; total_latest_passed+=1
+                else:
+                    attention.append(c.title)
+            else:
+                attention.append(c.title)
+            course_details.append({
+                "title":c.title,
+                "score":latest.score if latest else None,
+                "passed":latest.passed if latest else False,
+                "attempts":len(course_attempts),
+                "best":best,
+                "last":latest.created_at if latest else None,
+            })
         ready=bool(relevant) and passed==len(relevant)
-        rows.append({"employee":e,"ready":ready,"passed":passed,"total":len(relevant),"score":round(sum(scores)/len(scores),1) if scores else None})
-    return render(request,"dashboard.html",{"user":u,"org":org,"employees":rows,"courses":courses,"uploads":uploads,"glossary":glossary,"positions":POSITIONS})
+        if ready: ready_count+=1
+        if relevant and all(d["attempts"]==0 for d in course_details): not_started_count+=1
+        weak_sorted=sorted(weak_counter.items(),key=lambda kv:(-kv[1],kv[0]))
+        readiness=round(passed/max(1,len(relevant))*100) if relevant else 0
+        rows.append({
+            "employee":e,
+            "position_label":POSITION_LABELS.get(e.position,e.position),
+            "ready":ready,
+            "passed":passed,
+            "total":len(relevant),
+            "readiness":readiness,
+            "score":round(sum(scores)/len(scores),1) if scores else None,
+            "attempts":attempts_total,
+            "last_activity":last_activity,
+            "attention":attention[:3],
+            "weak":QUESTION_TYPE_LABELS.get(weak_sorted[0][0],weak_sorted[0][0]) if weak_sorted else None,
+            "course_details":course_details,
+        })
+    stats={
+        "ready":ready_count,
+        "in_progress":max(0,len(employees)-ready_count-not_started_count),
+        "not_started":not_started_count,
+        "avg_score":round(sum(latest_scores)/len(latest_scores),1) if latest_scores else None,
+        "latest_pass_rate":round(total_latest_passed/max(1,total_latest_attempts)*100,1) if total_latest_attempts else None,
+    }
+    return render(request,"dashboard.html",{
+        "user":u,"org":org,"employees":rows,"courses":courses,"uploads":uploads,"glossary":glossary,
+        "positions":POSITIONS,"stats":stats,"question_bank_target":QUESTION_BANK_TARGET,"quiz_size":QUIZ_SIZE
+    })
 
 @app.post("/employees")
 def add_employee(request: Request,name: str=Form(...),position: str=Form(...),db: Session=Depends(get_db)):
@@ -244,9 +434,22 @@ def employee_course(token:str,course_id:int,request:Request,db:Session=Depends(g
 def quiz(token:str,course_id:int,request:Request,db:Session=Depends(get_db)):
     e=db.scalar(select(Employee).where(Employee.invite_token==token,Employee.active==True)); c=db.get(Course,course_id)
     if not e or not c or c.organization_id!=e.organization_id: raise HTTPException(404)
-    qs=list(c.questions); random.shuffle(qs); qs=qs[:min(10,len(qs))]
-    payload=[{"id":q.id,"prompt":q.prompt,"choices":json.loads(q.choices_json),"type":q.question_type} for q in qs]
-    return render(request,"quiz.html",{"employee":e,"course":c,"questions":payload,"token":token})
+    qs=balanced_quiz_questions(c.questions, QUIZ_SIZE)
+    payload=[]
+    for q in qs:
+        raw=json.loads(q.choices_json)
+        shuffled=list(enumerate(raw)); random.shuffle(shuffled)
+        payload.append({
+            "id":q.id,
+            "prompt":q.prompt,
+            "choices":[{"value":idx,"text":text} for idx,text in shuffled],
+            "type":q.question_type,
+            "type_label":QUESTION_TYPE_LABELS.get(q.question_type,q.question_type),
+        })
+    return render(request,"quiz.html",{
+        "employee":e,"course":c,"questions":payload,"token":token,
+        "quiz_size":QUIZ_SIZE,"bank_size":len(c.questions),"bank_target":QUESTION_BANK_TARGET
+    })
 
 @app.post("/employee/{token}/course/{course_id}/quiz")
 async def quiz_submit(token:str,course_id:int,request:Request,db:Session=Depends(get_db)):
@@ -267,5 +470,3 @@ async def quiz_submit(token:str,course_id:int,request:Request,db:Session=Depends
     a=Attempt(employee_id=e.id,course_id=c.id,score=score,passed=passed,weak_topics_json=json.dumps(sorted(set(weak)),ensure_ascii=False),answers_json=json.dumps(answers,ensure_ascii=False)); db.add(a); db.commit()
     return render(request,"quiz_result.html",{"employee":e,"course":c,"attempt":a,"weak":sorted(set(weak)),"token":token})
 
-@app.get("/health")
-def health(): return {"ok":True,"version":"0.3"}

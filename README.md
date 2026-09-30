@@ -1,6 +1,15 @@
-# BarOS server v0.3
+# BarOS server v0.4
 
 Working multi-device pilot for restaurant/bar staff onboarding and certification.
+
+## v0.4
+- expanded manager dashboard: readiness, required-course progress, latest average, attempt count, last activity, weak areas and per-course detail
+- 100-question bank target and 30-question final assessment
+- balanced 30-question sampling: 12 knowledge / 8 understanding / 6 sales / 4 scenario where the bank allows it
+- answer choices are shuffled on every attempt
+- improved onboarding questions with plausible distractors
+- AI methodologist prompt requires realistic distractors and forbids obvious throwaway answers
+
 
 ## Run locally
 
