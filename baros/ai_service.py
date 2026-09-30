@@ -293,20 +293,21 @@ def get_ai_status():
 
 def get_ai_usage(db: Session, organization_id: int):
     since = datetime.utcnow() - timedelta(hours=24)
-    counted_statuses = ["pending", "complete", "imported", "error"]
+    venue_counted_statuses = ["pending", "complete", "imported"]
+    global_counted_statuses = ["pending", "complete", "imported", "error"]
     used = db.scalar(
         select(func.count(AIGeneration.id)).where(
             AIGeneration.organization_id == organization_id,
             AIGeneration.feature == "training_draft",
             AIGeneration.created_at >= since,
-            AIGeneration.status.in_(counted_statuses),
+            AIGeneration.status.in_(venue_counted_statuses),
         )
     ) or 0
     global_used = db.scalar(
         select(func.count(AIGeneration.id)).where(
             AIGeneration.feature == "training_draft",
             AIGeneration.created_at >= since,
-            AIGeneration.status.in_(counted_statuses),
+            AIGeneration.status.in_(global_counted_statuses),
         )
     ) or 0
     remaining = max(0, AI_DAILY_LIMIT - int(used))
