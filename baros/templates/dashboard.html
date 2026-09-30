@@ -97,7 +97,7 @@
             {% elif g.status == 'error' %}<span class="status-chip status-suspended ai-gen-status">ОШИБКА</span>
             {% else %}<span class="status-chip status-archived ai-gen-status">{{ g.status|upper }}</span>{% endif %}
           </div>
-          <div class="small muted">{{ g.role_label }} · {{ g.created_at.strftime('%d.%m %H:%M') }}{% if g.progress.upload_names %} · {{ g.progress.upload_names|length }} файл(а){% endif %}</div>
+          <div class="small muted">{{ g.role_label }} · {{ g.created_at_label }}{% if g.progress.upload_names %} · {{ g.progress.upload_names|length }} файл(а){% endif %}</div>
         </div>
         <div class="ai-generation-actions">
           {% if g.openable %}<a class="btn secondary small-btn ai-open-draft" href="/ai/training-draft/{{ g.id }}">Открыть</a>{% else %}<button class="btn secondary small-btn ai-open-draft" disabled>Готовится…</button>{% endif %}
