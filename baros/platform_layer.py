@@ -274,6 +274,14 @@ def platform_startup():
     log.warning("AI methodologist configured=%s provider=%s model=%s mode=%s", ai_status["configured"], ai_status["provider"], ai_status["model"], ai_status["mode"])
     with SessionLocal() as db:
         _ensure_platform_state(db)
+        latest_ai_error = db.scalar(
+            select(AIGeneration)
+            .where(AIGeneration.status == "error")
+            .order_by(AIGeneration.created_at.desc())
+        )
+        if latest_ai_error and latest_ai_error.error:
+            safe_error = latest_ai_error.error.replace("\n", " ")[:1800]
+            log.warning("Latest AI generation error id=%s model=%s error=%s", latest_ai_error.id, latest_ai_error.model, safe_error)
 
 
 @app.middleware("http")
