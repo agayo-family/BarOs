@@ -344,6 +344,16 @@ def platform_health():
     return {"status": "ok", "layer": "platform", "version": "major-platform-ux"}
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return RedirectResponse("/static/baros-icon-192.png", status_code=302)
+
+
+@app.get("/robots.txt")
+def robots():
+    return PlainTextResponse("User-agent: *\nDisallow: /\n", media_type="text/plain")
+
+
 @app.get("/manifest.webmanifest")
 def web_manifest():
     return JSONResponse({
