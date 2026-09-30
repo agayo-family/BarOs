@@ -174,3 +174,19 @@
     });
   });
 })();
+
+
+(function(){
+  const form=document.querySelector('.ai-generation-form');
+  if(!form) return;
+  form.addEventListener('submit',()=>{
+    if(form.classList.contains('is-loading')) return;
+    form.classList.add('is-loading');
+    const button=form.querySelector('button[type="submit"]');
+    if(button){
+      button.disabled=true;
+      button.dataset.originalText=button.textContent;
+      button.textContent='AI-методист работает…';
+    }
+  });
+})();
