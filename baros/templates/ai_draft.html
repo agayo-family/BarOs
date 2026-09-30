@@ -1,1 +1,99 @@
-{% extends "base.html" %}{% block title %}AI-черновик — BarOS{% endblock %}{% block content %}<div class="hero"><a class="muted" href="/app#ai">← Dashboard</a><span class="badge">generation {{ generation_id[:8] }}</span><h1>AI-черновик обучения</h1><p>Ничего отсюда не публикуется автоматически: управляющий обязан проверить факты и формулировки.</p></div><div class="card"><h2>{{ result.summary or 'Черновик' }}</h2>{% for w in result.warnings or [] %}<div class="notice" style="margin-bottom:8px">{{ w }}</div>{% endfor %}{% for c in result.courses or [] %}<div class="file"><strong>{{ c.title }}</strong><div class="muted small">{{ c.target_role }} · {{ c.description }}</div><div class="small">{{ c.lessons|length }} уроков · {{ c.questions|length }} вопросов</div></div>{% endfor %}<h3 style="margin-top:22px">Словарь</h3>{% for g in result.glossary or [] %}<div class="file"><button class="term" data-definition="{{ g.definition }}">{{ g.term }}</button></div>{% else %}<p class="muted">Словарь не создан.</p>{% endfor %}</div>{% endblock %}
+{% extends "base.html" %}
+{% block title %}AI-черновик — BarOS{% endblock %}
+{% block content %}
+<div class="hero reveal">
+  <a class="muted" href="/app#ai">← AI-методист</a>
+  <div class="row wrap">
+    <span class="badge">generation {{ generation_id[:8] }}</span>
+    {% if generation and generation.status == 'complete' %}<span class="status-chip status-active">READY FOR REVIEW</span>
+    {% elif generation and generation.status == 'limited' %}<span class="status-chip status-readonly">LIMIT REACHED</span>
+    {% elif generation and generation.status == 'error' %}<span class="status-chip status-suspended">GENERATION ERROR</span>{% endif %}
+  </div>
+  <h1>AI-черновик обучения</h1>
+  <p>Провайдер: {{ ai_status.provider }} · модель: {{ ai_status.model }}. Ничего отсюда не публикуется автоматически.</p>
+</div>
+
+<div class="card premium-card reveal">
+  <h2>{{ result.summary or 'Черновик' }}</h2>
+  {% for w in result.warnings or [] %}<div class="notice attention" style="margin-bottom:8px">{{ w }}</div>{% endfor %}
+</div>
+
+{% if result.courses %}
+<form action="/ai/training-draft/{{ generation_id }}/import" method="post" class="ai-review-form">
+  <section class="section reveal">
+    <div class="section-title">
+      <div><h2>Курсы</h2><div class="muted">Проверьте факты, формулировки и варианты ответов. Выбранные курсы импортируются как неопубликованные черновики.</div></div>
+    </div>
+    <div class="ai-draft-stack">
+      {% for c in result.courses %}
+      <details class="card premium-card ai-course-draft" open>
+        <summary class="ai-course-summary">
+          <label class="check ai-course-check" onclick="event.stopPropagation()">
+            <input type="checkbox" name="course_indexes" value="{{ loop.index0 }}" checked>
+            <span><strong>{{ c.title }}</strong><small>{{ c.target_role }} · {{ c.lessons|length }} уроков · {{ c.questions|length }} вопросов</small></span>
+          </label>
+          <span class="venue-chevron">›</span>
+        </summary>
+        <div class="ai-course-body">
+          {% if c.description %}<p class="muted">{{ c.description }}</p>{% endif %}
+
+          <details class="ai-review-subsection">
+            <summary>Уроки · {{ c.lessons|length }}</summary>
+            <div class="ai-review-list">
+              {% for lesson in c.lessons %}
+              <div class="file"><strong>{{ loop.index }}. {{ lesson.title }}</strong><div class="muted small">{{ lesson.body[:500] }}{% if lesson.body|length > 500 %}…{% endif %}</div></div>
+              {% else %}<p class="muted">AI не создал уроки.</p>{% endfor %}
+            </div>
+          </details>
+
+          <details class="ai-review-subsection">
+            <summary>Вопросы · {{ c.questions|length }}</summary>
+            <div class="ai-review-list">
+              {% for q in c.questions %}
+              <div class="file ai-question-preview">
+                <div class="row wrap"><span class="pill">{{ q.type }}</span><strong>{{ q.prompt }}</strong></div>
+                <ol class="ai-choice-list">
+                  {% for choice in q.choices %}
+                  <li class="{% if loop.index0 == q.correct_index %}ai-correct-choice{% endif %}">{{ choice }}{% if loop.index0 == q.correct_index %} <span>✓</span>{% endif %}</li>
+                  {% endfor %}
+                </ol>
+                {% if q.explanation %}<div class="muted small">{{ q.explanation }}</div>{% endif %}
+              </div>
+              {% else %}<p class="muted">AI не создал вопросы.</p>{% endfor %}
+            </div>
+          </details>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="section reveal">
+    <div class="card premium-card">
+      <div class="row space mobile-stack">
+        <div>
+          <h3 style="margin:0 0 5px">Словарь · {{ result.glossary|length }}</h3>
+          <div class="muted small">Существующие термины с тем же названием дублироваться не будут.</div>
+        </div>
+        <label class="permission-toggle ai-glossary-toggle">
+          <input type="checkbox" name="include_glossary" value="1" checked>
+          <span><strong>Импортировать словарь</strong><small>вместе с выбранными курсами</small></span>
+        </label>
+      </div>
+      <div class="ai-glossary-preview">
+        {% for g in result.glossary or [] %}
+        <div class="file"><button class="term" type="button" data-definition="{{ g.definition }}">{{ g.term }}</button><div class="muted small">{{ g.target_role }}</div></div>
+        {% else %}<p class="muted">Словарь не создан.</p>{% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="sticky-review-action">
+    <div><strong>После импорта</strong><div class="small muted">Курс останется черновиком. Вы сможете вручную изменить уроки и вопросы перед публикацией.</div></div>
+    <button class="btn" type="submit">Импортировать выбранное в BarOS</button>
+  </div>
+</form>
+{% else %}
+<div class="card premium-card reveal"><p class="muted">Курсы не созданы. Посмотрите предупреждения выше и попробуйте генерацию после исправления причины.</p></div>
+{% endif %}
+{% endblock %}
