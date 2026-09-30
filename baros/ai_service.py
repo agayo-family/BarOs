@@ -13,6 +13,7 @@ from .config import (
     AI_ALLOW_PAID_FALLBACK,
     AI_CONTEXT_LIMIT_CHARS,
     AI_DAILY_LIMIT,
+    AI_GLOBAL_DAILY_LIMIT,
     AI_GATEWAY_API_KEY,
     AI_GATEWAY_BASE_URL,
     AI_MODEL,
@@ -171,6 +172,7 @@ def get_ai_status():
         "model": active["model"] if active else OPENROUTER_MODEL,
         "mode": "free" if active and not active["paid"] else ("paid" if active else "offline"),
         "daily_limit": AI_DAILY_LIMIT,
+        "global_daily_limit": AI_GLOBAL_DAILY_LIMIT,
         "paid_fallback_enabled": bool(AI_ALLOW_PAID_FALLBACK and AI_GATEWAY_API_KEY),
         "openrouter_configured": bool(OPENROUTER_API_KEY),
         "vercel_configured": bool(AI_GATEWAY_API_KEY),
@@ -179,18 +181,32 @@ def get_ai_status():
 
 def get_ai_usage(db: Session, organization_id: int):
     since = datetime.utcnow() - timedelta(hours=24)
+    counted_statuses = ["pending", "complete", "imported", "error"]
     used = db.scalar(
         select(func.count(AIGeneration.id)).where(
             AIGeneration.organization_id == organization_id,
             AIGeneration.feature == "training_draft",
             AIGeneration.created_at >= since,
-            AIGeneration.status.in_(["pending", "complete", "imported", "error"]),
+            AIGeneration.status.in_(counted_statuses),
         )
     ) or 0
+    global_used = db.scalar(
+        select(func.count(AIGeneration.id)).where(
+            AIGeneration.feature == "training_draft",
+            AIGeneration.created_at >= since,
+            AIGeneration.status.in_(counted_statuses),
+        )
+    ) or 0
+    remaining = max(0, AI_DAILY_LIMIT - int(used))
+    global_remaining = max(0, AI_GLOBAL_DAILY_LIMIT - int(global_used))
     return {
         "used": int(used),
         "limit": AI_DAILY_LIMIT,
-        "remaining": max(0, AI_DAILY_LIMIT - int(used)),
+        "remaining": remaining,
+        "global_used": int(global_used),
+        "global_limit": AI_GLOBAL_DAILY_LIMIT,
+        "global_remaining": global_remaining,
+        "effective_remaining": min(remaining, global_remaining),
         "window_hours": 24,
     }
 
@@ -258,7 +274,7 @@ async def generate_training_draft(
         return gid, json.loads(rec.result)
 
     usage = get_ai_usage(db, organization_id)
-    if usage["remaining"] <= 0:
+    if usage["effective_remaining"] <= 0:
         rec = AIGeneration(
             id=gid,
             organization_id=organization_id,
@@ -272,7 +288,7 @@ async def generate_training_draft(
             "summary": "Дневной лимит AI-методиста исчерпан.",
             "courses": [],
             "glossary": [],
-            "warnings": [f"Для staging установлено {AI_DAILY_LIMIT} генераций на заведение за 24 часа."],
+            "warnings": [f"Лимит staging: {AI_DAILY_LIMIT} генераций на заведение и {AI_GLOBAL_DAILY_LIMIT} на всю платформу за 24 часа."],
         }, ensure_ascii=False)
         db.add(rec)
         db.commit()
