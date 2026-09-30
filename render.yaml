@@ -13,6 +13,20 @@ services:
         value: /tmp/baros_uploads
       - key: MAX_UPLOAD_MB
         value: "15"
+      - key: AI_PROVIDER
+        value: auto
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
+      - key: AI_DAILY_LIMIT
+        value: "5"
+      - key: AI_GLOBAL_DAILY_LIMIT
+        value: "40"
+      - key: AI_ALLOW_PAID_FALLBACK
+        value: "0"
       - key: AI_GATEWAY_API_KEY
         sync: false
       - key: AI_GATEWAY_BASE_URL

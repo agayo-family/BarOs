@@ -20,6 +20,7 @@
 <div class="platform-tabs reveal" role="tablist" aria-label="Control Center">
   <button class="platform-tab is-active" type="button" data-platform-tab="venues">Заведения <span>{{ venues|length }}</span></button>
   <button class="platform-tab" type="button" data-platform-tab="create">+ Создать заведение</button>
+  <button class="platform-tab" type="button" data-platform-tab="ai">AI Control</button>
   <button class="platform-tab" type="button" data-platform-tab="audit">Системный лог</button>
 </div>
 
@@ -159,7 +160,7 @@
   <div class="section-title"><div><h2>Новое заведение</h2><div class="muted">Создание вынесено отдельно, чтобы Control Center не превращался в бесконечную страницу.</div></div></div>
   <div class="card premium-card compact-create-card">
     <form action="/platform/venues" method="post">
-      <div class="grid grid-3">
+      <div class="grid grid-3 ai-owner-summary">
         <div class="field"><label>Название заведения</label><input name="venue" required></div>
         <div class="field"><label>Имя управляющего</label><input name="manager_name" required></div>
         <div class="field"><label>Email управляющего</label><input name="manager_email" type="email" required></div>
@@ -167,6 +168,38 @@
       <div class="notice" style="margin-bottom:14px">После создания появится одноразовый инвайт на 72 часа. Управляющий задаёт пароль сам.</div>
       <button class="btn">Создать и выпустить приглашение</button>
     </form>
+  </div>
+</section>
+
+<section class="section platform-panel" data-platform-panel="ai" hidden>
+  <div class="section-title">
+    <div><h2>AI Control</h2><div class="muted">Статус провайдера и использование AI-методиста по заведениям.</div></div>
+  </div>
+  <div class="grid grid-3">
+    <div class="card premium-card"><div class="muted small">Провайдер</div><div class="kpi compact-kpi">{{ ai_status.provider }}</div><div class="small muted">{{ ai_status.mode }} mode</div></div>
+    <div class="card premium-card"><div class="muted small">Модель</div><div class="kpi compact-kpi ai-owner-model">{{ ai_status.model }}</div><div class="small muted">текущая конфигурация</div></div>
+    <div class="card premium-card"><div class="muted small">Платный fallback</div><div class="kpi compact-kpi">{{ 'ON' if ai_status.paid_fallback_enabled else 'OFF' }}</div><div class="small muted">по умолчанию выключен</div></div>
+    <div class="card premium-card"><div class="muted small">Глобальный лимит</div><div class="kpi compact-kpi">{{ ai_status.global_daily_limit }}</div><div class="small muted">генераций / 24 часа на staging</div></div>
+  </div>
+
+  {% if not ai_status.configured %}
+  <div class="notice attention" style="margin-top:14px">AI ещё не подключён. Добавьте <code>OPENROUTER_API_KEY</code> в Render — после этого BarOS автоматически перейдёт на бесплатный <code>openrouter/free</code>.</div>
+  {% endif %}
+
+  <div class="card premium-card table-wrap" style="margin-top:14px">
+    <table class="table manager-table">
+      <thead><tr><th>Заведение</th><th>Статус</th><th>Генерации / 24 ч</th><th>Осталось</th></tr></thead>
+      <tbody>
+      {% for r in venues %}
+      <tr>
+        <td><strong>{{ r.org.name }}</strong></td>
+        <td>{% if r.control.status == 'active' %}<span class="status-chip status-active">ACTIVE</span>{% else %}<span class="status-chip status-readonly">{{ r.control.status|upper }}</span>{% endif %}</td>
+        <td>{{ r.ai_usage.used }} / {{ r.ai_usage.limit }}</td>
+        <td><strong>{{ r.ai_usage.remaining }}</strong></td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="muted">Заведений пока нет.</td></tr>{% endfor %}
+      </tbody>
+    </table>
   </div>
 </section>
 

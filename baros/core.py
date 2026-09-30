@@ -14,8 +14,8 @@ from .models import Organization, User, Employee, Upload, Course, Lesson, Glossa
 from .security import hash_password, verify_password, make_session, read_session, invite_token
 from .storage import storage
 from .extractors import extract_text
-from .ai_service import generate_training_draft
-from .config import AI_GATEWAY_API_KEY, AI_MODEL, MAX_UPLOAD_MB, FIRST_RUN_TOKEN, COOKIE_SECURE
+from .ai_service import generate_training_draft, get_ai_status, get_ai_usage
+from .config import MAX_UPLOAD_MB, FIRST_RUN_TOKEN, COOKIE_SECURE
 
 BASE = Path(__file__).resolve().parent
 app = FastAPI(title="BarOS", version="0.5")
@@ -327,10 +327,11 @@ def dashboard(request: Request, db: Session=Depends(get_db)):
         "avg_score":round(sum(latest_scores)/len(latest_scores),1) if latest_scores else None,
         "latest_pass_rate":round(total_latest_passed/max(1,total_latest_attempts)*100,1) if total_latest_attempts else None,
     }
+    ai_status=get_ai_status(); ai_usage=get_ai_usage(db,org.id)
     return render(request,"dashboard.html",{
         "user":u,"org":org,"employees":rows,"courses":courses,"uploads":uploads,"glossary":glossary,
         "positions":POSITIONS,"stats":stats,"question_bank_target":QUESTION_BANK_TARGET,"quiz_size":QUIZ_SIZE,
-        "ai_configured":bool(AI_GATEWAY_API_KEY),"ai_model":AI_MODEL
+        "ai_configured":ai_status["configured"],"ai_model":ai_status["model"],"ai_status":ai_status,"ai_usage":ai_usage
     })
 
 @app.post("/employees")
@@ -379,13 +380,33 @@ def add_lesson(course_id:int,request:Request,title:str=Form(...),body:str=Form(.
     u=current_user(request,db); c=db.get(Course,course_id)
     if not u or not c or c.organization_id!=u.organization_id: raise HTTPException(404)
     n=db.scalar(select(func.count(Lesson.id)).where(Lesson.course_id==c.id)) or 0
-    db.add(Lesson(course_id=c.id,title=title,body=body,sort_order=n+1)); db.commit(); return RedirectResponse(f"/courses/{c.id}",303)
+    lesson=Lesson(course_id=c.id,title=title.strip(),body=body.strip(),sort_order=n+1)
+    db.add(lesson); db.commit(); db.refresh(lesson)
+    if request.headers.get("x-baros-ajax")=="1":
+        return JSONResponse({
+            "ok":True,
+            "lesson":{"id":lesson.id,"title":lesson.title,"body":lesson.body,"sort_order":lesson.sort_order}
+        })
+    return RedirectResponse(f"/courses/{c.id}#lessons-section",303)
 
 @app.post("/courses/{course_id}/questions")
 def add_question(course_id:int,request:Request,prompt:str=Form(...),choice1:str=Form(...),choice2:str=Form(...),choice3:str=Form(...),choice4:str=Form(...),correct_index:int=Form(...),question_type:str=Form("knowledge"),explanation:str=Form(""),db:Session=Depends(get_db)):
     u=current_user(request,db); c=db.get(Course,course_id)
     if not u or not c or c.organization_id!=u.organization_id: raise HTTPException(404)
-    db.add(Question(course_id=c.id,prompt=prompt,choices_json=json.dumps([choice1,choice2,choice3,choice4],ensure_ascii=False),correct_index=max(0,min(3,correct_index)),question_type=question_type,explanation=explanation)); db.commit(); return RedirectResponse(f"/courses/{c.id}",303)
+    q=Question(
+        course_id=c.id,prompt=prompt.strip(),
+        choices_json=json.dumps([choice1.strip(),choice2.strip(),choice3.strip(),choice4.strip()],ensure_ascii=False),
+        correct_index=max(0,min(3,correct_index)),question_type=question_type,explanation=explanation.strip()
+    )
+    db.add(q); db.commit(); db.refresh(q)
+    if request.headers.get("x-baros-ajax")=="1":
+        count=db.scalar(select(func.count(Question.id)).where(Question.course_id==c.id)) or 0
+        return JSONResponse({
+            "ok":True,
+            "count":count,
+            "question":{"id":q.id,"prompt":q.prompt,"question_type":q.question_type,"type_label":QUESTION_TYPE_LABELS.get(q.question_type,q.question_type)}
+        })
+    return RedirectResponse(f"/courses/{c.id}#questions-section",303)
 
 @app.post("/ai/training-draft")
 async def ai_training_draft(request: Request, upload_ids: list[int]=Form(default=[]), target_role: str=Form("all"), db: Session=Depends(get_db)):
@@ -400,7 +421,82 @@ async def ai_training_draft(request: Request, upload_ids: list[int]=Form(default
     context="ИНТЕРВЬЮ ЗАВЕДЕНИЯ:\n"+(org.interview_json or "{}")+f"\n\nЦЕЛЕВАЯ РОЛЬ: {target_role}\n\nМАТЕРИАЛЫ:\n"
     for d in docs: context+=f"\n--- {d.filename} / {d.category} / role={d.target_role} ---\n{d.extracted_text[:30000]}\n"
     gid,result=await generate_training_draft(db,org.id,u.id,context)
-    return render(request,"ai_draft.html",{"user":u,"generation_id":gid,"result":result})
+    generation=db.get(AIGeneration,gid)
+    return render(request,"ai_draft.html",{"user":u,"generation_id":gid,"generation":generation,"result":result,"ai_status":get_ai_status()})
+
+@app.post("/ai/training-draft/{generation_id}/import")
+async def import_ai_training_draft(generation_id:str,request:Request,db:Session=Depends(get_db)):
+    u=current_user(request,db)
+    if not u: raise HTTPException(401)
+    rec=db.get(AIGeneration,generation_id)
+    if not rec or rec.organization_id!=u.organization_id or rec.status!="complete":
+        raise HTTPException(404)
+    try:
+        result=json.loads(rec.result or "{}")
+    except Exception:
+        raise HTTPException(400,"Некорректный AI-черновик")
+    form=await request.form()
+    selected=set()
+    for raw in form.getlist("course_indexes"):
+        try: selected.add(int(raw))
+        except Exception: pass
+    if not selected:
+        raise HTTPException(400,"Выберите хотя бы один курс")
+    imported_courses=[]
+    courses=result.get("courses") or []
+    for idx,course_data in enumerate(courses):
+        if idx not in selected or not isinstance(course_data,dict): continue
+        course=Course(
+            organization_id=u.organization_id,
+            title=str(course_data.get("title") or "AI-курс").strip()[:200],
+            description=str(course_data.get("description") or "").strip(),
+            target_role=str(course_data.get("target_role") or "all"),
+            passing_score=80,required=True,published=False
+        )
+        db.add(course); db.flush()
+        for order,lesson_data in enumerate(course_data.get("lessons") or [],start=1):
+            if not isinstance(lesson_data,dict): continue
+            db.add(Lesson(
+                course_id=course.id,
+                title=str(lesson_data.get("title") or f"Урок {order}").strip()[:200],
+                body=str(lesson_data.get("body") or "").strip(),
+                sort_order=order
+            ))
+        for qd in course_data.get("questions") or []:
+            if not isinstance(qd,dict): continue
+            choices=qd.get("choices") or []
+            if len(choices)!=4: continue
+            try: correct=max(0,min(3,int(qd.get("correct_index",0))))
+            except Exception: correct=0
+            db.add(Question(
+                course_id=course.id,
+                prompt=str(qd.get("prompt") or "").strip(),
+                choices_json=json.dumps([str(x) for x in choices],ensure_ascii=False),
+                correct_index=correct,
+                question_type=str(qd.get("type") or "knowledge"),
+                explanation=str(qd.get("explanation") or "").strip()
+            ))
+        imported_courses.append(course.id)
+
+    if form.get("include_glossary")=="1":
+        existing={x.term.strip().casefold() for x in db.scalars(select(GlossaryTerm).where(GlossaryTerm.organization_id==u.organization_id)).all()}
+        for gd in result.get("glossary") or []:
+            if not isinstance(gd,dict): continue
+            term=str(gd.get("term") or "").strip()
+            definition=str(gd.get("definition") or "").strip()
+            if not term or not definition or term.casefold() in existing: continue
+            db.add(GlossaryTerm(
+                organization_id=u.organization_id,
+                term=term[:160],definition=definition,target_role=str(gd.get("target_role") or "all")
+            ))
+            existing.add(term.casefold())
+
+    rec.status="imported"
+    db.commit()
+    first_course=imported_courses[0] if imported_courses else None
+    target=f"/courses/{first_course}" if first_course else "/app#courses"
+    return RedirectResponse(target,303)
+
 
 @app.get("/employee/{token}",response_class=HTMLResponse)
 def employee_home(token:str,request:Request,db:Session=Depends(get_db)):

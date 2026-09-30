@@ -27,7 +27,8 @@ from .access import (
     venue_control,
     venue_permissions,
 )
-from .config import AI_GATEWAY_API_KEY, AI_MODEL, COOKIE_SECURE, PUBLIC_BASE_URL
+from .config import COOKIE_SECURE, PUBLIC_BASE_URL
+from .ai_service import get_ai_status, get_ai_usage
 from .core import app, current_user, get_db, render
 from .db import SessionLocal
 from .models import (
@@ -269,7 +270,8 @@ def _shadow_user(db: Session, org: Organization) -> User:
 
 @app.on_event("startup")
 def platform_startup():
-    log.warning("AI methodologist configured=%s model=%s", bool(AI_GATEWAY_API_KEY), AI_MODEL)
+    ai_status = get_ai_status()
+    log.warning("AI methodologist configured=%s provider=%s model=%s mode=%s", ai_status["configured"], ai_status["provider"], ai_status["model"], ai_status["mode"])
     with SessionLocal() as db:
         _ensure_platform_state(db)
 
@@ -364,11 +366,10 @@ def platform_health():
 
 @app.get("/health/ai")
 def ai_health():
+    status = get_ai_status()
     return {
-        "status": "configured" if bool(AI_GATEWAY_API_KEY) else "not_configured",
-        "configured": bool(AI_GATEWAY_API_KEY),
-        "model": AI_MODEL,
-        "provider": "vercel-ai-gateway",
+        "status": "configured" if status["configured"] else "not_configured",
+        **status,
     }
 
 
@@ -393,8 +394,8 @@ def web_manifest():
         "background_color": "#0b0d10",
         "theme_color": "#d9ff4f",
         "icons": [
-            {"src": "/static/baros-icon-192.png?v=2", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-            {"src": "/static/baros-icon.svg?v=2", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
+            {"src": "/static/baros-icon-192.png?v=3", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/baros-icon.svg?v=3", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
         ],
     }, media_type="application/manifest+json")
 
@@ -402,8 +403,8 @@ def web_manifest():
 @app.get("/sw.js")
 def service_worker():
     js = """
-const CACHE='baros-static-v2';
-const ASSETS=['/static/app.css','/static/app.js','/static/baros-icon-32.png?v=2','/static/baros-icon-180.png?v=2','/static/baros-icon-192.png?v=2','/static/baros-icon.svg?v=2'];
+const CACHE='baros-static-v3';
+const ASSETS=['/static/app.css?v=3','/static/app.js?v=3','/static/baros-icon-32.png?v=3','/static/baros-icon-180.png?v=3','/static/baros-icon-192.png?v=3','/static/baros-icon.svg?v=3'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{
@@ -492,6 +493,7 @@ def platform_dashboard(request: Request, db: Session = Depends(get_db)):
             "courses": db.scalar(select(func.count(Course.id)).where(Course.organization_id == org.id)) or 0,
             "uploads": db.scalar(select(func.count(Upload.id)).where(Upload.organization_id == org.id)) or 0,
             "interview_done": bool((org.interview_json or "{}").strip() not in {"", "{}"}),
+            "ai_usage": get_ai_usage(db, org.id),
         })
 
     logs = db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(30)).all()
@@ -504,6 +506,7 @@ def platform_dashboard(request: Request, db: Session = Depends(get_db)):
         "created": request.query_params.get("created"),
         "venue_permission_labels": VENUE_PERMISSION_LABELS,
         "manager_permission_labels": MANAGER_PERMISSION_LABELS,
+        "ai_status": get_ai_status(),
     })
 
 

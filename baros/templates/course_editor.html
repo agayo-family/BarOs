@@ -1,1 +1,103 @@
-{% extends "base.html" %}{% block title %}{{ course.title }} — BarOS{% endblock %}{% block content %}<div class="hero"><a class="muted" href="/app">← Dashboard</a><h1>{{ course.title }}</h1><p>{{ course.description }}</p><div class="row wrap"><span class="pill">роль: {{ course.target_role }}</span><span class="pill">проходной: {{ course.passing_score }}%</span><span class="pill">{{ 'опубликован' if course.published else 'черновик' }}</span></div></div><div class="grid grid-2"><div><div class="card"><h2>Уроки</h2>{% for l in course.lessons %}<div class="file"><strong>{{ l.sort_order }}. {{ l.title }}</strong><div class="muted small">{{ l.body[:180] }}{% if l.body|length>180 %}…{% endif %}</div></div>{% else %}<p class="muted">Пока нет уроков.</p>{% endfor %}</div><div class="card" style="margin-top:16px"><h3>Добавить урок</h3><form method="post" action="/courses/{{ course.id }}/lessons"><div class="field"><label>Название</label><input name="title" required></div><div class="field"><label>Текст</label><textarea name="body" required></textarea></div><button class="btn">Добавить урок</button></form></div></div><div><div class="card"><h2>Банк вопросов</h2><p class="muted">{{ course.questions|length }} вопросов. Цель: 100 качественных вопросов; в итоговую попытку выбираются до 30 с балансом типов.</p>{% for q in course.questions %}<div class="file"><span class="pill">{{ q.question_type }}</span> {{ q.prompt }}</div>{% endfor %}</div><div class="card" style="margin-top:16px"><h3>Добавить вопрос</h3><div class="notice" style="margin-bottom:14px">Неправильные варианты должны быть правдоподобными: похожими по длине, терминологии и логике на правильный. Избегай ответов вроде «ничего», «неважно», «игнорировать правило», если они очевидно хуже остальных.</div><form method="post" action="/courses/{{ course.id }}/questions"><div class="field"><label>Вопрос</label><textarea name="prompt" required></textarea></div><div class="field"><label>Тип</label><select name="question_type"><option value="knowledge">Знание</option><option value="understanding">Понимание</option><option value="scenario">Ситуация</option><option value="sales">Продажа</option></select></div>{% for i in range(1,5) %}<div class="field"><label>Вариант {{ i }}</label><input name="choice{{ i }}" required></div>{% endfor %}<div class="field"><label>Правильный вариант (0–3)</label><input type="number" name="correct_index" min="0" max="3" value="0"></div><div class="field"><label>Объяснение</label><textarea name="explanation"></textarea></div><button class="btn">Добавить вопрос</button></form></div></div></div>{% endblock %}
+{% extends "base.html" %}
+{% block title %}{{ course.title }} — BarOS{% endblock %}
+{% block content %}
+<div class="hero reveal course-editor-hero">
+  <a class="muted" href="/app#courses">← Курсы</a>
+  <div class="row space mobile-stack">
+    <div>
+      <span class="badge">COURSE EDITOR</span>
+      <h1>{{ course.title }}</h1>
+      <p>{{ course.description or 'Описание пока не добавлено.' }}</p>
+    </div>
+    <div class="course-editor-kpis">
+      <div><strong id="lesson-count">{{ course.lessons|length }}</strong><span>уроков</span></div>
+      <div><strong id="question-count">{{ course.questions|length }}</strong><span>вопросов</span></div>
+    </div>
+  </div>
+  <div class="row wrap">
+    <span class="pill">роль: {{ course.target_role }}</span>
+    <span class="pill">проходной: {{ course.passing_score }}%</span>
+    <span class="pill">{{ 'опубликован' if course.published else 'черновик' }}</span>
+  </div>
+</div>
+
+<div class="editor-jump-nav reveal">
+  <a href="#lessons-section">Уроки <span>{{ course.lessons|length }}</span></a>
+  <a href="#questions-section">Вопросы <span>{{ course.questions|length }}</span></a>
+</div>
+
+<div class="grid grid-2 course-editor-grid">
+  <section id="lessons-section" class="editor-column reveal">
+    <div class="card premium-card">
+      <div class="section-title compact-section-title">
+        <div><h2>Уроки</h2><div class="muted">Материал, который сотрудник изучает до аттестации.</div></div>
+      </div>
+      <div id="lesson-list" class="editor-item-list" aria-live="polite">
+        {% for l in course.lessons %}
+        <div class="file editor-item" data-lesson-id="{{ l.id }}">
+          <strong>{{ l.sort_order }}. {{ l.title }}</strong>
+          <div class="muted small">{{ l.body[:220] }}{% if l.body|length>220 %}…{% endif %}</div>
+        </div>
+        {% else %}
+        <p class="muted empty-state" id="lesson-empty">Пока нет уроков.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card premium-card editor-create-card">
+      <div class="row space"><div><h3>Добавить урок</h3><div class="muted small">После сохранения страница не перезагрузится.</div></div><span class="status-chip status-active">LIVE ADD</span></div>
+      <form method="post" action="/courses/{{ course.id }}/lessons" class="ajax-create-form" data-create-kind="lesson">
+        <div class="field"><label>Название</label><input name="title" required maxlength="200" autocomplete="off"></div>
+        <div class="field"><label>Текст урока</label><textarea name="body" required rows="9"></textarea></div>
+        <button class="btn" type="submit"><span class="button-label">Добавить урок</span></button>
+      </form>
+    </div>
+  </section>
+
+  <section id="questions-section" class="editor-column reveal">
+    <div class="card premium-card">
+      <div class="section-title compact-section-title">
+        <div>
+          <h2>Банк вопросов</h2>
+          <div class="muted"><span id="question-count-inline">{{ course.questions|length }}</span> из целевых 100. В экзамен попадёт до 30 сбалансированных вопросов.</div>
+        </div>
+      </div>
+      <div id="question-list" class="editor-item-list question-list" aria-live="polite">
+        {% for q in course.questions %}
+        <div class="file editor-item question-item" data-question-id="{{ q.id }}">
+          <span class="pill">{{ q.question_type }}</span>
+          <span>{{ q.prompt }}</span>
+        </div>
+        {% else %}
+        <p class="muted empty-state" id="question-empty">Пока нет вопросов.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card premium-card editor-create-card">
+      <div class="row space"><div><h3>Добавить вопрос</h3><div class="muted small">Дистракторы должны быть похожи на правильный ответ, а не выдаваться очевидной нелепостью.</div></div><span class="status-chip status-active">LIVE ADD</span></div>
+      <div class="notice" style="margin-bottom:14px">Делай варианты одинакового уровня конкретности и близкими по длине. Особенно в ситуационных вопросах меняй небольшие, но важные детали: порядок действий, момент эскалации, формулировку гостю.</div>
+      <form method="post" action="/courses/{{ course.id }}/questions" class="ajax-create-form" data-create-kind="question">
+        <div class="field"><label>Вопрос</label><textarea name="prompt" required rows="4"></textarea></div>
+        <div class="field"><label>Тип</label><select name="question_type"><option value="knowledge">Знание</option><option value="understanding">Понимание</option><option value="scenario">Ситуация</option><option value="sales">Продажа</option></select></div>
+        {% for i in range(1,5) %}
+        <div class="field"><label>Вариант {{ i }}</label><input name="choice{{ i }}" required autocomplete="off"></div>
+        {% endfor %}
+        <div class="field">
+          <label>Какой вариант правильный?</label>
+          <select name="correct_index">
+            <option value="0">Вариант 1</option>
+            <option value="1">Вариант 2</option>
+            <option value="2">Вариант 3</option>
+            <option value="3">Вариант 4</option>
+          </select>
+        </div>
+        <div class="field"><label>Объяснение</label><textarea name="explanation" rows="3" placeholder="Почему этот вариант верный и чем близкие ответы хуже"></textarea></div>
+        <button class="btn" type="submit"><span class="button-label">Добавить вопрос</span></button>
+      </form>
+    </div>
+  </section>
+</div>
+
+<div class="editor-toast" id="editor-toast" role="status" aria-live="polite"></div>
+{% endblock %}

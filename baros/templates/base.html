@@ -12,17 +12,17 @@
   <meta name="apple-mobile-web-app-title" content="BarOS">
   <title>{% block title %}BarOS{% endblock %}</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" type="image/png" sizes="32x32" href="/static/baros-icon-32.png?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/baros-icon-32.png?v=3">
   <link rel="icon" type="image/png" sizes="64x64" href="/static/baros-icon-192.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/static/baros-icon-180.png">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/baros-icon-180.png?v=3">
+  <link rel="stylesheet" href="/static/app.css?v=3">
 </head>
 <body>
   <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
   <div class="shell page-shell">
     <nav class="nav glass-nav">
       <a class="brand-mark" href="/">
-        <img src="/static/baros-icon.svg?v=2" alt="BarOS">
+        <img src="/static/baros-icon.svg?v=3" alt="BarOS">
         <span>BarOS</span>
       </a>
       <div class="row nav-actions">
@@ -43,7 +43,7 @@
     {% endif %}
     {% block content %}{% endblock %}
   </div>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=3"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
