@@ -11,6 +11,12 @@ services:
         value: /tmp/baros_uploads
       - key: MAX_UPLOAD_MB
         value: "15"
+      - key: AI_GATEWAY_API_KEY
+        sync: false
+      - key: AI_GATEWAY_BASE_URL
+        value: https://ai-gateway.vercel.sh/v1
+      - key: AI_MODEL
+        value: openai/gpt-5.6-sol
       - key: SESSION_SECRET
         generateValue: true
       - key: FIRST_RUN_TOKEN

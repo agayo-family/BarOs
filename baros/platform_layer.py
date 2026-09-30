@@ -27,7 +27,7 @@ from .access import (
     venue_control,
     venue_permissions,
 )
-from .config import COOKIE_SECURE, PUBLIC_BASE_URL
+from .config import AI_GATEWAY_API_KEY, AI_MODEL, COOKIE_SECURE, PUBLIC_BASE_URL
 from .core import app, current_user, get_db, render
 from .db import SessionLocal
 from .models import (
@@ -361,6 +361,15 @@ async def baros_security_and_platform_middleware(request: Request, call_next):
 def platform_health():
     return {"status": "ok", "layer": "platform", "version": "major-platform-ux"}
 
+@app.get("/health/ai")
+def ai_health():
+    return {
+        "status": "configured" if bool(AI_GATEWAY_API_KEY) else "not_configured",
+        "configured": bool(AI_GATEWAY_API_KEY),
+        "model": AI_MODEL,
+        "provider": "vercel-ai-gateway",
+    }
+
 
 @app.get("/favicon.ico")
 def favicon():
@@ -383,8 +392,8 @@ def web_manifest():
         "background_color": "#0b0d10",
         "theme_color": "#d9ff4f",
         "icons": [
-            {"src": "/static/baros-icon-192.png", "sizes": "192x192", "type": "image/png"},
-            {"src": "/static/baros-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+            {"src": "/static/baros-icon-192.png?v=2", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/baros-icon.svg?v=2", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
         ],
     }, media_type="application/manifest+json")
 
@@ -392,8 +401,8 @@ def web_manifest():
 @app.get("/sw.js")
 def service_worker():
     js = """
-const CACHE='baros-static-v1';
-const ASSETS=['/static/app.css','/static/app.js','/static/baros-icon-192.png','/static/baros-icon.svg'];
+const CACHE='baros-static-v2';
+const ASSETS=['/static/app.css','/static/app.js','/static/baros-icon-32.png?v=2','/static/baros-icon-180.png?v=2','/static/baros-icon-192.png?v=2','/static/baros-icon.svg?v=2'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{
