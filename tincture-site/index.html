@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2d2a24" />
+  <meta name="description" content="Tincture Lab — локальная PWA-система управления цехом настоек" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Tincture Lab</title>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark">TL</div>
+        <div><strong>Tincture Lab</strong><small>production OS</small></div>
+      </div>
+      <nav id="nav"></nav>
+      <div class="sidebar-foot">
+        <button class="ghost full" id="installBtn" hidden>Установить приложение</button>
+        <div class="sync-line"><span id="syncDot" class="sync-dot"></span><span id="syncLabel">Локально</span></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="menuBtn" aria-label="Открыть меню">☰</button>
+        <div class="page-title"><h1 id="pageTitle">Калькулятор</h1><p id="pageSubtitle">Точный расчёт без ручной математики</p></div>
+        <div class="top-actions"><button class="icon-btn" id="notificationBtn" title="Уведомления">◌<span class="badge" id="notificationBadge" hidden>0</span></button></div>
+      </header>
+      <section class="content" id="content"></section>
+    </main>
+  </div>
+
+  <div class="toast-stack" id="toasts"></div>
+  <div class="modal-backdrop" id="modalBackdrop" hidden><div class="modal" id="modal"></div></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
