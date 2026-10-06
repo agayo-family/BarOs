@@ -1,0 +1,12 @@
+{
+  "name":"Tincture Lab — Production OS",
+  "short_name":"Tincture Lab",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#f1eadf",
+  "theme_color":"#2d2a24",
+  "description":"Офлайн-система управления цехом настоек",
+  "icons":[
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
