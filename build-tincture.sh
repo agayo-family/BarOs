@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-rm -rf tincture-public
-mkdir -p tincture-public
-
-cat   tincture-build/part00.b64   tincture-build/part01.b64   tincture-build/part02.b64   tincture-build/part03.b64   tincture-build/part04.b64   | base64 -d > /tmp/tincture-deploy.tar.gz
-
-tar -xzf /tmp/tincture-deploy.tar.gz -C tincture-public
-
-test -f tincture-public/index.html
-test -f tincture-public/app.js
-test -f tincture-public/styles.css
-test -f tincture-public/manifest.webmanifest
-test -f tincture-public/sw.js
-
-echo "Tincture Lab production bundle ready."
+rm -rf site site.tar.gz site.b64
+cat deploy-bundle/part000 deploy-bundle/part001 deploy-bundle/part002 deploy-bundle/part003 deploy-bundle/part004 > site.b64
+base64 -d site.b64 > site.tar.gz
+tar -xzf site.tar.gz
+test -f site/index.html
+test -f site/app.js
+test -f site/styles.css
+test -f site/manifest.webmanifest
+test -f site/sw.js
+echo 'Tincture Lab production bundle ready.'
