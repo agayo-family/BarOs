@@ -317,4 +317,7 @@ document.querySelector("#copySummaryBtn").onclick=async()=>{await navigator.clip
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;document.querySelector("#installBtn").classList.remove("hidden")});
 document.querySelector("#installBtn").onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.querySelector("#installBtn").classList.add("hidden")};
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
-renderAll();unlockChecks();setTimeout(maybeCompanion,1200);
+const initialPage=new URLSearchParams(location.search).get("page");
+if(initialPage && ["home","quests","projects","focus","finance","analytics","achievements","settings"].includes(initialPage)) page(initialPage);
+else renderAll();
+unlockChecks();setTimeout(maybeCompanion,1200);
