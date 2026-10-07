@@ -93,7 +93,8 @@ def health(db=Depends(get_db)):
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
-    return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)), 'version':'2.0.0'}
+    return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.0.0'}
 
 
 @app.post('/api/auth/setup')
@@ -117,6 +118,37 @@ def login(data:LoginIn,request:Request,db=Depends(get_db)):
     valid=verify_password(data.password,a.password_hash if a else hash_password('no-account-dummy'))
     require(a and a.active and valid,'Неверный логин или пароль',401)
     response=JSONResponse({'ok':True}); make_session(db,response,a); return response
+
+
+@app.post('/api/auth/owner-recovery')
+def recover_owner(data:OwnerRecoveryIn,request:Request,db=Depends(get_db)):
+    rate(db,'owner-recovery:'+ip(request),5)
+    require(len(FIRST_RUN_TOKEN)>=24,
+            'В Render задайте FIRST_RUN_TOKEN длиной не менее 24 символов и перезапустите сервис.',503)
+    require(secrets.compare_digest(digest(data.token),digest(FIRST_RUN_TOKEN)),
+            'Неверный ключ восстановления из Render',403)
+    # Lock the existing owner; an unauthenticated caller cannot choose a role or
+    # account ID, and recovery never creates a new owner or replaces venue data.
+    owners=db.scalars(select(Account).where(Account.role=='owner').order_by(Account.id).with_for_update()).all()
+    require(owners,'Кабинет владельца ещё не создан',409)
+    account=owners[0] if len(owners)==1 else next((a for a in owners if a.login==data.login.lower()),None)
+    require(account,'Несколько владельцев: укажите логин нужного кабинета',409)
+    used=db.get(Setting,'owner_recovery_token_used')
+    fingerprint=digest(FIRST_RUN_TOKEN)
+    require(not used or not secrets.compare_digest(used.value,fingerprint),
+            'Этот ключ уже использован. Для нового восстановления замените FIRST_RUN_TOKEN в Render.',409)
+    conflict=db.scalar(select(Account.id).where(Account.login==data.login.lower(),Account.id!=account.id))
+    require(not conflict,'Этот логин занят. Придумайте другой.',409)
+    account.login=data.login.lower()
+    account.password_hash=hash_password(data.password)
+    account.active=True
+    db.execute(delete(LoginSession).where(LoginSession.account_id==account.id))
+    if used: used.value=fingerprint
+    else: db.add(Setting(key='owner_recovery_token_used',value=fingerprint))
+    log(db,account,None,'Владелец восстановил доступ')
+    response=JSONResponse({'ok':True,'login':account.login})
+    make_session(db,response,account)
+    return response
 
 
 @app.post('/api/auth/join')

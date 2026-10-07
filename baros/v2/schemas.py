@@ -8,6 +8,10 @@ class StrictModel(BaseModel):
 class LoginIn(StrictModel):
     login: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=1, max_length=200)
+class OwnerRecoveryIn(StrictModel):
+    token: str = Field(min_length=1, max_length=512)
+    login: str = Field(min_length=3, max_length=255, pattern=r'^[a-zA-Z0-9_.@+\-]+$')
+    password: str = Field(min_length=12, max_length=200)
 class JoinIn(StrictModel):
     code: str = Field(min_length=6, max_length=32)
     name: str = Field(min_length=2, max_length=160)

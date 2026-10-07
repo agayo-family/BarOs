@@ -27,6 +27,15 @@ uvicorn baros.main:app --reload --host 0.0.0.0 --port 8000
 
 Откройте `http://localhost:8000/first-run?token=<FIRST_RUN_TOKEN>` и создайте владельца. Для production задайте PostgreSQL, длинный `SESSION_SECRET`, `FIRST_RUN_TOKEN` и `COOKIE_SECURE=1`.
 
+## Восстановление владельца
+
+Если забыты логин и пароль, откройте `/owner-recovery`. В Render → `baros-staging` → Environment
+скопируйте `FIRST_RUN_TOKEN` (случайный секрет длиной от 24 символов) и введите его **только на сайте**.
+Если ключ отсутствует, слишком короткий или уже использован, задайте новый случайный ключ в Render
+и сохраните с перезапуском сервиса. На странице восстановления задайте новый логин и пароль от 12 символов.
+Ключ используется один раз; прежние сеансы владельца отзываются. Существующий аккаунт, заведения,
+сотрудники и обучение сохраняются. Ключи и пароли не передавайте в чат и не включайте в URL.
+
 ## AI без платного fallback
 
 ```env
@@ -48,6 +57,7 @@ AI_ALLOW_PAID_FALLBACK=0
 
 ```bash
 python -m compileall -q baros
-for f in baros/static/v2/*.js; do node --check "$f"; done
+python -m unittest discover -s tests -v
+for f in baros/static/v2/*.js; do node --input-type=module --check < "$f"; done
 git diff --check
 ```
