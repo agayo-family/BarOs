@@ -1,17 +1,20 @@
-# BarOS server v0.4
+# BarOS 2.0
 
-Working multi-device pilot for restaurant/bar staff onboarding and certification.
+BarOS — светлая premium-платформа обучения для баров и ресторанов: материалы заведения, теория, тесты, роли, должности, уведомления и аналитика в одном адаптивном PWA.
 
-## v0.4
-- expanded manager dashboard: readiness, required-course progress, latest average, attempt count, last activity, weak areas and per-course detail
-- 100-question bank target and 30-question final assessment
-- balanced 30-question sampling: 12 knowledge / 8 understanding / 6 sales / 4 scenario where the bank allows it
-- answer choices are shuffled on every attempt
-- improved onboarding questions with plausible distractors
-- AI methodologist prompt requires realistic distractors and forbids obvious throwaway answers
+## Что уже работает
 
+- владелец платформы: заведения, тариф/статус/лимиты, удалённый доступ, одноразовые ссылки управляющих и журнал действий;
+- управляющий: команда, несколько должностей сотрудника, приглашение по коду, интервью о заведении, материалы, черновики курсов, публикация и отчёты;
+- сотрудник: самостоятельная регистрация по коду, теория перед тестом, случайная выборка вопросов, перемешанные ответы, таймер, попытки, баллы, разбор ошибок и история;
+- загрузка TXT/MD/CSV/TSV/PDF/DOCX/XLSX/PNG/JPG/WebP до 15 МБ с извлечением текста и OCR;
+- бесплатный AI через OpenRouter (`openrouter/free`): пошаговая генерация теории и банка 100–400 вопросов, source-grounding, защита от повторов, сохранение прогресса и повтор после сбоя;
+- in-app и Web Push уведомления о новом курсе, дедлайне и просрочке;
+- PWA-манифест, service worker, responsive-интерфейс для телефонов, планшетов и мониторов.
 
-## Run locally
+AI всегда создаёт черновик. Управляющий обязан проверить факты, теорию и ответы перед публикацией.
+
+## Локальный запуск
 
 ```bash
 python -m venv .venv
@@ -22,35 +25,29 @@ cp .env.example .env  # optional
 uvicorn baros.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Open http://localhost:8000. On the first launch create the owner account.
+Откройте `http://localhost:8000/first-run?token=<FIRST_RUN_TOKEN>` и создайте владельца. Для production задайте PostgreSQL, длинный `SESSION_SECRET`, `FIRST_RUN_TOKEN` и `COOKIE_SECURE=1`.
 
-## Production
+## AI без платного fallback
 
-Set `DATABASE_URL` to PostgreSQL. SQLite is only the default for a single-server pilot.
-Set a strong `SESSION_SECRET`. For horizontal scaling, move uploaded files to object storage (S3/Vercel Blob); the storage adapter is isolated in `baros/storage.py`.
+```env
+OPENROUTER_API_KEY=...
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=openrouter/free
+AI_ALLOW_PAID_FALLBACK=0
+```
 
-## AI
+Платный fallback выключен по умолчанию. Лимиты `AI_DAILY_LIMIT`, `AI_GLOBAL_DAILY_LIMIT` и `AI_PROVIDER_DAILY_CALL_LIMIT` ограничивают расход и нагрузку.
 
-Set `AI_GATEWAY_API_KEY`. The app calls the Vercel AI Gateway OpenAI-compatible endpoint and saves every generation to the database. The model is configured by `AI_MODEL`.
-AI output is always a draft: a manager must review and publish it.
+## Деплой Render
 
-## Supported uploads
+`render.yaml` содержит web service и PostgreSQL. После создания сервиса добавьте секреты `FIRST_RUN_TOKEN` и `OPENROUTER_API_KEY` в Render Dashboard. Healthcheck: `/health`.
 
-TXT, MD, CSV, TSV, PDF, DOCX, XLSX. Text is extracted server-side and stored with the document record for course generation.
+Загрузка хранится в PostgreSQL вместе с извлечённым текстом, поэтому перезапуск бесплатного инстанса не теряет исходник. Для больших production-файлов рекомендуется object storage и отдельный worker.
 
+## Проверки
 
-## Cloud staging (Render)
-
-The staging configuration is prepared in `render.yaml`:
-- free Docker web service
-- free managed PostgreSQL via `DATABASE_URL`
-- `/health` endpoint
-- secure session cookies
-- protected first-run with `FIRST_RUN_TOKEN`
-
-For the free staging tier, raw uploaded files are written only to `/tmp` and may disappear when the service restarts. The extracted text/metadata used by BarOS and AI remain in PostgreSQL. Before production, switch raw-file persistence to object storage.
-
-Open the initial setup URL as:
-`https://<staging-host>/first-run?token=<FIRST_RUN_TOKEN>`
-
-Do not publish or share the setup token. After the owner is created, `/first-run` closes automatically.
+```bash
+python -m compileall -q baros
+for f in baros/static/v2/*.js; do node --check "$f"; done
+git diff --check
+```
