@@ -44,7 +44,9 @@ async function renderAuthed(){if(state.cleanup){state.cleanup();state.cleanup=nu
   else if(p==='/app/notices')rendered=await notificationsPage(root);
   else {const cid=routeMatch(p,/^\/app\/courses\/(\d+)$/);const lid=routeMatch(p,/^\/app\/learn\/(\d+)$/);const eid=routeMatch(p,/^\/app\/exam\/([^/]+)$/);if(cid&&(a.role==='manager'||a.role==='owner'))rendered=await editorPage(root,Number(cid));else if(lid&&a.role==='employee')rendered=await lessonPage(root,Number(lid));else if(eid&&a.role==='employee')rendered=await examPage(root,eid);else if(p==='/app')rendered=a.role==='employee'?await learningPage(root):await overview(root);else rendered=await learningPage(root)}
  }catch(e){if(e.status===401){state.me=null;return authPage('/')}root.innerHTML=`<section class="card">${notice(e.message,'error','Не удалось открыть раздел')}<a class="btn primary" href="/app">Вернуться на главную</a></section>`}
- const content=root.innerHTML;const wrapped=document.createElement('div');wrapped.innerHTML=shell(a,content);$app().innerHTML='';$app().append(wrapped);setupShell();
+ const wrapped=document.createElement('div');wrapped.innerHTML=shell(a,'');
+ const content=wrapped.querySelector('#page-content');root.id=content.id;root.className=content.className;content.replaceWith(root);
+ $app().innerHTML='';$app().append(wrapped);setupShell();
 }
 
 async function render(){const p=path();if(!p.startsWith('/app')){return authPage(p)}try{if(!state.me||!state.me.account){await reloadMe()}await renderAuthed()}catch(e){if(e.status===401||!state.me){return authPage(p)}$app().innerHTML=`<div class="loading"><span class="spinner"></span> ${esc(e.message)}</div>`}}

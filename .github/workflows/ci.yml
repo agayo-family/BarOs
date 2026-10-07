@@ -23,5 +23,8 @@ jobs:
       - run: python -c "from baros.main import app; print(app.title)"
       - run: python -c "from baros.v2 import ai; s=ai.status(); assert s['model']=='openrouter/free'; assert s['mode']=='offline'; print(s)"
       - run: python -c "from baros.main import app; p={r.path for r in app.routes}; required={'/health','/api/auth/login','/api/auth/setup','/api/courses','/api/learning','/api/exams/{eid}','/api/sources','/api/jobs'}; assert required <= p, (required-p); print('routes ok')"
-      - run: node --check baros/static/v2/app.js
-      - run: node --check baros/static/v2/editor.js
+      - name: Validate all browser JavaScript modules
+        run: |
+          for file in baros/static/v2/*.js; do
+            node --input-type=module --check < "$file"
+          done
