@@ -13,6 +13,8 @@ services:
         value: /tmp/baros_uploads
       - key: MAX_UPLOAD_MB
         value: "15"
+      - key: DEFAULT_STORAGE_LIMIT_MB
+        value: "200"
       - key: AI_PROVIDER
         value: auto
       - key: OPENROUTER_API_KEY
@@ -25,6 +27,8 @@ services:
         value: "5"
       - key: AI_GLOBAL_DAILY_LIMIT
         value: "20"
+      - key: AI_PROVIDER_DAILY_CALL_LIMIT
+        value: "20"
       - key: AI_ALLOW_PAID_FALLBACK
         value: "0"
       - key: AI_GATEWAY_API_KEY
@@ -33,6 +37,8 @@ services:
         value: https://ai-gateway.vercel.sh/v1
       - key: AI_MODEL
         value: openai/gpt-5.6-sol
+      - key: VAPID_SUBJECT
+        value: https://baros-staging.onrender.com
       - key: SESSION_SECRET
         generateValue: true
       - key: FIRST_RUN_TOKEN
