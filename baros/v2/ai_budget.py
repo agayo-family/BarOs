@@ -33,7 +33,9 @@ def reserve(db,job,model,prompt,system,max_output):
     rates=PRICES[model]
     # A byte is an upper bound on BPE token count for text; reserve full output,
     # cache-write premium and generous framing/schema overhead. Never assume a cache hit.
-    maximum=math.ceil((len((system+prompt).encode('utf-8'))+12000)*max(rates[0],rates[3])+max_output*rates[2])
+    input_bound=len((system+prompt).encode('utf-8'))+12000
+    long_context=input_bound>272000
+    maximum=math.ceil(input_bound*max(rates[0],rates[3])*(2 if long_context else 1)+max_output*rates[2]*(Decimal('1.5') if long_context else 1))
     lim=limits();day=now().replace(hour=0,minute=0,second=0,microsecond=0);month=day.replace(day=1)
     for name,filters in [('daily',[AIUsage.created_at>=day]),('monthly',[AIUsage.created_at>=month]),('job',[AIUsage.job_id==job.id])]:
         if used(db,filters)+maximum>lim[name]:raise ValueError({'daily':'Дневной','monthly':'Месячный','job':'Бюджет этой генерации:'}[name]+' лимит OpenAI не позволяет следующий запрос. Прогресс сохранён. Владелец может проверить расход или изменить бюджет.')
@@ -52,7 +54,9 @@ def settle(db,uid,usage=None,failed=False):
     item.cached_tokens=min(item.input_tokens,max(0,int(details.get('cached_tokens') or 0)))
     writes=min(item.input_tokens-item.cached_tokens,max(0,int(details.get('cache_write_tokens') or 0)))
     rates=PRICES[item.model]
-    item.cost_micro_usd=math.ceil((item.input_tokens-item.cached_tokens-writes)*rates[0]+item.cached_tokens*rates[1]+writes*rates[3]+item.output_tokens*rates[2]);item.status='recorded'
+    long_context=item.input_tokens>272000
+    input_cost=(item.input_tokens-item.cached_tokens-writes)*rates[0]+item.cached_tokens*rates[1]+writes*rates[3]
+    item.cost_micro_usd=math.ceil(input_cost*(2 if long_context else 1)+item.output_tokens*rates[2]*(Decimal('1.5') if long_context else 1));item.status='recorded'
 
 
 def overview(db,oid=None):

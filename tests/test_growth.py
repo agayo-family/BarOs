@@ -162,5 +162,11 @@ class GrowthTests(unittest.TestCase):
   self.assertEqual(self.client.get('/api/ai/usage').status_code,403)
   self.login('manager');u=self.client.get('/api/ai/usage').json();self.assertEqual(u['daily_usd'],.1);self.assertEqual(len(u['requests']),1);self.assertIsNone(u['limits_usd'])
   self.login('owner');u=self.client.get('/api/ai/usage').json();self.assertEqual(u['daily_usd'],.3);self.assertEqual(len(u['requests']),2);self.assertIsNotNone(u['limits_usd'])
+ def test_openai_long_context_premium_and_conservative_reservation(self):
+  with SessionLocal() as db:
+   job=db.get(Job,'ai-budget-test');uid=ai_budget.reserve(db,job,'gpt-6-luna','x'*300000,'system',1000)
+   item=db.get(AIUsage,uid);self.assertGreater(item.reserved_micro_usd,60000)
+   ai_budget.settle(db,uid,{'prompt_tokens':300000,'completion_tokens':1000});db.commit()
+   self.assertEqual(item.cost_micro_usd,60750);self.assertGreaterEqual(item.reserved_micro_usd,item.cost_micro_usd)
 
 if __name__=='__main__':unittest.main()
