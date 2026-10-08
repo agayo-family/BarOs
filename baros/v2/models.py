@@ -205,3 +205,33 @@ class RateBucket(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     count: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class ShiftTemplate(Base):
+    __tablename__ = 'v2_shift_templates'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    payload: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ShiftEntry(Base):
+    __tablename__ = 'v2_shifts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'))
+    start_day: Mapped[str] = mapped_column(String(10), index=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime)
+    payload: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ShiftPreference(Base):
+    __tablename__ = 'v2_shift_preferences'
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), primary_key=True)
+    payload: Mapped[str] = mapped_column(Text, default='{}')

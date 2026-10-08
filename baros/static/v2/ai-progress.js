@@ -1,4 +1,4 @@
-import {$,$$,state,pageCleanup,api,esc,icon,btn,badge,progress,empty,fmtDate,toast} from './core.js?v=2.1.1';
+import {$,$$,state,pageCleanup,api,esc,icon,btn,badge,progress,empty,fmtDate,toast} from './core.js?v=2.2.0';
 
 export function mountJobHistory(root,initial,ticket=state.renderTicket){let busy=false,disposed=false,last=JSON.stringify(initial.jobs),timer;
  const refresh=$('[data-refresh-jobs]',root),status=document.createElement('p');status.className='refresh-status muted tiny';status.setAttribute('role','status');status.setAttribute('aria-live','polite');refresh.closest('.section-title').insertAdjacentElement('afterend',status);

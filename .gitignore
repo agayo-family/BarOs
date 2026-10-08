@@ -8,5 +8,5 @@ test-results/
 playwright-report/
 *.db
 *.db-*
-node_modules/
+node_modules
 *.log

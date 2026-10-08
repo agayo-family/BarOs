@@ -63,6 +63,8 @@ def deliver_and_remind():
         if lock.value and lock.value>iso(now()):return
         lock.value=iso(now()+timedelta(seconds=50));db.commit()
         # Expired attempts are counted even if the browser was closed.
+        from .shifts import remind_shifts
+        remind_shifts(db)
         for exam in db.scalars(select(Exam).where(Exam.finished_at.is_(None),Exam.expires_at<=now()).limit(100)).all():
             rev=db.get(CourseRevision,exam.revision_id)
             finish(db,exam,parse(rev.payload))

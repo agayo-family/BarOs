@@ -1,4 +1,4 @@
-import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.1.1';
+import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.2.0';
 
 export async function cardsPage(root,cid=null){const ticket=state.renderTicket;
  const preview=state.me.account.role!=='employee';
