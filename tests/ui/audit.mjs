@@ -148,6 +148,10 @@ core.go('/app/settings');await until(()=>document.querySelector('[data-logout]')
 click('[data-logout]');await until(()=>location.pathname==='/'&&document.querySelector('#auth-form'),'Manager logout');
 assert.equal((await fetch('/api/me')).status,401);
 console.log('MANAGER: individual invite, academy filters, employee results, logout OK');
+input('#auth-form [name=login]','ui.owner');input('#auth-form [name=password]','audit-owner-password');submit('#auth-form');
+await until(()=>core.state.me?.account?.role==='owner'&&document.querySelector('[data-enter-venue]'),'Owner returns');click('[data-enter-venue]');await until(()=>document.querySelector('[data-create]'),'Owner remote dashboard returns');
+core.go('/app/ai');await until(()=>document.querySelector('#ai-budget [data-ai-budget-detail=setup]'),'Owner AI instructions');const setupDetails=element('#ai-budget [data-ai-budget-detail=setup]');setupDetails.open=true;click('[data-refresh-jobs]');await until(()=>!element('[data-refresh-jobs]').disabled,'Owner refresh completes');assert.equal(element('#ai-budget [data-ai-budget-detail=setup]'),setupDetails);assert(setupDetails.open,'AI instructions stay open while history refreshes');
+console.log('AI: owner instructions remain open and retain focusable DOM while history refreshes OK');
 assert(!requests.some(r=>r.status>=500),'No server errors');
 console.log('REAL API + DOM AUDIT PASS; requests='+requests.length);
 if(core.state.cleanup)core.state.cleanup();
