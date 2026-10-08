@@ -231,7 +231,12 @@ def delete_source(sid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
 
 def job_card(j):
     cp=parse(j.checkpoint)
-    return {'id':j.id,'status':j.status,'phase':j.phase,'progress':j.progress,'target':j.target,'questions':len(cp.get('questions',[])),
+    count=len(cp.get('questions',[]))
+    theory=100 if cp.get('lessons') else (5 if j.status=='running' else 0)
+    bank=min(100,math.floor(100*count/max(1,j.target)))
+    overall=100 if j.status=='succeeded' else min(95,round(.15*theory+.8*bank))
+    return {'id':j.id,'status':j.status,'phase':j.phase,'progress':overall,'target':j.target,'questions':count,
+            'theory_progress':theory,'questions_progress':bank,'model_used':cp.get('model_used',''),
             'course_id':j.course_id,'error':j.error,'created_at':iso(j.created_at),'limitations':cp.get('limitations',[]),'calls':j.call_count}
 
 

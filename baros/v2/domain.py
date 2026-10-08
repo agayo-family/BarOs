@@ -133,7 +133,7 @@ def learner_stats(db, account):
         passed = any(x.get('passed') for x in results)
         cards.append({'id': c.id, 'title': data['title'], 'description': data['description'], 'positions': data['positions'],
                       'required': data['required'], 'is_intro': data.get('is_intro', False), 'version': rev.version,
-                      'lesson_count': len(data['lessons']), 'read_count': read_count, 'question_count': data['quiz_size'],
+                      'lesson_count': len(data['lessons']), 'read_count': read_count, 'question_count': data['quiz_size'], 'card_count': len(data['questions']),
                       'bank_size': len(data['questions']), 'passing_score': data['passing_score'],
                       'due_at': iso(e.due_at) if e else None, 'passed': passed, 'attempts': len(exams),
                       'overdue': bool(e and e.due_at and e.due_at < now() and not passed),

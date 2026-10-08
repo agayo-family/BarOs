@@ -79,6 +79,17 @@ def read_lesson(cid:int,index:int,data:ReadIn,request:Request,a=Depends(actor),d
     db.commit();return {'seconds':r.seconds,'completed':bool(r.completed_at)}
 
 
+@router.get('/api/learning/{cid}/cards')
+def practice_cards(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
+    # Practice uses the same immutable, role-assigned publication as theory.
+    # It never opens an exam or credits a test attempt or a completed lesson.
+    c,s,rev,data,e=learning_course(request,db,a,cid)
+    cards=[{'id':i,'question':q['prompt'],'answer':q['choices'][q['correct_index']],
+            'explanation':q.get('explanation','')} for i,q in enumerate(data['questions'])]
+    db.commit()
+    return {'id':cid,'revision_id':rev.id,'version':rev.version,'title':data['title'],'cards':cards}
+
+
 def visible_exam(exam,data):
     q=parse(exam.questions_json,[])
     return {'id':exam.id,'title':data['title'],'started_at':iso(exam.started_at),'expires_at':iso(exam.expires_at),
