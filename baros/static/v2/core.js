@@ -1,6 +1,7 @@
 export const $=(s,root=document)=>root.querySelector(s);
 export const $$=(s,root=document)=>[...root.querySelectorAll(s)];
-export const state={me:null,org:localStorage.getItem('baros:venue')||'',dirty:false,cleanup:null};
+export const state={me:null,org:localStorage.getItem('baros:venue')||'',dirty:false,cleanup:null,renderTicket:0};
+export function pageCleanup(callback,ticket){if(ticket!==state.renderTicket){callback();return}state.cleanup=callback}
 export const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
  cards:'<rect x="5" y="3" width="14" height="18" rx="3"/><path d="M2 7v12M22 5v12M9 9h6M9 13h4"/>',moon:'<path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z"/>',sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1"/>',
@@ -58,7 +59,7 @@ export async function api(path,method='GET',body){
  let data;try{data=await res.json()}catch{throw new Error('Сервер не ответил. Подождите немного и повторите.')}
  if(!res.ok){let err=new Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить действие');err.status=res.status;err.fields=data.fields;throw err}return data;
 }
-export async function reloadMe(){state.me=await api('/me');return state.me}
+export async function reloadMe(ticket){const me=await api('/me');if(ticket===undefined||ticket===state.renderTicket)state.me=me;return me}
 export function toast(message,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.textContent=message;$('#toast-root').append(el);setTimeout(()=>el.remove(),6000)}
 export function go(path,replace=false){if(state.dirty&&!confirm('Есть несохранённые изменения. Покинуть редактор?'))return;state.dirty=false;replace?history.replaceState({},'',path):history.pushState({},'',path);window.dispatchEvent(new Event('baros:navigate'));}
 export function on(selector,event,callback,root=document){$$(selector,root).forEach(el=>el.addEventListener(event,async e=>{try{await callback(e,el)}catch(err){toast(err.message,true)}}))}

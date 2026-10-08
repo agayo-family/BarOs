@@ -25,8 +25,8 @@ async function notificationsPage(root){const ns=await api('/notices');root.inner
 function base64(s){const pad='='.repeat((4-s.length%4)%4),str=(s+pad).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(str);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
 function empty(title,desc,ic,action=''){return `<div class="empty">${icon(ic)}<h3>${esc(title)}</h3><p>${esc(desc)}</p>${action}</div>`}
 
-async function renderAuthed(){if(state.cleanup){state.cleanup();state.cleanup=null}const a=state.me.account;const p=path();
- if(a.role==='owner'&&state.org){try{state.venue=await api('/venue')}catch(e){localStorage.removeItem('baros:venue');state.org='';state.venue=null}}
+async function renderAuthed(ticket){if(state.cleanup){state.cleanup();state.cleanup=null}const a=state.me.account;const p=path();
+ if(a.role==='owner'&&state.org){try{const venue=await api('/venue');if(ticket!==state.renderTicket)return;state.venue=venue}catch(e){if(ticket!==state.renderTicket)return;localStorage.removeItem('baros:venue');state.org='';state.venue=null}}
  const root=document.createElement('div');let rendered;
  try{
   if(a.role==='owner'&&!state.org&&['/app','/app/venues'].includes(p))rendered=await ownerHome(root);
@@ -46,14 +46,15 @@ async function renderAuthed(){if(state.cleanup){state.cleanup();state.cleanup=nu
   else if(a.role==='employee'&&p==='/app/history')rendered=await historyPage(root);
   else if(p==='/app/notices')rendered=await notificationsPage(root);
   else {const cid=routeMatch(p,/^\/app\/courses\/(\d+)$/);const lid=routeMatch(p,/^\/app\/learn\/(\d+)$/);const eid=routeMatch(p,/^\/app\/exam\/([^/]+)$/);if(cid&&(a.role==='manager'||a.role==='owner'))rendered=await editorPage(root,Number(cid));else if(lid&&a.role==='employee')rendered=await lessonPage(root,Number(lid));else if(eid&&a.role==='employee')rendered=await examPage(root,eid);else if(p==='/app')rendered=a.role==='employee'?await learningPage(root):await overview(root);else rendered=await learningPage(root)}
- }catch(e){if(e.status===401){state.me=null;return authPage('/')}root.innerHTML=`<section class="card">${notice(e.message,'error','Не удалось открыть раздел')}<a class="btn primary" href="/app">Вернуться на главную</a></section>`}
+ }catch(e){if(ticket!==state.renderTicket)return;if(e.status===401){state.me=null;return authPage('/',ticket)}root.innerHTML=`<section class="card">${notice(e.message,'error','Не удалось открыть раздел')}<a class="btn primary" href="/app">Вернуться на главную</a></section>`}
+ if(ticket!==state.renderTicket)return;
  if(p==='/app/settings')root.insertAdjacentHTML('beforeend',experienceSettings());
  const wrapped=document.createElement('div');wrapped.innerHTML=shell(a,'');
  const content=wrapped.querySelector('#page-content');root.id=content.id;root.className=content.className;content.replaceWith(root);
  $app().innerHTML='';$app().append(wrapped);setupShell();syncThemeControls();
 }
 
-async function render(){if(state.cleanup){state.cleanup();state.cleanup=null}const p=path();if(!p.startsWith('/app')){return authPage(p)}try{if(!state.me||!state.me.account){await reloadMe()}await renderAuthed()}catch(e){if(e.status===401||!state.me){return authPage(p)}$app().innerHTML=`<div class="loading"><span class="spinner"></span> ${esc(e.message)}</div>`}}
+async function render(){const ticket=++state.renderTicket;if(state.cleanup){state.cleanup();state.cleanup=null}const p=path();if(!p.startsWith('/app'))return authPage(p,ticket);try{if(!state.me||!state.me.account)await reloadMe(ticket);if(ticket!==state.renderTicket)return;await renderAuthed(ticket)}catch(e){if(ticket!==state.renderTicket)return;if(e.status===401||!state.me)return authPage(p,ticket);$app().innerHTML=`<div class="loading"><span class="spinner"></span> ${esc(e.message)}</div>`}}
 
 document.addEventListener('click',e=>{const a=e.target.closest('a');if(!a||a.target==='_blank'||a.hasAttribute('download')||a.origin!==location.origin)return;const href=a.getAttribute('href');if(!href||href.startsWith('/api')||href.startsWith('mailto:'))return;e.preventDefault();go(href)});
 window.addEventListener('popstate',()=>render());window.addEventListener('baros:navigate',()=>render());window.addEventListener('error',e=>{if(e.message)console.error('BarOS UI',e.message)});
