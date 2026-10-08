@@ -2,13 +2,14 @@ import os
 import secrets
 from datetime import timedelta
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from ..db import get_db
 from ..models import Course
 from .models import Account, CourseRevision, Enrollment, LessonRead, Exam
 from .domain import *
 from .auth import actor, tenant
 from .schemas import ReadIn, AnswerIn
+from .growth import reward
 
 router=APIRouter()
 MIN_READ_SECONDS=int(os.getenv('MIN_LESSON_SECONDS','10'))
@@ -73,10 +74,12 @@ def read_lesson(cid:int,index:int,data:ReadIn,request:Request,a=Depends(actor),d
         # A heartbeat after closing a tab must not credit a full day of learning.
         if gap<=45:r.seconds+=int(gap)
         r.last_ping=now()
+    award=None
     if data.complete:
         require(r.seconds>=MIN_READ_SECONDS,f'Изучите урок перед подтверждением (не менее {MIN_READ_SECONDS} секунд).')
-        r.completed_at=now()
-    db.commit();return {'seconds':r.seconds,'completed':bool(r.completed_at)}
+        r.completed_at=r.completed_at or now()
+        award=reward(db,a,f'theory:{rev.id}:{index}','theory',20,10,theory=1)
+    db.commit();return {'seconds':r.seconds,'completed':bool(r.completed_at),'reward':award}
 
 
 @router.get('/api/learning/{cid}/cards')
@@ -159,7 +162,18 @@ def finish(db,exam,data):
     ended=min(now(),exam.expires_at)
     result={'score':score,'passed':score>=data['passing_score'],'correct':correct,'total':len(questions),
             'duration_seconds':max(0,int((ended-exam.started_at).total_seconds())), 'review':review,'expired':now()>=exam.expires_at}
-    exam.finished_at=ended;exam.result_json=dump(result);db.flush()
+    exam.finished_at=ended
+    account=db.get(Account,exam.account_id)
+    if len(answers)>=max(1,len(questions)//2):
+        attempt_no=db.scalar(select(func.count(Exam.id)).where(Exam.account_id==account.id,Exam.finished_at>=now().replace(hour=0,minute=0,second=0,microsecond=0))) or 0
+        if attempt_no<3: result['reward']=reward(db,account,'exam:'+exam.id,'exam',30 if result['passed'] else 8,15 if result['passed'] else 4,exam_attempts=1)
+        if result['passed']:
+            perfect=score==100 and len(questions)>=10
+            bonus=reward(db,account,f'passed:{exam.revision_id}','exam_pass',50,25,exam_passed=1)
+            if perfect:reward(db,account,f'perfect:{exam.revision_id}','achievement',0,0,perfect=1)
+            if perfect and 2<=result['duration_seconds']/len(questions)<=8:reward(db,account,f'swift:{exam.revision_id}','achievement',0,0,swift=1)
+            result['pass_reward']=bonus
+    exam.result_json=dump(result);db.flush()
     return result
 
 
@@ -187,3 +201,13 @@ def submit(eid:str,data:AnswerIn,request:Request,a=Depends(actor),db=Depends(get
     if now()<exam.expires_at:
         validate_answers(exam,data);answers=parse(exam.answers_json);answers.update(data.answers);exam.answers_json=dump(answers)
     result=finish(db,exam,p);log(db,a,a.organization_id,'Завершён тест',exam_id=eid,score=result['score']);db.commit();return result
+
+
+@router.post('/api/learning/{cid}/cards/{index}/practice')
+def credit_card(cid:int,index:int,request:Request,a=Depends(actor),db=Depends(get_db)):
+    c,s,rev,p,e=learning_course(request,db,a,cid)
+    require(0<=index<len(p['questions']),'Карточка не найдена',404)
+    from .auth import rate
+    rate(db,'card-practice:'+str(a.id),1200,3600)
+    result=reward(db,a,f'card:{rev.id}:{index}:{now().date().isoformat()}','cards',2,1,cards=1)
+    db.commit();return {'reward':result}

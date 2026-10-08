@@ -26,6 +26,14 @@ def questions():
              'explanation':f'Стандарт заведения: {answer}.','type':types[i]} for i,answer in enumerate(answers)]
 
 
+def token_solution(q,reverse_duplicates=False):
+    pool=list(q['tokens']);result=[]
+    if reverse_duplicates:pool.reverse()
+    for word in q['answer'].split():
+        token=next(t for t in pool if t['text']==word);result.append(token['id']);pool.remove(token)
+    return result
+
+
 class GameTests(unittest.TestCase):
     def setUp(self):
         Base.metadata.drop_all(engine);self.client=TestClient(app);self.client.__enter__()
@@ -81,7 +89,7 @@ class GameTests(unittest.TestCase):
             run=self.start(mode,6)
             for q in run['questions']:
                 if q['variant']=='truth':values={'value':q['claim_true']}
-                elif q['variant']=='words':values={'value':list(range(len(q['tokens'])))}
+                elif q['variant']=='words':values={'value':token_solution(q)}
                 elif q['variant']=='scenario':values={'value':q['correct_index']}
                 elif q['variant']=='pairs':values={'value':q['id']}
                 else:values={'rating':'remembered'}
@@ -132,7 +140,7 @@ class GameTests(unittest.TestCase):
 
     def test_repeated_words_accept_equal_text_when_identical_tokens_swapped(self):
         run=self.start('words',20);q=next(q for q in run['questions'] if q['answer']=='Сироп и вода и лёд')
-        r=self.turn(run,q,value=[0,3,2,1,4]);self.assertEqual(r.status_code,200);self.assertTrue(r.json()['correct'])
+        r=self.turn(run,q,value=token_solution(q,reverse_duplicates=True));self.assertEqual(r.status_code,200);self.assertTrue(r.json()['correct'])
         self.assertEqual(self.turn(run,q,value=[0,1,2,3,3]).status_code,400)
 
     def test_access_tenant_positions_archiving_subscription_and_expiry(self):

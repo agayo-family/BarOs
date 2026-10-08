@@ -1,0 +1,263 @@
+{
+  "date_utc": "2026-10-08T19:25:33Z",
+  "environment": {
+    "python": "3.12.14",
+    "database": "disposable SQLite",
+    "workers": 1,
+    "local_cpu_count": 9,
+    "ai_worker": false
+  },
+  "dataset": {
+    "accounts": 200,
+    "courses": 10,
+    "questions_each": 100,
+    "lessons_each": 3,
+    "one_revision_payload_bytes": 43060,
+    "db_bytes": 1650688
+  },
+  "results": [
+    {
+      "flow": "reading",
+      "simultaneous_clients": 1,
+      "requests": 10,
+      "seconds": 0.13,
+      "rps": 76.79,
+      "p50_ms": 5.73,
+      "p95_ms": 47.0,
+      "p99_ms": 47.0,
+      "status": {
+        "200": 10
+      },
+      "server_cpu_seconds": 0.101,
+      "rss_mb": 147.0
+    },
+    {
+      "flow": "reading",
+      "simultaneous_clients": 5,
+      "requests": 50,
+      "seconds": 0.766,
+      "rps": 65.24,
+      "p50_ms": 29.34,
+      "p95_ms": 303.29,
+      "p99_ms": 567.0,
+      "status": {
+        "200": 50
+      },
+      "server_cpu_seconds": 0.808,
+      "rss_mb": 160.0
+    },
+    {
+      "flow": "reading",
+      "simultaneous_clients": 10,
+      "requests": 100,
+      "seconds": 1.707,
+      "rps": 58.59,
+      "p50_ms": 55.15,
+      "p95_ms": 577.73,
+      "p99_ms": 1483.24,
+      "status": {
+        "200": 100
+      },
+      "server_cpu_seconds": 1.884,
+      "rss_mb": 174.5
+    },
+    {
+      "flow": "reading",
+      "simultaneous_clients": 25,
+      "requests": 250,
+      "seconds": 3.987,
+      "rps": 62.7,
+      "p50_ms": 113.46,
+      "p95_ms": 1227.98,
+      "p99_ms": 2948.14,
+      "status": {
+        "200": 250
+      },
+      "server_cpu_seconds": 4.409,
+      "rss_mb": 205.4
+    },
+    {
+      "flow": "reading",
+      "simultaneous_clients": 50,
+      "requests": 500,
+      "seconds": 8.185,
+      "rps": 61.09,
+      "p50_ms": 542.13,
+      "p95_ms": 1946.43,
+      "p99_ms": 3813.9,
+      "status": {
+        "200": 500
+      },
+      "server_cpu_seconds": 8.946,
+      "rss_mb": 239.8
+    },
+    {
+      "flow": "cards",
+      "simultaneous_clients": 1,
+      "requests": 4,
+      "seconds": 0.037,
+      "rps": 108.47,
+      "p50_ms": 8.24,
+      "p95_ms": 12.51,
+      "p99_ms": 12.51,
+      "status": {
+        "200": 4
+      },
+      "server_cpu_seconds": 0.028,
+      "rss_mb": 239.9
+    },
+    {
+      "flow": "cards",
+      "simultaneous_clients": 5,
+      "requests": 20,
+      "seconds": 0.152,
+      "rps": 131.8,
+      "p50_ms": 32.4,
+      "p95_ms": 68.96,
+      "p99_ms": 68.96,
+      "status": {
+        "200": 20
+      },
+      "server_cpu_seconds": 0.149,
+      "rss_mb": 239.9
+    },
+    {
+      "flow": "cards",
+      "simultaneous_clients": 10,
+      "requests": 40,
+      "seconds": 0.315,
+      "rps": 127.0,
+      "p50_ms": 45.51,
+      "p95_ms": 246.72,
+      "p99_ms": 251.48,
+      "status": {
+        "200": 40
+      },
+      "server_cpu_seconds": 0.319,
+      "rss_mb": 239.9
+    },
+    {
+      "flow": "cards",
+      "simultaneous_clients": 25,
+      "requests": 100,
+      "seconds": 1.058,
+      "rps": 94.5,
+      "p50_ms": 148.08,
+      "p95_ms": 518.22,
+      "p99_ms": 1018.83,
+      "status": {
+        "200": 100
+      },
+      "server_cpu_seconds": 0.928,
+      "rss_mb": 239.9
+    },
+    {
+      "flow": "cards",
+      "simultaneous_clients": 50,
+      "requests": 200,
+      "seconds": 1.762,
+      "rps": 113.49,
+      "p50_ms": 255.85,
+      "p95_ms": 853.64,
+      "p99_ms": 1541.28,
+      "status": {
+        "200": 200
+      },
+      "server_cpu_seconds": 1.698,
+      "rss_mb": 240.3
+    },
+    {
+      "flow": "games",
+      "simultaneous_clients": 1,
+      "requests": 4,
+      "seconds": 0.042,
+      "rps": 94.38,
+      "p50_ms": 10.33,
+      "p95_ms": 11.67,
+      "p99_ms": 11.67,
+      "status": {
+        "200": 4
+      },
+      "server_cpu_seconds": 0.031,
+      "rss_mb": 240.4
+    },
+    {
+      "flow": "games",
+      "simultaneous_clients": 5,
+      "requests": 20,
+      "seconds": 0.194,
+      "rps": 102.85,
+      "p50_ms": 42.73,
+      "p95_ms": 89.51,
+      "p99_ms": 89.51,
+      "status": {
+        "200": 20
+      },
+      "server_cpu_seconds": 0.203,
+      "rss_mb": 240.4
+    },
+    {
+      "flow": "games",
+      "simultaneous_clients": 10,
+      "requests": 40,
+      "seconds": 0.487,
+      "rps": 82.14,
+      "p50_ms": 70.99,
+      "p95_ms": 320.96,
+      "p99_ms": 331.65,
+      "status": {
+        "200": 40
+      },
+      "server_cpu_seconds": 0.496,
+      "rss_mb": 240.4
+    },
+    {
+      "flow": "games",
+      "simultaneous_clients": 25,
+      "requests": 100,
+      "seconds": 1.121,
+      "rps": 89.21,
+      "p50_ms": 144.86,
+      "p95_ms": 658.99,
+      "p99_ms": 1060.79,
+      "status": {
+        "200": 100
+      },
+      "server_cpu_seconds": 0.997,
+      "rss_mb": 240.4
+    },
+    {
+      "flow": "games",
+      "simultaneous_clients": 50,
+      "requests": 200,
+      "seconds": 2.239,
+      "rps": 89.34,
+      "p50_ms": 454.82,
+      "p95_ms": 860.49,
+      "p99_ms": 1294.21,
+      "status": {
+        "200": 200
+      },
+      "server_cpu_seconds": 2.233,
+      "rss_mb": 240.8
+    },
+    {
+      "flow": "registration",
+      "simultaneous_clients": 12,
+      "requests": 12,
+      "seconds": 1.054,
+      "p95_ms": 1036.6,
+      "status": {
+        "200": 12
+      },
+      "thirteenth_status": 429,
+      "server_cpu_seconds": 0.906,
+      "rss_mb": 242.8
+    }
+  ],
+  "limitations": [
+    "Not a production Render/Postgres measurement",
+    "Closed-loop clients, no browser rendering/network or think time",
+    "No paid AI calls or OCR in this benchmark"
+  ]
+}

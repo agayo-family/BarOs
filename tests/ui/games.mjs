@@ -14,7 +14,7 @@ const click=s=>e(s).click();
 function input(s,value){const x=e(s);x.value=value;x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}))}
 async function raw(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.clone().text());return r.json()}
 await raw('/auth/setup',{token:'baros-ui-audit-only',name:'Game owner',login:'game.owner',password:'audit-owner-password'});
-const core=await import('./ui/core.js?v=2.3.1');await core.reloadMe();
+const core=await import('./ui/core.js?v=2.4.0');await core.reloadMe();
 const venue=await core.api('/venues','POST',{name:'Game UI venue'});core.setOrg(venue.id);
 const answers=['90 °C','Высокий стакан со льдом','Уточнить состав у кухни','Предложить напиток по вкусу гостя','Сироп и вода и лёд','Чистые приборы'];
 const course=await core.api('/courses','POST',{title:'Материал игр UI',description:'Учимся по реальному материалу',positions:['bartender'],quiz_size:2,
@@ -32,7 +32,7 @@ async function next(){click('[data-game-next]');await until(()=>!document.queryS
 async function respondTo(q){if(q.variant==='recall'){click('[data-reveal-answer]');assert(e('.game-reveal').textContent.includes(q.answer));click('[data-self-rating=remembered]')}
  else if(q.variant==='truth')click('[data-truth='+q.claim_true+']');
  else if(q.variant==='scenario')click('[data-scenario='+q.correct_index+']');
- else {for(let i=0;i<q.tokens.length;i++)click('[data-game-token="'+i+'"]');click('[data-check-words]')}
+ else {const remaining=[...q.tokens];for(const word of q.answer.split(/\s+/)){const token=remaining.find(t=>t.text===word);assert(token);click('[data-game-token="'+token.id+'"]');remaining.splice(remaining.indexOf(token),1)}assert(remaining.length>0,'Words contain distractors');click('[data-check-words]')}
  await until(()=>document.querySelector('[data-game-next]'),'Feedback rendered');assert(e('.game-correct-answer').textContent.includes(q.answer));await next()}
 let run=await start('truth');
 // Fail after a real committed answer, then retry the same idempotent event.
@@ -56,5 +56,23 @@ for(const q of run.questions){click('[data-pair-question="'+q.id+'"]');click('[d
 assert(document.querySelector('.game-finish'));
 run=await start('mix');assert(new Set(run.questions.map(q=>q.variant)).size>=2);for(const q of run.questions)await respondTo(q);assert(document.querySelector('.game-finish'));
 learned=await core.api('/learning');assert.equal(learned.attempts,0);assert.equal(learned.courses[0].read_count,0);
-assert(!requests.some(r=>r.status>=500));console.log('GAMES REAL API + DOM PASS: navigation after cards, six modes, correctness/explanations, gentle mistakes, server progress, pause/resume, escaped theory, token undo, pair completion, mixed route, lost-response idempotent retry and no exam/theory credit; requests='+requests.length);
+// Optional profile flow on the same real employee account.
+core.go('/app/profile');await until(()=>document.querySelector('.profile-hero'),'Profile route');
+click('[data-profile-tab=pet]');click('[data-pet-picker]');assert.equal(document.querySelectorAll('[data-choose-pet]').length,15);
+click('[data-choose-pet=ember]');click('[data-confirm-pet]');await until(()=>document.querySelector('.pet-home'),'Pet chosen');await until(()=>document.querySelector('.companion-bubble'),'Floating companion');
+const originalRandom=Math.random;Math.random=()=>.5;const phrases=new Set();
+for(let i=0;i<20;i++){click('.companion-bubble');phrases.add(e('[data-companion-phrase]').textContent);click('[data-companion-close]')}assert.equal(phrases.size,20,'Phrases do not repeat');
+Math.random=()=>.01;click('.companion-bubble');assert(e('.companion-popover').classList.contains('pet-trick'));click('[data-companion-close]');Math.random=originalRandom;
+const {execFileSync}=await import('node:child_process');
+execFileSync('python',['-c',"import sys;from baros.db import SessionLocal;from baros.v2.models import Account;from baros.v2.growth import reward;db=SessionLocal();a=db.get(Account,int(sys.argv[1]));reward(db,a,'ui-seed-disposable-only','theory',300,160,theory=1);db.commit();db.close()",String(core.state.me.account.id)],{env:process.env});
+core.go('/app/profile');await until(()=>document.querySelector('.profile-hero')?.textContent.includes('Уровень 3'),'Profile refresh and level');
+click('[data-profile-tab=shop]');assert.equal(document.querySelectorAll('[data-buy]').length,6);assert(!e('[data-buy=artifact-lantern]').disabled);click('[data-buy=artifact-lantern]');await until(()=>document.querySelector('[data-equip=artifact-lantern]'),'Shop purchase');
+click('[data-equip=artifact-lantern]');await until(()=>document.querySelector('[data-equip=""][data-slot=artifact]'),'Artifact equipped');assert(document.querySelector('.artifact-lantern'));
+click('[data-profile-tab=pet]');click('[data-pet-picker]');click('[data-choose-pet=moon]');assert(e('.modal-body').textContent.includes('единственную смену'));click('[data-confirm-pet]');await until(()=>document.querySelector('.pet-home h2')?.textContent==='Селли','Pet changed');assert(!document.querySelector('[data-pet-picker]'));assert.equal((await core.api('/growth')).pet_level,1);
+const checkbox=e('[data-companion-enabled]');checkbox.checked=false;checkbox.dispatchEvent(new Event('change',{bubbles:true}));await until(()=>!document.querySelector('.companion-root'),'Companion hidden');
+checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}));await until(()=>document.querySelector('.companion-root'),'Companion enabled');
+// High difficulty requires a verdict and a precise material-based choice.
+await board();input('[name=game-difficulty]','hard');input('[name=size-truth]','5');click('[data-start-game=truth]');await until(()=>document.querySelector('[data-hard-truth]'),'Hard truth player');
+const hardRun=await core.api('/games/runs/'+new URLSearchParams(location.search).get('run'));const hardQ=hardRun.questions[0];click('[data-hard-truth='+hardQ.claim_true+']');click('[data-truth-reason='+hardQ.correct_index+']');await until(()=>document.querySelector('.game-feedback.positive'),'Hard answer verified');
+assert(!requests.some(r=>r.status>=500));console.log('GAMES REAL API + DOM PASS: navigation after cards, six modes, correctness/explanations, gentle mistakes, server progress, pause/resume, escaped theory, token undo, pair completion, mixed route, lost-response idempotent retry, no exam/theory credit, profile, 15 pets, no-repeat phrases, legend trick, shop, equipment, one pet swap, preference and hard truth; requests='+requests.length);
 core.state.cleanup?.();dom.window.close();process.exit(0);

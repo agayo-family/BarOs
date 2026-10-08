@@ -1,5 +1,7 @@
 """Learning practice from course publications; never creates exam or theory credit."""
 import secrets
+import re
+from difflib import SequenceMatcher
 from datetime import timedelta
 from typing import Literal
 from fastapi import APIRouter, Depends, Request
@@ -13,6 +15,7 @@ from .domain import (require, parse, dump, now, iso, digest, applies, course_set
 from .learning import learning_course
 from .models import Account, GameProgress, GameRun, GameTurn, CourseRevision
 from .schemas import StrictModel
+from .growth import reward
 
 router = APIRouter(prefix='/api/games')
 MODES = {
@@ -28,6 +31,7 @@ MODES = {
 class StartIn(StrictModel):
     mode: Literal['mix', 'pairs', 'words', 'truth', 'scenario', 'recall']
     scope: Literal['all', 'review'] = 'all'
+    difficulty: Literal['easy','normal','hard'] = 'normal'
     size: int = Field(default=5, ge=1, le=20)
 
 
@@ -41,7 +45,7 @@ class TurnIn(StrictModel):
     @field_validator('value')
     @classmethod
     def bounded_value(cls, value):
-        if isinstance(value, list) and (len(value) > 24 or any(type(x) is not int or x < 0 or x > 24 for x in value)):
+        if isinstance(value, list) and (len(value) > 48 or any(type(x) is not int or x < 0 or x > 63 for x in value)):
             raise ValueError('Некорректные части ответа')
         return value
 
@@ -153,7 +157,8 @@ def board(cid: int, request: Request, a=Depends(actor), db=Depends(get_db)):
     db.commit(); return result
 
 
-def variant(q, mode, index, rng):
+def variant(q, mode, index, rng, difficulty='normal'):
+    q={**q}
     if mode == 'mix':
         candidates = ['recall', 'truth']
         if 2 <= len(words(q['answer'])) <= 24: candidates.append('words')
@@ -162,15 +167,28 @@ def variant(q, mode, index, rng):
         mode = candidates[index % len(candidates)]
     result = {**q, 'variant': mode}
     if mode == 'truth':
-        idx = q['correct_index'] if rng.random() < .5 else rng.choice([i for i in range(len(q['choices'])) if i != q['correct_index']])
+        wrong=[i for i in range(len(q['choices'])) if i!=q['correct_index']]
+        if difficulty=='hard': wrong.sort(key=lambda i:SequenceMatcher(None,q['answer'].casefold(),q['choices'][i].casefold()).ratio(),reverse=True);wrong=wrong[:2]
+        idx = q['correct_index'] if rng.random() < .5 else rng.choice(wrong)
         result['claim'] = q['choices'][idx]; result['claim_true'] = idx == q['correct_index']
     if mode == 'scenario':
-        order = list(range(len(q['choices']))); rng.shuffle(order)
+        order = list(range(len(q['choices'])))
+        if difficulty!='hard':
+            wrong=[i for i in order if i!=q['correct_index']];rng.shuffle(wrong);order=[q['correct_index'],*wrong[:1 if difficulty=='easy' else 2]]
+        rng.shuffle(order)
         result['choices'] = [q['choices'][i] for i in order]; result['correct_index'] = order.index(q['correct_index'])
     if mode == 'words':
-        tokens = list(enumerate(words(q['answer']))); rng.shuffle(tokens)
-        if [i for i, _ in tokens] == list(range(len(tokens))): tokens = tokens[1:]+tokens[:1]
-        result['tokens'] = [{'id': i, 'text': word} for i, word in tokens]
+        parts=words(q['answer']); correct={x.casefold() for x in parts}
+        distractors=[]
+        for i,choice in enumerate(q['choices']):
+            if i==q['correct_index']:continue
+            for word in words(choice):
+                if word.casefold() not in correct and word.casefold() not in {x.casefold() for x in distractors}:distractors.append(word)
+        rng.shuffle(distractors)
+        count={'easy':2,'normal':max(4,10-len(parts)),'hard':max(8,14-len(parts))}[difficulty]
+        # Distractors come from manager-authored alternatives, never invented facts.
+        tokens=parts+distractors[:count];rng.shuffle(tokens)
+        result['tokens']=[{'id':i,'text':word} for i,word in enumerate(tokens)]
     return result
 
 
@@ -178,6 +196,7 @@ def run_card(run):
     d = parse(run.payload); answers = parse(run.answers)
     items = list(answers.values())
     return {'id': run.id, 'course_id': run.course_id, 'title': d['title'], 'mode': run.mode,
+            'difficulty':d.get('difficulty','normal'), 'pair_options':d.get('pair_options',[]),
             'revision_id': run.revision_id, 'preview': run.preview, 'expires_at': iso(run.expires_at),
             'questions': d['questions'], 'answers': answers,
             'finished': len(answers) == len(d['questions']) and (run.mode != 'pairs' or all(r['correct'] for r in items)),
@@ -200,12 +219,20 @@ def start(cid: int, data: StartIn, request: Request, a=Depends(actor), db=Depend
         r = rows.get(q['id'])
         return (0 if r and r.due_at <= now() else 1 if not r else 2, r.practiced if r else 0)
     cards.sort(key=priority)
-    n = min(len(cards), min(data.size, 6) if data.mode == 'pairs' else data.size)
+    n = min(len(cards), min(data.size, {'easy':3,'normal':4,'hard':6}[data.difficulty]) if data.mode == 'pairs' else data.size)
     if data.mode == 'pairs': n = max(2, n)
-    questions = [variant(q, data.mode, i, rng) for i, q in enumerate(cards[:n])]
+    questions = [variant(q, data.mode, i, rng,data.difficulty) for i, q in enumerate(cards[:n])]
+    pair_options=[{'id':q['id'],'text':q['answer']} for q in questions] if data.mode=='pairs' else []
+    if data.mode=='pairs' and data.difficulty!='easy':
+        texts={q['answer'].casefold() for q in questions}
+        for q in cards[n:]:
+            if q['answer'].casefold() not in texts:
+                pair_options.append({'id':10001+q['id'],'text':q['answer']});texts.add(q['answer'].casefold())
+                if len(pair_options)>=n+(2 if data.difficulty=='normal' else 4):break
+    rng.shuffle(pair_options)
     run = GameRun(id=secrets.token_urlsafe(24), organization_id=c.organization_id, account_id=a.id,
                   course_id=cid, revision_id=rev.id if rev else None, preview=a.role != 'employee', mode=data.mode,
-                  payload=dump({'title': p['title'], 'positions': p['positions'], 'questions': questions, 'edit_version': s.edit_version}),
+                  payload=dump({'title': p['title'], 'positions': p['positions'], 'questions': questions, 'edit_version': s.edit_version,'difficulty':data.difficulty,'pair_options':pair_options}),
                   expires_at=now()+timedelta(days=7), answers='{}')
     db.add(run); db.commit(); return run_card(run)
 
@@ -234,7 +261,7 @@ def resume(rid: str, request: Request, a=Depends(actor), db=Depends(get_db)):
     return {**run_card(run), 'lessons': data.get('lessons', [])}
 
 
-def grade(q, data, questions):
+def grade(q, data, questions, pair_options=None):
     mode = q['variant']; self_assessed = mode == 'recall'
     if self_assessed:
         require(data.rating is not None and data.value is None, 'Оцените, удалось ли вспомнить ответ')
@@ -244,12 +271,12 @@ def grade(q, data, questions):
         require(type(data.value) is bool, 'Выберите «Верно» или «Неверно»')
         return data.value == q['claim_true'], False
     if mode == 'words':
-        require(isinstance(data.value, list) and sorted(data.value) == list(range(len(q['tokens']))), 'Используйте каждую часть ответа ровно один раз')
-        parts = words(q['answer'])
-        return [parts[i] for i in data.value] == parts, False
+        tokens={x['id']:x['text'] for x in q['tokens']}
+        require(isinstance(data.value,list) and data.value and len(set(data.value))==len(data.value) and all(i in tokens for i in data.value),'Выберите нужные слова без повторений')
+        return [tokens[i] for i in data.value] == words(q['answer']), False
     require(type(data.value) is int, 'Выберите один ответ')
     if mode == 'pairs':
-        require(data.value in {x['id'] for x in questions}, 'Ответ не найден')
+        require(data.value in {x['id'] for x in (pair_options or questions)}, 'Ответ не найден')
         return data.value == q['id'], False
     require(0 <= data.value < len(q['choices']), 'Ответ не найден')
     return data.value == q['correct_index'], False
@@ -268,7 +295,11 @@ def answer(rid: str, data: TurnIn, request: Request, a=Depends(actor), db=Depend
     p = parse(run.payload); questions = p['questions']
     q = next((x for x in questions if x['id'] == data.question_id), None)
     require(q, 'Задание не относится к этому раунду', 404)
-    correct, self_assessed = grade(q, data, questions)
+    if q['variant']=='truth' and p.get('difficulty')=='hard':
+        require(isinstance(data.value,list) and len(data.value)==2 and data.value[0] in (0,1) and 0<=data.value[1]<len(q['choices']),'Выберите вердикт и точный ответ по материалу')
+        correct=bool(data.value[0])==q['claim_true'] and data.value[1]==q['correct_index'];self_assessed=False
+        require(data.rating is None,'Самооценка здесь недоступна')
+    else:correct, self_assessed = grade(q, data, questions,p.get('pair_options'))
     answers = parse(run.answers); key = str(q['id']); first = key not in answers
     old = answers.get(key, {})
     current = {'correct': correct, 'first_correct': old.get('first_correct', correct and not data.hinted),
@@ -291,6 +322,11 @@ def answer(rid: str, data: TurnIn, request: Request, a=Depends(actor), db=Depend
             row.due_at = now() if not correct or data.hinted else now()+timedelta(days=1)
     result = {'question_id': q['id'], 'correct': correct, 'self_assessed': self_assessed, 'first': first,
               'answer': q['answer'], 'explanation': q['explanation']}
+    if first and not run.preview:
+        objective=correct and not self_assessed and not data.hinted
+        difficulty=p.get('difficulty','normal')
+        xp,gold=({'easy':(4,2),'normal':(6,3),'hard':(9,4)}[difficulty] if objective else (1,1))
+        result['reward']=reward(db,a,f"game:{run.revision_id}:{q['id']}:{now().date().isoformat()}",'games',xp,gold,game_correct=int(objective),hard_correct=int(objective and difficulty=='hard'),games=1)
     db.add(GameTurn(run_id=rid, event_id=data.event_id, request_hash=request_hash, result=dump(result)))
     db.commit(); return {**result, 'run': run_card(run)}
 

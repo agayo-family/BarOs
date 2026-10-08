@@ -1,4 +1,6 @@
-import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.3.1';
+import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.4.0';
+
+import {rewardNotice} from './growth.js?v=2.4.0';
 
 export async function cardsPage(root,cid=null){const ticket=state.renderTicket;
  const preview=state.me.account.role!=='employee';
@@ -31,7 +33,7 @@ export function mountDeck(root,data,{preview=false,ticket=state.renderTicket}={}
   face.addEventListener('pointerdown',e=>{if(e.isPrimary===false||e.button>0)return;drag={x:e.clientX,y:e.clientY,id:e.pointerId};face.setPointerCapture?.(e.pointerId)});
   face.addEventListener('pointerup',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag=null;if(Math.abs(dx)>=55&&Math.abs(dx)>Math.abs(dy)*1.3){suppress=true;step(dx<0?1:-1);setTimeout(()=>{suppress=false},350)}});
   face.addEventListener('pointercancel',()=>{drag=null});
-  root.querySelectorAll('[data-remember]').forEach(b=>b.onclick=()=>{if(b.dataset.remember==='yes')known.add(c.id);else known.delete(c.id);save();if(index+1<deck.length)step(1);else if(repeat){deck=cards.filter(x=>!known.has(x.id));index=0;flipped=false;draw()}else{draw();toast('Отметка сохранена. Можно повторить сложные карточки.')}});
+  root.querySelectorAll('[data-remember]').forEach(b=>b.onclick=async()=>{if(busy)return;if(!preview){busy=true;root.querySelectorAll('[data-remember]').forEach(x=>x.disabled=true);try{const result=await api('/learning/'+data.id+'/cards/'+c.id+'/practice','POST',{});rewardNotice(result.reward)}catch(e){toast(e.message,true);root.querySelectorAll('[data-remember]').forEach(x=>x.disabled=false);return}finally{busy=false}if(disposed)return}if(b.dataset.remember==='yes')known.add(c.id);else known.delete(c.id);save();if(index+1<deck.length)step(1);else if(repeat){deck=cards.filter(x=>!known.has(x.id));index=0;flipped=false;draw()}else{draw();toast('Отметка сохранена. Можно повторить сложные карточки.')}});
   $('[data-shuffle]',root).onclick=()=>{for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]]}index=0;flipped=false;draw();toast('Карточки перемешаны')};
   $('[data-repeat]',root).onclick=()=>{repeat=!repeat;deck=repeat?cards.filter(x=>!known.has(x.id)):[...cards];index=0;flipped=false;draw()};
  }

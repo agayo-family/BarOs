@@ -29,3 +29,8 @@ AI_ALLOW_PAID_FALLBACK = os.getenv("AI_ALLOW_PAID_FALLBACK", "0").lower() in {"1
 AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "5"))
 AI_GLOBAL_DAILY_LIMIT = int(os.getenv("AI_GLOBAL_DAILY_LIMIT", "20"))
 AI_CONTEXT_LIMIT_CHARS = int(os.getenv("AI_CONTEXT_LIMIT_CHARS", "120000"))
+
+# Direct OpenAI is explicitly enabled; a key alone never switches a free provider to paid.
+OPENAI_API_KEY=os.getenv('OPENAI_API_KEY','')
+OPENAI_MODEL=os.getenv('OPENAI_MODEL','gpt-6-luna')
+OPENAI_ENABLED=os.getenv('OPENAI_ENABLED','0').lower() in {'1','true','yes','on'}

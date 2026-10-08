@@ -4,6 +4,10 @@ export const state={me:null,org:localStorage.getItem('baros:venue')||'',dirty:fa
 export function pageCleanup(callback,ticket){if(ticket!==state.renderTicket){callback();return}state.cleanup=callback}
 export const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
+ camera:'<path d="M4 6h4l2-3h4l2 3h4v14H4z"/><circle cx="12" cy="12" r="4"/>',
+ heart:'<path d="M12 21C5 16 2 12 3 7c1-4 7-5 9-1 2-4 8-3 9 1 1 5-2 9-9 14Z"/>',
+ bag:'<path d="M5 7h14l1 14H4L5 7Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/>',
+
  games:'<path d="M8 7h8c3 0 5 5 5 9 0 3-3 3-5 0H8c-2 3-5 3-5 0 0-4 2-9 5-9Z"/><path d="M7 10v5M4.5 12.5h5M16 11h.01M18 14h.01M12 7V3"/>',brain:'<path d="M12 4c-3-3-7 0-6 3-4 1-4 6-1 7-2 4 3 8 7 5 4 3 9-1 7-5 3-1 3-6-1-7 1-3-3-6-6-3ZM12 4v15M7 8l2 2M5 14h3M17 8l-2 2M19 14h-3"/>',blocks:'<rect x="3" y="4" width="8" height="6" rx="2"/><rect x="13" y="4" width="8" height="6" rx="2"/><rect x="3" y="14" width="5" height="6" rx="2"/><rect x="10" y="14" width="11" height="6" rx="2"/>',route:'<circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 5h9a4 4 0 0 1 0 8H8a3 3 0 0 0 0 6h9"/>',
  cards:'<rect x="5" y="3" width="14" height="18" rx="3"/><path d="M2 7v12M22 5v12M9 9h6M9 13h4"/>',moon:'<path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z"/>',sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1"/>',
  dashboard:'<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
@@ -29,7 +33,7 @@ const icons={
  phone:'<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/>',interview:'<path d="M21 12a9 9 0 0 1-9 9H3l2-5a9 9 0 1 1 16-4Z"/><path d="M8 9h8M8 13h5"/>',
  eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',refresh:'<path d="M20 8a8 8 0 1 0 1 7M20 3v5h-5"/>',lock:'<rect x="4" y="10" width="16" height="12" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3M12 15v3"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M7 14h3M7 17h3"/>'};
 export const icon=(name,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.file}</svg>`;
-export const brand=()=>`<a href="/app" class="brand"><div class="brandmark">B<span>•</span></div>BarOS<small>2.3</small></a>`;
+export const brand=()=>`<a href="/app" class="brand"><div class="brandmark">B<span>•</span></div>BarOS<small>2.4</small></a>`;
 export const initials=s=>String(s||'?').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
 export const avatar=(s,cls='')=>`<div class="avatar ${cls}">${esc(initials(s))}</div>`;
 export const badge=(s,cls='')=>`<span class="badge ${cls}">${esc(s)}</span>`;

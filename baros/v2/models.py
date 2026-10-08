@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 
@@ -275,3 +275,48 @@ class GameTurn(Base):
     event_id: Mapped[str] = mapped_column(String(80))
     request_hash: Mapped[str] = mapped_column(String(64))
     result: Mapped[str] = mapped_column(Text)
+
+
+class LearningProfile(Base):
+    __tablename__ = 'v2_learning_profiles'
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), primary_key=True)
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    gold: Mapped[int] = mapped_column(Integer, default=0)
+    pet_id: Mapped[str | None] = mapped_column(String(30))
+    pet_xp: Mapped[int] = mapped_column(Integer, default=0)
+    pet_swaps: Mapped[int] = mapped_column(Integer, default=0)
+    inventory: Mapped[str] = mapped_column(Text, default='[]')
+    equipped: Mapped[str] = mapped_column(Text, default='{}')
+    achievements: Mapped[str] = mapped_column(Text, default='{}')
+    stats: Mapped[str] = mapped_column(Text, default='{}')
+    avatar: Mapped[bytes | None] = mapped_column(LargeBinary)
+    avatar_version: Mapped[int] = mapped_column(Integer, default=0)
+    companion_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class RewardEvent(Base):
+    __tablename__ = 'v2_reward_events'
+    __table_args__ = (UniqueConstraint('account_id', 'event_key'),Index('ix_v2_rewards_account_day','account_id','created_at'))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    event_key: Mapped[str] = mapped_column(String(180))
+    category: Mapped[str] = mapped_column(String(30))
+    xp: Mapped[int] = mapped_column(Integer)
+    gold: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class AIUsage(Base):
+    __tablename__ = 'v2_ai_usage'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey('v2_jobs.id'), index=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(200))
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    reserved_micro_usd: Mapped[int] = mapped_column(Integer, default=0)
+    cost_micro_usd: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default='reserved')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)

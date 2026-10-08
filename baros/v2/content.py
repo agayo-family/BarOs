@@ -243,13 +243,14 @@ def job_card(j):
 @router.get('/api/jobs')
 def jobs(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
-    return {'ai':ai.status(),'jobs':[job_card(j) for j in db.scalars(select(Job).where(Job.organization_id==oid).order_by(Job.created_at.desc()).limit(30)).all()]}
+    from .ai_budget import overview
+    return {'ai':ai.status(),'usage':overview(db,None if a.role=='owner' else oid),'jobs':[job_card(j) for j in db.scalars(select(Job).where(Job.organization_id==oid).order_by(Job.created_at.desc()).limit(30)).all()]}
 
 
 @router.post('/api/jobs')
 def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True)
-    require(ai.provider(),'AI не подключён: добавьте OPENROUTER_API_KEY в настройках сервера',503)
+    require(ai.provider(),'AI не подключён. Владелец должен настроить ключ и провайдера в Render → Environment.',503)
     pos=positions(data.positions)
     db.execute(select(Setting).where(Setting.key=='ai_quota_lock').with_for_update()).first()
     s=db.scalar(select(VenueSettings).where(VenueSettings.organization_id==oid).with_for_update())
@@ -285,3 +286,10 @@ def retry(jid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
     require(not db.scalar(select(Job.id).where(Job.organization_id==oid,Job.status.in_(['queued','running']))),'Уже создаётся обучение',409)
     j.status='queued';j.error='';j.phase='Продолжаем с сохранённого шага';j.lease_token=None;j.lease_until=None
     log(db,a,oid,'AI-генерация продолжена',job_id=j.id);db.commit();return job_card(j)
+
+
+@router.get('/api/ai/usage')
+def ai_usage(request:Request,a=Depends(actor),db=Depends(get_db)):
+    from .ai_budget import overview
+    if a.role=='owner':return overview(db)
+    oid=manager(request,db,a);return overview(db,oid)
