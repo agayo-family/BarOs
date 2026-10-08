@@ -14,7 +14,7 @@ function input(s,value){const x=e(s);x.value=value;x.dispatchEvent(new Event('in
 const submit=s=>e(s).dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
 async function raw(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.clone().text());return r.json()}
 await raw('/auth/setup',{token:'baros-ui-audit-only',name:'Audit owner',login:'shift.owner',password:'audit-owner-password'});
-const core=await import('./ui/core.js?v=2.4.0');await core.reloadMe();
+const core=await import('./ui/core.js?v=2.4.1');await core.reloadMe();
 const venue=await core.api('/venues','POST',{name:'Shift UI venue'}),invite=await core.api('/venues/'+venue.id+'/invite','POST',{});
 await core.api('/auth/logout','POST',{});core.state.me=null;
 await raw('/auth/join',{code:venue.join_code,name:'Shift worker',login:'shift.worker',password:'audit-worker-password',positions:['bartender']});
@@ -35,7 +35,7 @@ response=await core.api(`/shifts?start=2026-10-01&end=2026-10-31&account_id=${ai
 click('[data-rotation]');click('[data-preset="2/2"]');input('#shift-rotation-form [name=start]','2026-10-10');input('#shift-rotation-form [name=end]','2026-10-17');submit('#shift-rotation-form');await until(()=>e('#shift-rotation-preview').textContent.includes('Конфликтов: 4'),'Conflicting cycle');assert(e('[data-apply-rotation]').disabled);input('#shift-rotation-form [name=end]','2026-10-20');assert.equal(e('#shift-rotation-preview').textContent,'');click('[data-close]');
 const before=requests.length;click('[data-shift-refresh]');assert(e('[data-shift-refresh]').disabled);await until(()=>!e('[data-shift-refresh]').disabled,'Refresh feedback');assert(requests.slice(before).some(r=>r.path==='/api/shifts'));
 click('[data-shift-export]');assert(e('[data-export=csv]'));assert(e('[data-export=ics]'));click('[data-print-shifts]');assert(document.querySelector('.shift-agenda'));click('[data-view=report]');input('#shift-range [name=from]','2026-01-01');input('#shift-range [name=to]','2026-12-31');submit('#shift-range');await until(()=>e('.shift-report').textContent.includes('31 декабря'),'Custom annual report');
-const {wallISO,hours}=await import('./ui/shifts.js?v=2.4.0');assert.equal(wallISO('2026-10-08T22:00','Europe/Moscow'),'2026-10-08T19:00:00.000Z');assert.throws(()=>wallISO('2026-03-29T02:30','Europe/Berlin'));assert.equal(hours(510),'8 ч 30 мин');
+const {wallISO,hours}=await import('./ui/shifts.js?v=2.4.1');assert.equal(wallISO('2026-10-08T22:00','Europe/Moscow'),'2026-10-08T19:00:00.000Z');assert.throws(()=>wallISO('2026-03-29T02:30','Europe/Berlin'));assert.equal(hours(510),'8 ч 30 мин');
 await core.api('/auth/logout','POST',{});core.state.me=null;
 await raw('/invites/'+invite.url.split('/').at(-1),{name:'Shift manager',organization:'Shift UI venue'});await core.reloadMe();core.go('/app/shifts');await until(()=>document.querySelector('[name=account]')?.textContent.includes('Вся команда')&&core.state.me.account.role==='manager','Manager shifts');
 assert(e('[name=account]').textContent.includes('Вся команда'));assert(e('.shift-calendar').textContent.includes('Night UI'));

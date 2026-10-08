@@ -1,4 +1,4 @@
-import {$,$$,state,api,esc,icon,btn,pageHead,badge,progress,modal,on,toast,fmtDate} from './core.js?v=2.4.0';
+import {$,$$,state,api,esc,icon,btn,pageHead,badge,progress,modal,on,toast,fmtDate} from './core.js?v=2.4.1';
 let catalogue=null,flight=null,phraseTimer=null,accountId=null;
 const stages=level=>level>=8?3:level>=4?2:1;
 const sprite=(p,level=1)=>`/static/v2/pets/${p.id}-${stages(level)}.svg`;

@@ -58,7 +58,7 @@ def settle(db,uid,usage=None,failed=False):
 def overview(db,oid=None):
     day=now().replace(hour=0,minute=0,second=0,microsecond=0);month=day.replace(day=1)
     filters=[AIUsage.organization_id==oid] if oid else []
-    rows=db.scalars(select(AIUsage).where(*filters).order_by(AIUsage.created_at.desc()).limit(50)).all()
+    rows=db.scalars(select(AIUsage).where(AIUsage.provider=='openai',*filters).order_by(AIUsage.created_at.desc()).limit(50)).all()
     return {'daily_usd':used(db,[*filters,AIUsage.created_at>=day])/1_000_000,'monthly_usd':used(db,[*filters,AIUsage.created_at>=month])/1_000_000,
       'limits_usd':{k:v/1_000_000 for k,v in limits().items()} if not oid else None,
       'requests':[{'job_id':r.job_id,'model':r.model,'input_tokens':r.input_tokens,'output_tokens':r.output_tokens,'cached_tokens':r.cached_tokens,

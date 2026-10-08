@@ -153,5 +153,14 @@ class GrowthTests(unittest.TestCase):
   with patch.object(ai,'AI_PROVIDER','openai'),patch.object(ai,'OPENAI_API_KEY','unit-key'),patch.object(ai,'OPENAI_ENABLED',True),patch.dict(os.environ,{'AI_PROVIDER_DAILY_CALL_LIMIT':'1'}),patch.object(ai.httpx,'AsyncClient') as client:
    with self.assertRaisesRegex(ValueError,'Дневной лимит'):asyncio.run(ai.call_model('Theory JSON','ai-budget-test','lease'))
    client.assert_not_called()
+ def test_ai_usage_excludes_free_calls_and_respects_venue_scope(self):
+  with SessionLocal() as db:
+   other=db.get(Account,self.ids['foreign']);db.add(Job(id='foreign-ai',organization_id=other.organization_id,account_id=other.id,context='Other',positions_json='[]'));db.flush()
+   for uid,jid,oid,provider,cost in [('free','ai-budget-test',self.oid,'openrouter',0),('ours','ai-budget-test',self.oid,'openai',100000),('other','foreign-ai',other.organization_id,'openai',200000)]:
+    db.add(AIUsage(id=uid,job_id=jid,organization_id=oid,provider=provider,model='gpt-6-luna' if provider=='openai' else 'free',reserved_micro_usd=cost,cost_micro_usd=cost,status='recorded'))
+   db.commit()
+  self.assertEqual(self.client.get('/api/ai/usage').status_code,403)
+  self.login('manager');u=self.client.get('/api/ai/usage').json();self.assertEqual(u['daily_usd'],.1);self.assertEqual(len(u['requests']),1);self.assertIsNone(u['limits_usd'])
+  self.login('owner');u=self.client.get('/api/ai/usage').json();self.assertEqual(u['daily_usd'],.3);self.assertEqual(len(u['requests']),2);self.assertIsNotNone(u['limits_usd'])
 
 if __name__=='__main__':unittest.main()

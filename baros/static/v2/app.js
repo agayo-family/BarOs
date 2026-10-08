@@ -1,16 +1,16 @@
-import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute} from './core.js?v=2.4.0';
-import {cardsPage} from './cards.js?v=2.4.0';
-import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.4.0';
-import {authPage} from './auth.js?v=2.4.0';
-import {overview,coursesPage,staffPage,reportsPage,sourcesPage,aiPage,interviewPage} from './manage.js?v=2.4.0';
-import {editorPage} from './editor.js?v=2.4.0';
-import {learningPage,lessonPage,examPage,historyPage} from './learn.js?v=2.4.0';
-import {ownerHome,venueSettingsPage,ownerAuditPage,ownerSettingsPage} from './owner.js?v=2.4.0';
+import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute} from './core.js?v=2.4.1';
+import {cardsPage} from './cards.js?v=2.4.1';
+import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.4.1';
+import {authPage} from './auth.js?v=2.4.1';
+import {overview,coursesPage,staffPage,reportsPage,sourcesPage,aiPage,interviewPage} from './manage.js?v=2.4.1';
+import {editorPage} from './editor.js?v=2.4.1';
+import {learningPage,lessonPage,examPage,historyPage} from './learn.js?v=2.4.1';
+import {ownerHome,venueSettingsPage,ownerAuditPage,ownerSettingsPage} from './owner.js?v=2.4.1';
 
-import {gamesPage} from './games.js?v=2.4.0';
-import {shiftsPage} from './shifts.js?v=2.4.0';
+import {gamesPage} from './games.js?v=2.4.1';
+import {shiftsPage} from './shifts.js?v=2.4.1';
 
-import {profilePage,syncCompanion,clearCompanion} from './growth.js?v=2.4.0';
+import {profilePage,syncCompanion,clearCompanion} from './growth.js?v=2.4.1';
 
 const $app=()=>$('#app');
 function path(){return location.pathname.replace(/\/$/,'')||'/'}
