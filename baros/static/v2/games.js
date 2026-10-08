@@ -1,5 +1,5 @@
-import {$,$$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,go,on,toast,select} from './core.js?v=2.3.0';
-import {renderLesson} from './learning-ui.js?v=2.3.0';
+import {$,$$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,go,on,toast,select} from './core.js?v=2.3.1';
+import {renderLesson} from './learning-ui.js?v=2.3.1';
 
 const names={mix:'Маршрут темы',pairs:'Найди пару',words:'Собери ответ',truth:'Верно или нет',scenario:'Рабочая ситуация',recall:'Вспомни сам'};
 const plural=(n,one,few,many)=>n%100>=11&&n%100<=14?many:n%10===1?one:n%10>=2&&n%10<=4?few:many;

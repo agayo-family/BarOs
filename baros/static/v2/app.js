@@ -1,14 +1,14 @@
-import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute} from './core.js?v=2.3.0';
-import {cardsPage} from './cards.js?v=2.3.0';
-import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.3.0';
-import {authPage} from './auth.js?v=2.3.0';
-import {overview,coursesPage,staffPage,reportsPage,sourcesPage,aiPage,interviewPage} from './manage.js?v=2.3.0';
-import {editorPage} from './editor.js?v=2.3.0';
-import {learningPage,lessonPage,examPage,historyPage} from './learn.js?v=2.3.0';
-import {ownerHome,venueSettingsPage,ownerAuditPage,ownerSettingsPage} from './owner.js?v=2.3.0';
+import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute} from './core.js?v=2.3.1';
+import {cardsPage} from './cards.js?v=2.3.1';
+import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.3.1';
+import {authPage} from './auth.js?v=2.3.1';
+import {overview,coursesPage,staffPage,reportsPage,sourcesPage,aiPage,interviewPage} from './manage.js?v=2.3.1';
+import {editorPage} from './editor.js?v=2.3.1';
+import {learningPage,lessonPage,examPage,historyPage} from './learn.js?v=2.3.1';
+import {ownerHome,venueSettingsPage,ownerAuditPage,ownerSettingsPage} from './owner.js?v=2.3.1';
 
-import {gamesPage} from './games.js?v=2.3.0';
-import {shiftsPage} from './shifts.js?v=2.3.0';
+import {gamesPage} from './games.js?v=2.3.1';
+import {shiftsPage} from './shifts.js?v=2.3.1';
 
 const $app=()=>$('#app');
 function path(){return location.pathname.replace(/\/$/,'')||'/'}
@@ -35,6 +35,7 @@ async function renderAuthed(ticket){if(state.cleanup){state.cleanup();state.clea
   if(a.role==='owner'&&!state.org&&['/app','/app/venues'].includes(p))rendered=await ownerHome(root);
   else if(a.role==='owner'&&!state.org&&p==='/app/audit')rendered=await ownerAuditPage(root);
   else if(a.role==='owner'&&!state.org&&p==='/app/settings')rendered=await ownerSettingsPage(root);
+  else if(a.role==='owner'&&!state.org&&p!=='/app/notices')rendered=await ownerHome(root,{returnTo:p+location.search});
   else if((a.role==='manager'||a.role==='owner')&&p==='/app')rendered=await overview(root);
   else if((a.role==='manager'||a.role==='owner')&&p==='/app/courses')rendered=await coursesPage(root);
   else if((a.role==='manager'||a.role==='owner')&&p==='/app/staff')rendered=await staffPage(root);

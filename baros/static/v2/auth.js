@@ -1,5 +1,5 @@
-import {themeButton,syncThemeControls} from './experience.js?v=2.3.0';
-import {$,state,api,reloadMe,go,brand,icon,esc,field,positions,selected,wirePositions,bindForm,btn,notice,modal,copy,badge} from './core.js?v=2.3.0';
+import {themeButton,syncThemeControls} from './experience.js?v=2.3.1';
+import {$,state,api,reloadMe,go,brand,icon,esc,field,positions,selected,wirePositions,bindForm,btn,notice,modal,copy,badge} from './core.js?v=2.3.1';
 export async function authPage(path,ticket=state.renderTicket){
  state.me=null;
  const info=await api('/public');if(ticket!==state.renderTicket)return;state.me={positions:info.positions};

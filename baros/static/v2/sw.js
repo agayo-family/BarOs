@@ -1,5 +1,5 @@
-const CACHE = 'baros-v2-20261008-4';
-const ASSETS = ['/static/v2/style.css?v=2.3.0','/static/v2/app.js?v=2.3.0','/static/v2/experience.css?v=2.3.0','/static/v2/shifts.css?v=2.3.0','/static/v2/games.css?v=2.3.0','/static/v2/theme-init.js?v=2.3.0','/static/v2/icon-192.png'];
+const CACHE = 'baros-v2-20261008-5';
+const ASSETS = ['/static/v2/style.css?v=2.3.1','/static/v2/app.js?v=2.3.1','/static/v2/experience.css?v=2.3.1','/static/v2/shifts.css?v=2.3.1','/static/v2/games.css?v=2.3.1','/static/v2/theme-init.js?v=2.3.1','/static/v2/icon-192.png'];
 self.addEventListener('install', e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>clients.claim())));
 self.addEventListener('fetch', e=>{

@@ -1,4 +1,4 @@
-import {state,$,$$,api,esc,btn,icon,modal,bindForm,on,toast,field,select,textarea,stat,pageHead,empty,download,badge} from './core.js?v=2.3.0';
+import {state,$,$$,api,esc,btn,icon,modal,bindForm,on,toast,field,select,textarea,stat,pageHead,empty,download,badge} from './core.js?v=2.3.1';
 
 export const hours = minutes => `${Math.floor((minutes||0)/60)} ч${minutes%60?' '+minutes%60+' мин':''}`;
 export const money = (minor,currency='RUB') => new Intl.NumberFormat('ru-RU',{style:'currency',currency,maximumFractionDigits:minor%100?2:0}).format(minor/100);
