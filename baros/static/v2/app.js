@@ -1,11 +1,11 @@
-import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute} from './core.js';
-import {cardsPage} from './cards.js';
-import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js';
-import {authPage} from './auth.js';
-import {overview,coursesPage,staffPage,reportsPage,sourcesPage,aiPage,interviewPage} from './manage.js';
-import {editorPage} from './editor.js';
-import {learningPage,lessonPage,examPage,historyPage} from './learn.js';
-import {ownerHome,venueSettingsPage,ownerAuditPage,ownerSettingsPage} from './owner.js';
+import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute} from './core.js?v=2.1.1';
+import {cardsPage} from './cards.js?v=2.1.1';
+import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.1.1';
+import {authPage} from './auth.js?v=2.1.1';
+import {overview,coursesPage,staffPage,reportsPage,sourcesPage,aiPage,interviewPage} from './manage.js?v=2.1.1';
+import {editorPage} from './editor.js?v=2.1.1';
+import {learningPage,lessonPage,examPage,historyPage} from './learn.js?v=2.1.1';
+import {ownerHome,venueSettingsPage,ownerAuditPage,ownerSettingsPage} from './owner.js?v=2.1.1';
 
 const $app=()=>$('#app');
 function path(){return location.pathname.replace(/\/$/,'')||'/'}

@@ -1,4 +1,4 @@
-import {$,state,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js';
+import {$,state,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.1.1';
 
 export async function cardsPage(root,cid=null){
  const preview=state.me.account.role!=='employee';

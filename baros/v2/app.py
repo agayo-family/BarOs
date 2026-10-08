@@ -47,7 +47,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.0.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.1.1', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
 
@@ -68,6 +68,8 @@ async def guard(request, call_next):
         if request.url.path.startswith('/api/') and request.url.path != '/api/sources' and int(content_len or 0) > 0 and 'application/json' not in request.headers.get('content-type',''):
             return JSONResponse({'detail':'Ожидается JSON'},status_code=415)
     response=await call_next(request)
+    if request.url.path.startswith('/static/v2/') and request.url.path.endswith(('.js','.css')):
+        response.headers['Cache-Control']='no-cache'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
     response.headers['Referrer-Policy']='no-referrer'

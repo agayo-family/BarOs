@@ -27,7 +27,7 @@ const icons={
  phone:'<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/>',interview:'<path d="M21 12a9 9 0 0 1-9 9H3l2-5a9 9 0 1 1 16-4Z"/><path d="M8 9h8M8 13h5"/>',
  eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',refresh:'<path d="M20 8a8 8 0 1 0 1 7M20 3v5h-5"/>',lock:'<rect x="4" y="10" width="16" height="12" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3M12 15v3"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M7 14h3M7 17h3"/>'};
 export const icon=(name,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.file}</svg>`;
-export const brand=()=>`<a href="/app" class="brand"><div class="brandmark">B<span>•</span></div>BarOS<small>2.0</small></a>`;
+export const brand=()=>`<a href="/app" class="brand"><div class="brandmark">B<span>•</span></div>BarOS<small>2.1</small></a>`;
 export const initials=s=>String(s||'?').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
 export const avatar=(s,cls='')=>`<div class="avatar ${cls}">${esc(initials(s))}</div>`;
 export const badge=(s,cls='')=>`<span class="badge ${cls}">${esc(s)}</span>`;

@@ -1,5 +1,5 @@
-import {themeButton,syncThemeControls} from './experience.js';
-import {$,state,api,reloadMe,go,brand,icon,esc,field,positions,selected,wirePositions,bindForm,btn,notice,modal,copy,badge} from './core.js';
+import {themeButton,syncThemeControls} from './experience.js?v=2.1.1';
+import {$,state,api,reloadMe,go,brand,icon,esc,field,positions,selected,wirePositions,bindForm,btn,notice,modal,copy,badge} from './core.js?v=2.1.1';
 export async function authPage(path){
  state.me=null;
  const info=await api('/public');state.me={positions:info.positions};
