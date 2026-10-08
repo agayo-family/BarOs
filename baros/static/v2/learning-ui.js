@@ -1,4 +1,4 @@
-import {esc,icon} from './core.js?v=2.2.0';
+import {esc,icon} from './core.js?v=2.3.0';
 
 // Only escaped text and a small Markdown subset. Uploaded HTML is never executed.
 const inline=text=>esc(text).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');

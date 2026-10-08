@@ -1,5 +1,5 @@
-import {renderLesson} from './learning-ui.js?v=2.2.0';
-import {$,$$,state,api,go,esc,icon,btn,field,textarea,select,check,positions,selected,wirePositions,on,bindForm,modal,toast,notice,empty,pageHead,badge,positionTags,dateValue} from './core.js?v=2.2.0';
+import {renderLesson} from './learning-ui.js?v=2.3.0';
+import {$,$$,state,api,go,esc,icon,btn,field,textarea,select,check,positions,selected,wirePositions,on,bindForm,modal,toast,notice,empty,pageHead,badge,positionTags,dateValue} from './core.js?v=2.3.0';
 export async function editorPage(root,cid){let c=await api('/courses/'+cid),tab='theory',lesson=0,query='',page=0;
  const setDirty=()=>{state.dirty=true;const s=$('#save-state',root);if(s)s.textContent='Есть несохранённые изменения'};
  const save=async()=>{const keys=['title','description','positions','passing_score','required','quiz_size','time_limit_minutes','max_attempts','deadline_days','due_at','is_intro','edit_version','lessons','questions'];const data=Object.fromEntries(keys.map(k=>[k,c[k]]));const r=await api('/courses/'+cid,'PUT',data);c.edit_version=r.edit_version;state.dirty=false;if($('#save-state',root))$('#save-state',root).textContent='Все изменения сохранены';toast('Черновик сохранён');return r};

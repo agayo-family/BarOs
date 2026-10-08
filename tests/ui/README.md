@@ -1,12 +1,14 @@
 # UI integration audits
 
-These tests dispatch events to the shipped JavaScript modules in JSDOM and call a real FastAPI server with an isolated disposable SQLite database. They validate handlers, authentication, CSRF, data persistence and full learning / shift flows. They do not replace visual browser or physical-device testing.
+These tests dispatch events to the shipped JavaScript modules in JSDOM and call a real FastAPI server with an isolated disposable SQLite database. They validate handlers, authentication, CSRF, data persistence and full learning, game and shift flows. They do not replace visual browser or physical-device testing.
 
 ```sh
 npm ci --prefix tests/ui --ignore-scripts
 python tests/ui/run.py
 ```
 
-Run only the shift audit with `python tests/ui/run.py shifts.mjs`.
+Run only the shift audit with `python tests/ui/run.py shifts.mjs`, or the game audit with `python tests/ui/run.py games.mjs`.
+
+The game audit checks all six formats, explanations, mistake review, pause/resume, retry after a lost response, account progress, and separation from exam attempts and theory completion.
 
 The runner copies the current frontend into a temporary directory and removes all test data afterward. No production credentials or database are used.

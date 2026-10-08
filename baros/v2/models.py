@@ -235,3 +235,43 @@ class ShiftPreference(Base):
     __tablename__ = 'v2_shift_preferences'
     account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), primary_key=True)
     payload: Mapped[str] = mapped_column(Text, default='{}')
+
+
+class GameProgress(Base):
+    __tablename__ = 'v2_game_progress'
+    __table_args__ = (UniqueConstraint('account_id', 'revision_id', 'question_index'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    revision_id: Mapped[int] = mapped_column(ForeignKey('v2_revisions.id'), index=True)
+    question_index: Mapped[int] = mapped_column(Integer)
+    practiced: Mapped[int] = mapped_column(Integer, default=0)
+    correct: Mapped[int] = mapped_column(Integer, default=0)
+    mistakes: Mapped[int] = mapped_column(Integer, default=0)
+    streak: Mapped[int] = mapped_column(Integer, default=0)
+    due_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    last_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class GameRun(Base):
+    __tablename__ = 'v2_game_runs'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey('courses.id'), index=True)
+    revision_id: Mapped[int | None] = mapped_column(ForeignKey('v2_revisions.id'))
+    preview: Mapped[bool] = mapped_column(Boolean, default=False)
+    mode: Mapped[str] = mapped_column(String(24))
+    payload: Mapped[str] = mapped_column(Text)
+    answers: Mapped[str] = mapped_column(Text, default='{}')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class GameTurn(Base):
+    __tablename__ = 'v2_game_turns'
+    __table_args__ = (UniqueConstraint('run_id', 'event_id'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey('v2_game_runs.id'), index=True)
+    event_id: Mapped[str] = mapped_column(String(80))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    result: Mapped[str] = mapped_column(Text)

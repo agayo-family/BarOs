@@ -1,10 +1,10 @@
-import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.2.0';
+import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.3.0';
 
 export async function cardsPage(root,cid=null){const ticket=state.renderTicket;
  const preview=state.me.account.role!=='employee';
  if(!cid){const courses=preview?await api('/courses'):(await api('/learning')).courses;root.innerHTML=pageHead('Карточки',preview?'Предпросмотр карточек ваших курсов. Сотрудникам доступны только опубликованные версии по их должностям.':'Вспомните ответ, переверните карточку и закрепите знание. Это тренировка без оценок и попыток.','','ПРАКТИКА BAROS')+`<div class="grid-3">${courses.length?courses.map(c=>`<article class="card course-card"><div class="icon-box">${icon('cards')}</div><h3>${esc(c.title)}</h3><p>${esc(c.description||'Повторите материал короткими вопросами и ответами.')}</p><div class="course-meta">${badge((preview?c.questions:c.card_count)+' карточек','purple')}${preview?badge(c.published?'Опубликован':'Черновик',c.published?'green':'orange'):''}</div><div class="course-footer"><a class="btn text" href="/app/cards/${c.id}">${preview?'Предпросмотр':'Начать повторение'} ${icon('arrow')}</a></div></article>`).join(''):`<section class="card">${empty('Карточки скоро появятся','Они доступны для опубликованного обучения, назначенного вашим должностям.','cards')}</section>`}</div>`;return}
  let data;if(preview){const course=await api('/courses/'+cid);data={...course,cards:course.questions.map((q,id)=>({id,question:q.prompt,answer:q.choices[q.correct_index],explanation:q.explanation}))}}else data=await api('/learning/'+cid+'/cards');
- root.innerHTML=`<a class="btn text" href="/app/cards">${icon('back')}Все карточки</a>`+pageHead(data.title,'Сначала попробуйте ответить сами. Затем переверните карточку.',badge('Тренировка · v'+data.version,'purple'),'ЗАПОМИНАЕМ ПО ШАГАМ')+'<div id="practice-deck"></div>';
+ root.innerHTML=`<a class="btn text" href="/app/cards">${icon('back')}Все карточки</a>`+pageHead(data.title,'Сначала попробуйте ответить сами. Затем переверните карточку.',badge('Тренировка · v'+data.version,'purple'),'ЗАПОМИНАЕМ ПО ШАГАМ')+`<div class="learning-path"><a href="/app/games/${cid}">${icon('games')}Закрепить в игре</a>${preview?'':`<a href="/app/learn/${cid}">${icon('book')}Вернуться к теории</a>`}</div><div id="practice-deck"></div>`;
  if(ticket!==state.renderTicket)return;mountDeck($('#practice-deck',root),data,{preview,ticket});
 }
 

@@ -47,7 +47,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.2.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.3.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
 
@@ -90,13 +90,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.2.0'}
+    return {'status':'ok','service':'baros','version':'2.3.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.2.0'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.3.0'}
 
 
 @app.post('/api/auth/setup')
@@ -395,7 +395,8 @@ from .content import router as content_router
 from .learning import router as learning_router
 from .notifications import router as push_router
 from .shifts import router as shifts_router
-app.include_router(content_router);app.include_router(learning_router);app.include_router(push_router);app.include_router(shifts_router)
+from .games import router as games_router
+app.include_router(content_router);app.include_router(learning_router);app.include_router(push_router);app.include_router(shifts_router);app.include_router(games_router)
 
 
 @app.get('/manifest.webmanifest')
