@@ -320,3 +320,56 @@ class AIUsage(Base):
     cost_micro_usd: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(24), default='reserved')
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class AIRequest(Base):
+    """Multi-provider ledger; native currencies are never silently converted."""
+    __tablename__ = 'v2_ai_requests'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    job_id: Mapped[str | None] = mapped_column(ForeignKey('v2_jobs.id'), index=True)
+    purpose: Mapped[str] = mapped_column(String(24))
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(200))
+    currency: Mapped[str] = mapped_column(String(3))
+    rates_json: Mapped[str] = mapped_column(Text)
+    reserved_micro: Mapped[int] = mapped_column(Integer)
+    cost_micro: Mapped[int | None] = mapped_column(Integer)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(24), default='reserved')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class MentorThread(Base):
+    __tablename__ = 'v2_mentor_threads'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    course_id: Mapped[int | None] = mapped_column(ForeignKey('courses.id'))
+    revision_id: Mapped[int | None] = mapped_column(ForeignKey('v2_revisions.id'))
+    pet_id: Mapped[str] = mapped_column(String(30))
+    closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class MentorTurn(Base):
+    __tablename__ = 'v2_mentor_turns'
+    __table_args__ = (UniqueConstraint('account_id', 'nonce'),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(ForeignKey('v2_mentor_threads.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    nonce: Mapped[str] = mapped_column(String(80))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    message: Mapped[str] = mapped_column(Text)
+    response_json: Mapped[str] = mapped_column(Text, default='{}')
+    status: Mapped[str] = mapped_column(String(24), default='pending')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class CourseProgram(Base):
+    __tablename__ = 'v2_course_programs'
+    course_id: Mapped[int] = mapped_column(ForeignKey('courses.id'), primary_key=True)
+    payload: Mapped[str] = mapped_column(Text)

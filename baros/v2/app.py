@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.4.1', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.5.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -92,13 +92,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.4.1'}
+    return {'status':'ok','service':'baros','version':'2.5.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.4.1'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.5.0'}
 
 
 @app.post('/api/auth/setup')
@@ -399,6 +399,8 @@ from .notifications import router as push_router
 from .shifts import router as shifts_router
 from .games import router as games_router
 from .growth import router as growth_router
+from .mentor import router as mentor_router
+app.include_router(mentor_router)
 app.include_router(growth_router)
 app.include_router(content_router);app.include_router(learning_router);app.include_router(push_router);app.include_router(shifts_router);app.include_router(games_router)
 

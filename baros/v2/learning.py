@@ -53,6 +53,7 @@ def lesson_list(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     exams=exams_for(db,a,rev.id)
     db.commit()
     return {'id':cid,'revision_id':rev.id,'version':rev.version,'title':data['title'],'description':data['description'],
+            'program':data.get('program'),
             'lessons':[{**l,'index':i,'completed':bool(reads.get(i) and reads[i].completed_at),'seconds':reads[i].seconds if i in reads else 0} for i,l in enumerate(data['lessons'])],
             'quiz_size':data['quiz_size'],'bank_size':len(data['questions']),'passing_score':data['passing_score'],
             'time_limit_minutes':data['time_limit_minutes'],'max_attempts':data['max_attempts'],'attempt_count':len(exams),
@@ -161,6 +162,7 @@ def finish(db,exam,data):
     score=round(100*correct/max(1,len(questions)),1)
     ended=min(now(),exam.expires_at)
     result={'score':score,'passed':score>=data['passing_score'],'correct':correct,'total':len(questions),
+            'exam_id':exam.id,'course_id':db.get(CourseRevision,exam.revision_id).course_id,
             'duration_seconds':max(0,int((ended-exam.started_at).total_seconds())), 'review':review,'expired':now()>=exam.expires_at}
     exam.finished_at=ended
     account=db.get(Account,exam.account_id)

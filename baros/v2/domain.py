@@ -1,6 +1,7 @@
 """Shared rules. All tenant and assessment decisions live on the server."""
 import hashlib
 import json
+import math
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -62,7 +63,14 @@ def course_settings(db, c):
 
 def payload(db, c):
     s = course_settings(db, c)
+    from .models import CourseProgram
+    program=db.get(CourseProgram,c.id)
+    program_data=parse(program.payload) if program else None
+    if program_data is not None:
+        program_data['steps']=[{'lesson_index':i,'title':l.title,'minutes':max(2,math.ceil(len(l.body.split())/140))} for i,l in enumerate(c.lessons)]
+        program_data['bank_size']=len(c.questions)
     return {'title': c.title, 'description': c.description, 'positions': parse(s.positions_json, ['all']),
+            'program':program_data,
             'passing_score': c.passing_score, 'required': c.required, 'quiz_size': s.quiz_size,
             'time_limit_minutes': s.time_limit_minutes, 'max_attempts': s.max_attempts,
             'deadline_days': s.deadline_days, 'due_at': iso(s.due_at), 'is_intro': s.is_intro,

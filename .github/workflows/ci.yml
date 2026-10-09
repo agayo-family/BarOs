@@ -23,11 +23,11 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt
       - run: python -m compileall -q baros
-      - name: Verify access, learning, games, shifts and data preservation
+      - name: Verify access, learning, games, shifts, AI mentor and data preservation
         run: python -m unittest discover -s tests -v
       - run: python -c "from baros.main import app; print(app.title)"
       - run: python -c "from baros.v2 import ai; s=ai.status(); assert s['model']==ai.FREE_PRIMARY; assert s['mode']=='offline'; print(s)"
-      - run: python -c "from baros.main import app; p={r.path for r in app.routes}; required={'/health','/api/auth/login','/api/auth/setup','/api/courses','/api/learning','/api/exams/{eid}','/api/sources','/api/jobs','/api/shifts','/api/shifts/context','/api/shifts/rotations','/api/games','/api/games/runs/{rid}','/api/growth','/api/growth/avatar','/api/ai/usage'}; assert required <= p, (required-p); print('routes ok')"
+      - run: python -c "from baros.main import app; p={r.path for r in app.routes}; required={'/health','/api/auth/login','/api/auth/setup','/api/courses','/api/learning','/api/exams/{eid}','/api/sources','/api/jobs','/api/shifts','/api/shifts/context','/api/shifts/rotations','/api/games','/api/games/runs/{rid}','/api/growth','/api/growth/avatar','/api/ai/usage','/api/ai/spend','/api/mentor','/api/mentor/messages'}; assert required <= p, (required-p); print('routes ok')"
       - name: Validate all browser JavaScript modules
         run: |
           for file in baros/static/v2/*.js; do

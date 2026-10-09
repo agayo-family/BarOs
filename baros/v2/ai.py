@@ -1,6 +1,7 @@
 """Durable, checkpointed, source-grounded AI generation. Paid fallback is opt-in."""
 import asyncio
 import json
+import math
 import os
 import re
 import secrets
@@ -36,6 +37,9 @@ def selected_model():
 
 
 def provider():
+    if AI_PROVIDER in {'qwen','yandex'}:
+        from .ai_providers import provider as compatible
+        return compatible(AI_PROVIDER)
     if AI_PROVIDER=='openai':
         if not OPENAI_ENABLED or not OPENAI_API_KEY:return None
         return {'key':OPENAI_API_KEY,'base':'https://api.openai.com/v1','model':OPENAI_MODEL,'free':False,'provider':'openai'}
@@ -52,7 +56,8 @@ def provider():
 
 
 def status():
-    p = provider()
+    try:p = provider()
+    except ValueError:p=None
     return {'configured': bool(p), 'model': p['model'] if p else selected_model(),
             'mode': ('free' if p['free'] else 'paid') if p else 'offline', 'paid_fallback': AI_ALLOW_PAID_FALLBACK,
             'fallback_models':p.get('fallbacks',[]) if p else [],'provider':p.get('provider','openrouter' if OPENROUTER_API_KEY else 'gateway') if p else 'offline',
@@ -100,6 +105,12 @@ def decode_json(text):
 async def call_model(prompt, job_id, lease_token):
     p = provider()
     if not p: raise ValueError('AI не подключён. Владелец должен настроить ключ и провайдера на сервере.')
+    if p.get('provider') in {'qwen','yandex'}:
+        from .ai_providers import complete
+        with SessionLocal() as db:
+            job=db.get(Job,job_id)
+            oid,aid=job.organization_id,job.account_id
+        return await complete('authoring',[{'role':'system','content':SYSTEM},{'role':'user','content':prompt}],oid,aid,16000,job_id,lease_token)
     usage_id=None
     max_output=16000
     with SessionLocal() as db:
@@ -184,6 +195,12 @@ def persist_course(db, job, cp):
     for q in cp.get('questions',[]):
         db.add(Question(course_id=c.id,prompt=q['prompt'],choices_json=dump(q['choices']),correct_index=q['correct_index'],
                         explanation=q['explanation']+'\n\nИсточник: '+q.get('source_quote',''),question_type=q['type']))
+    from .models import CourseProgram
+    program={'steps':[{'lesson_index':i,'title':l['title'],'minutes':max(2,math.ceil(len(l['body'].split())/140))} for i,l in enumerate(cp['lessons'])],
+             'practice':['cards','games','exam'],'bank_size':len(cp.get('questions',[]))}
+    row=db.get(CourseProgram,c.id)
+    if row:row.payload=dump(program)
+    else:db.add(CourseProgram(course_id=c.id,payload=dump(program)))
     job.course_id = c.id
     log(db, None, job.organization_id, 'AI сохранил черновик', course_id=c.id, questions=len(cp.get('questions',[])))
 
@@ -193,13 +210,21 @@ async def run_job(job_id, token):
         j = db.get(Job,job_id)
         context, target, cp = j.context, j.target, parse(j.checkpoint)
     try:
+        from .ai_vision import augment
+        context=await augment(job_id,token,cp,context,save_checkpoint)
+        if cp.get('vision_ids'):
+            target=min(400,max(100,math.ceil(len(context)/10000)*40))
+            with SessionLocal() as db:
+                current=db.get(Job,job_id)
+                if current.lease_token!=token:raise ValueError('Задача передана другому процессу')
+                current.target=target;db.commit()
         if not cp.get('lessons'):
             result = await call_model('Создай теорию по SOURCE. Верни {"title":str,"description":str,"lessons":[{"title":str,"body":str}],"limitations":[str]}. '
                                       'От 3 до 12 смысловых уроков; объём по материалу, не растягивай искусственно. Сохрани точные факты и единицы измерения.\nSOURCE:\n'+context,job_id,token)
             ls = [LessonIn.model_validate(l).model_dump() for l in result.get('lessons',[])[:30]]
             if not ls: raise ValueError('AI не создал теорию. Проверьте исходные материалы.')
             cp.update({'title':str(result.get('title') or 'Обучение')[:200], 'description':str(result.get('description',''))[:3000],
-                       'lessons':ls, 'questions':[], 'limitations':result.get('limitations',[]),'model_used':result.get('_model_used','')})
+                       'lessons':ls, 'questions':[], 'limitations':list(dict.fromkeys(cp.get('limitations',[])+result.get('limitations',[]))),'model_used':result.get('_model_used','')})
             save_checkpoint(job_id,token,cp,'Теория готова. Создаём банк вопросов',15)
         empty_batches = 0
         for batch in range(30):

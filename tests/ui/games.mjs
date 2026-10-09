@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 const base=process.env.BAROS_AUDIT_URL||'http://127.0.0.1:8147';
 const dom=new JSDOM('<div id="app"></div><div id="modal-root"></div><div id="toast-root"></div>',{url:base+'/app',pretendToBeVisual:true});
-for(const key of ['window','document','location','history','localStorage','FormData','Event','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
+for(const key of ['window','document','location','history','localStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});globalThis.confirm=()=>true;dom.window.scrollTo=()=>{};dom.window.HTMLElement.prototype.scrollIntoView=function(){};
 dom.window.matchMedia=q=>({matches:q.includes('reduced-motion'),addEventListener(){},removeEventListener(){}});
-const nativeFetch=globalThis.fetch,requests=[];let failAnswerOnce=false;
-globalThis.fetch=async(path,options={})=>{const url=new URL(path,base).href,headers=new Headers(options.headers||{}),cookie=dom.cookieJar.getCookieStringSync(base);if(cookie)headers.set('cookie',cookie);const res=await nativeFetch(url,{...options,headers});for(const c of res.headers.getSetCookie())dom.cookieJar.setCookieSync(c,base);requests.push({path:new URL(url).pathname,method:options.method||'GET',status:res.status});if(failAnswerOnce&&url.endsWith('/answer')){failAnswerOnce=false;throw new Error('Simulated lost response after server commit')}return res};
+const nativeFetch=globalThis.fetch,requests=[];let failAnswerOnce=false,failMentorOnce=false;
+globalThis.fetch=async(path,options={})=>{const url=new URL(path,base).href,headers=new Headers(options.headers||{}),cookie=dom.cookieJar.getCookieStringSync(base);if(cookie)headers.set('cookie',cookie);const res=await nativeFetch(url,{...options,headers});for(const c of res.headers.getSetCookie())dom.cookieJar.setCookieSync(c,base);requests.push({path:new URL(url).pathname,method:options.method||'GET',status:res.status});if(failAnswerOnce&&url.endsWith('/answer')){failAnswerOnce=false;throw new Error('Simulated lost response after server commit')}if(failMentorOnce&&url.endsWith('/mentor/messages')){failMentorOnce=false;throw new Error('Simulated lost mentor response after server commit')}return res};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(test,desc){for(let i=0;i<250;i++){if(test())return;await sleep(20)}throw new Error(desc+' '+document.body.textContent.slice(-1600))}
 const e=s=>{const x=document.querySelector(s);assert(x,'Missing '+s);return x};
@@ -14,7 +14,7 @@ const click=s=>e(s).click();
 function input(s,value){const x=e(s);x.value=value;x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}))}
 async function raw(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.clone().text());return r.json()}
 await raw('/auth/setup',{token:'baros-ui-audit-only',name:'Game owner',login:'game.owner',password:'audit-owner-password'});
-const core=await import('./ui/core.js?v=2.4.1');await core.reloadMe();
+const core=await import('./ui/core.js?v=2.5.0');await core.reloadMe();
 const venue=await core.api('/venues','POST',{name:'Game UI venue'});core.setOrg(venue.id);
 const answers=['90 °C','Высокий стакан со льдом','Уточнить состав у кухни','Предложить напиток по вкусу гостя','Сироп и вода и лёд','Чистые приборы'];
 const course=await core.api('/courses','POST',{title:'Материал игр UI',description:'Учимся по реальному материалу',positions:['bartender'],quiz_size:2,
@@ -74,5 +74,23 @@ checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}))
 // High difficulty requires a verdict and a precise material-based choice.
 await board();input('[name=game-difficulty]','hard');input('[name=size-truth]','5');click('[data-start-game=truth]');await until(()=>document.querySelector('[data-hard-truth]'),'Hard truth player');
 const hardRun=await core.api('/games/runs/'+new URLSearchParams(location.search).get('run'));const hardQ=hardRun.questions[0];click('[data-hard-truth='+hardQ.claim_true+']');click('[data-truth-reason='+hardQ.correct_index+']');await until(()=>document.querySelector('.game-feedback.positive'),'Hard answer verified');
-assert(!requests.some(r=>r.status>=500));console.log('GAMES REAL API + DOM PASS: navigation after cards, six modes, correctness/explanations, gentle mistakes, server progress, pause/resume, escaped theory, token undo, pair completion, mixed route, lost-response idempotent retry, no exam/theory credit, profile, 15 pets, no-repeat phrases, legend trick, shop, equipment, one pet swap, preference and hard truth; requests='+requests.length);
+// Mentor uses the selected pet and the completed game's server context, with no paid call on arrival.
+const mentorBefore=requests.filter(r=>r.path==='/api/mentor/messages').length;
+click('.mentor-feedback-link a');await until(()=>document.querySelector('.mentor-composer'),'Mentor from game');
+assert(e('.mentor-about h2').textContent==='Селли');assert(e('.mentor-focus').textContent.includes(hardQ.prompt));assert(e('.mentor-memory').textContent.includes('Стоит повторить'));
+assert.equal(requests.filter(r=>r.path==='/api/mentor/messages').length,mentorBefore);
+input('#mentor-message','Почему этот ответ подходит? <img src=x onerror=alert(1)>');
+e('.mentor-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+e('.mentor-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+await until(()=>document.querySelector('.mentor-citations'),'Mentor source explanation');
+assert.equal(requests.filter(r=>r.path==='/api/mentor/messages').length,mentorBefore+1,'Double tap makes one message');
+assert(!e('.mentor-transcript').querySelector('img'));assert(e('.mentor-transcript').textContent.includes(hardQ.answer));
+click('[data-mentor-refresh]');await until(()=>!e('[data-mentor-refresh]').disabled,'Refresh complete');
+assert.equal(requests.filter(r=>r.path==='/api/mentor/messages').length,mentorBefore+1,'Refresh never generates');
+failMentorOnce=true;input('#mentor-message','Помоги повторить эту деталь');e('.mentor-composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+await until(()=>!e('[data-mentor-send]').disabled&&e('#mentor-message').value==='','Lost response recovered from history');
+assert.equal(document.querySelectorAll('.mentor-message.learner').length,2);
+assert.equal(requests.filter(r=>r.path==='/api/mentor/messages').length,mentorBefore+2);
+core.go('/app/profile');await until(()=>document.querySelector('.profile-hero'),'Profile retained after mentor');assert.equal((await core.api('/growth')).pet_id,'moon');
+assert(!requests.some(r=>r.status>=500));console.log('GAMES REAL API + DOM PASS: navigation after cards, six modes, correctness/explanations, gentle mistakes, server progress, pause/resume, escaped theory, token undo, pair completion, mixed route, lost-response idempotent retry, no exam/theory credit, profile, 15 pets, no-repeat phrases, legend trick, shop, equipment, one pet swap, preference, hard truth, mentor identity/context/citations, escaped chat, double-tap protection and lost mentor response recovery; requests='+requests.length);
 core.state.cleanup?.();dom.window.close();process.exit(0);

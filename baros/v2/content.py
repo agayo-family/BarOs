@@ -168,8 +168,10 @@ def interview_draft(request:Request,a=Depends(actor),db=Depends(get_db)):
 
 
 def source_card(s):
+    from .ai_vision import needs_vision, available
     return {'id':s.id,'name':s.name,'size':s.size,'characters':len(s.text),'positions':parse(s.positions_json,['all']),
-            'status':s.extraction_status,'warning':s.warning,'created_at':iso(s.created_at),'original_available':s.content is not None}
+            'status':s.extraction_status,'warning':s.warning,'created_at':iso(s.created_at),'original_available':s.content is not None,
+            'vision_ready':bool(s.content and needs_vision(s) and available())}
 
 
 @router.get('/api/sources')
@@ -244,13 +246,16 @@ def job_card(j):
 def jobs(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
     from .ai_budget import overview
-    return {'ai':ai.status(),'usage':overview(db,None if a.role=='owner' else oid),'jobs':[job_card(j) for j in db.scalars(select(Job).where(Job.organization_id==oid).order_by(Job.created_at.desc()).limit(30)).all()]}
+    from .ai_providers import overview as compatible_usage, public_status
+    return {'ai':ai.status(),'usage':overview(db,None if a.role=='owner' else oid),'compatible_usage':compatible_usage(db,None if a.role=='owner' else oid),'mentor':public_status(),'jobs':[job_card(j) for j in db.scalars(select(Job).where(Job.organization_id==oid).order_by(Job.created_at.desc()).limit(30)).all()]}
 
 
 @router.post('/api/jobs')
 def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True)
-    require(ai.provider(),'AI не подключён. Владелец должен настроить ключ и провайдера в Render → Environment.',503)
+    try: configured=ai.provider()
+    except ValueError as error: require(False,str(error),503)
+    require(configured,'AI не подключён. Владелец должен настроить ключ и провайдера в Render → Environment.',503)
     pos=positions(data.positions)
     db.execute(select(Setting).where(Setting.key=='ai_quota_lock').with_for_update()).first()
     s=db.scalar(select(VenueSettings).where(VenueSettings.organization_id==oid).with_for_update())
@@ -263,14 +268,18 @@ def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)
         require(interview.get('concept'),'Заполните интервью заведения')
         context+='ИНТЕРВЬЮ:\n'+dump(interview)+'\n'
     require(data.source_ids or data.interview,'Выберите файлы или интервью')
-    for sid in data.source_ids:
+    from .ai_vision import needs_vision, available
+    vision_ids=[]
+    for sid in dict.fromkeys(data.source_ids):
         source=get_source(db,oid,sid)
+        if source.content and needs_vision(source) and available():
+            vision_ids.append(sid);continue
         require(source.extraction_status=='ready' and len(source.text)>=20,f'Проверьте текст файла «{source.name}»')
         context+=f'\nМАТЕРИАЛ: {source.name}\n{source.text}\n'
     require(len(context)<=90000,'Выбрано более 90 000 символов. Разделите материалы на несколько курсов.')
     target=min(400,max(100,math.ceil(len(context)/10000)*40))
     j=Job(id=secrets.token_urlsafe(24),organization_id=oid,account_id=a.id,context=context,positions_json=dump(pos),
-          target=target,source_ids_json=dump(data.source_ids),checkpoint=dump({'is_intro':data.interview and not data.source_ids}))
+          target=target,source_ids_json=dump(data.source_ids),checkpoint=dump({'is_intro':data.interview and not data.source_ids,'vision_ids':vision_ids}))
     db.add(j);log(db,a,oid,'Запущен AI-методист',job_id=j.id,target=target);db.commit();return job_card(j)
 
 
@@ -282,7 +291,9 @@ def retry(jid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
     if j.course_id:
         s=db.get(CourseSettings,j.course_id)
         require(s.edit_version==1 and s.version==0,'Черновик уже редактировали. Дополните его вручную или создайте новое обучение.',409)
-    require(ai.provider(),'AI не подключён',503)
+    try: configured=ai.provider()
+    except ValueError as error: require(False,str(error),503)
+    require(configured,'AI не подключён',503)
     require(not db.scalar(select(Job.id).where(Job.organization_id==oid,Job.status.in_(['queued','running']))),'Уже создаётся обучение',409)
     j.status='queued';j.error='';j.phase='Продолжаем с сохранённого шага';j.lease_token=None;j.lease_until=None
     log(db,a,oid,'AI-генерация продолжена',job_id=j.id);db.commit();return job_card(j)
@@ -293,3 +304,10 @@ def ai_usage(request:Request,a=Depends(actor),db=Depends(get_db)):
     from .ai_budget import overview
     if a.role=='owner':return overview(db)
     oid=manager(request,db,a);return overview(db,oid)
+
+
+@router.get('/api/ai/spend')
+def ai_spend(request:Request,a=Depends(actor),db=Depends(get_db)):
+    from .ai_providers import overview
+    if a.role=='owner':return overview(db)
+    return overview(db,manager(request,db,a))
