@@ -131,6 +131,9 @@ class MentorTests(unittest.TestCase):
         async def bad(client, url, **kw): return vendor({'reply': 'Добавь 999 мл молока.', 'kind': 'grounded', 'citations': [{'source_id': 'S1', 'quote': 'Неподтверждённая цитата'}]})
         with patch.dict(os.environ, QWEN_ENV), patch.object(httpx.AsyncClient, 'post', new=bad):
             r = self.message(nonce='invalid-evidence1'); self.assertEqual(r.json()['response']['mode'], 'local_fallback'); self.assertNotIn('999', r.json()['response']['reply'])
+        async def bad_follow_up(client,url,**kw):return vendor({'reply':'По материалу: сироп персика 20 мл.','kind':'grounded','citations':[{'source_id':'S1','quote':TEXT}],'follow_up':'Добавим 999 мл молока?'})
+        with patch.dict(os.environ,QWEN_ENV),patch.object(httpx.AsyncClient,'post',new=bad_follow_up):
+            r=self.message(nonce='invalid-followup1');self.assertEqual(r.json()['response']['mode'],'local_fallback');self.assertNotIn('999',dump(r.json()['response']))
         with patch.dict(os.environ, {**QWEN_ENV, 'AI_EMPLOYEE_DAILY_BUDGET_USD': '0'}), patch.object(httpx.AsyncClient, 'post') as call:
             r = self.message(nonce='budget-blocked-1'); self.assertEqual(r.json()['response']['mode'], 'local_fallback'); call.assert_not_called()
 

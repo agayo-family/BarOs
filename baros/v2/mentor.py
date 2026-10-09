@@ -188,8 +188,10 @@ def basic(pet, message, sources, focus, mem):
 
 def validate_reply(result, sources, message='', mem=None):
     reply, citations = result.get('reply'), result.get('citations', [])
+    follow_up=result.get('follow_up','')
     kind = result.get('kind')
     require(isinstance(reply, str) and 1 <= len(reply) <= 6000 and isinstance(citations, list) and len(citations) <= 5, 'Ответ наставника не прошёл проверку', 502)
+    require(isinstance(follow_up,str) and len(follow_up)<=200,'Ответ наставника не прошёл проверку',502)
     require(kind in {'grounded', 'support', 'unknown'}, 'Ответ наставника не прошёл проверку', 502)
     lookup = {s['id']: s for s in sources}
     valid = []
@@ -203,14 +205,14 @@ def validate_reply(result, sources, message='', mem=None):
     allowed_numbers = set(re.findall(r'\d+(?:[.,]\d+)?', '\n'.join(s['text'] for s in sources)))
     if kind=='support' and mem:
         allowed_numbers.update(str(mem[key]) for key in ['completed_attempts_recent','passed_attempts_recent','xp','pet_xp','achievement_count'])
-    require(set(re.findall(r'\d+(?:[.,]\d+)?', reply)) <= allowed_numbers, 'Число в ответе не подтверждено уроком', 502)
+    require(set(re.findall(r'\d+(?:[.,]\d+)?', reply+'\n'+follow_up)) <= allowed_numbers, 'Число в ответе не подтверждено уроком', 502)
     if kind != 'grounded' and not valid:
         # Non-factual responses are kept short; unknown never becomes invented instruction.
         if kind == 'unknown': reply = 'В доступных материалах я не нашёл подтверждения. Уточни вопрос или попроси управляющего дополнить урок.'
         else:
             require(re.search(r'(привет|спасибо|устал|боюсь|пережива|поддерж|поздрав|как дела|поболта|молодец|рад|получилось)',message.lower()), 'Для предметного ответа нужна цитата урока',502)
             require(len(reply) <= 1000, 'Слишком длинный ответ вне материала', 502)
-    return {'reply': reply, 'citations': valid, 'follow_up': str(result.get('follow_up', ''))[:200],
+    return {'reply': reply, 'citations': valid, 'follow_up': follow_up,
             'mode': 'ai', 'provider': result.get('_provider_used'), 'model': result.get('_model_used')}
 
 
