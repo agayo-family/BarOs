@@ -3,6 +3,30 @@ export const round = (n, p = 3) => {
   return Math.round((Number(n) + Number.EPSILON) * f) / f;
 };
 
+// Compare alternate spellings of the same unit without rewriting saved rows or
+// mixing different scales such as grams and kilograms (and their unit prices).
+const inventoryUnitAliases = new Map([
+  ...['г','гр','грамм','грамма','граммов','g','gr','gram','grams'].map(value => [value, 'г']),
+  ...['кг','килограмм','килограмма','килограммов','kg','kgs'].map(value => [value, 'кг']),
+  ...['мг','миллиграмм','миллиграмма','миллиграммов','mg'].map(value => [value, 'мг']),
+  ...['мл','миллилитр','миллилитра','миллилитров','ml','mls'].map(value => [value, 'мл']),
+  ...['л','литр','литра','литров','l','lt','liter','litre','liters','litres'].map(value => [value, 'л']),
+  ...['сл','cl'].map(value => [value, 'сл']), ...['дл','dl'].map(value => [value, 'дл']),
+  ...['шт','штук','штука','штуки','pc','pcs','piece','pieces'].map(value => [value, 'шт']),
+  ...['чл','чайнаяложка','чайныеложки','чайныхложек','tsp'].map(value => [value, 'ч. л.']),
+  ...['стл','столоваяложка','столовыеложки','столовыхложек','tbsp'].map(value => [value, 'ст. л.']),
+  ...['щепотка','щепотки','щепоток'].map(value => [value, 'щепотка']),
+]);
+
+export function inventoryUnitKey(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
+  return inventoryUnitAliases.get(key) || key;
+}
+
+export function inventoryItemKey(item) {
+  return JSON.stringify([String(item?.name || '').trim().toLowerCase(), inventoryUnitKey(item?.unit)]);
+}
+
 export function scaleRecipe(recipe, targetYield) {
   const base = Number(recipe?.yield || 0);
   const target = Number(targetYield || 0);
@@ -17,8 +41,8 @@ export function scaleRecipe(recipe, targetYield) {
 export function aggregateIngredients(rows) {
   const map = new Map();
   for (const r of rows || []) {
-    const key = `${String(r.name || '').trim().toLowerCase()}|${String(r.unit || '').trim().toLowerCase()}`;
-    if (!key || key === '|') continue;
+    if (!String(r.name || '').trim() && !String(r.unit || '').trim()) continue;
+    const key = inventoryItemKey(r);
     const prev = map.get(key) || { name: r.name, unit: r.unit, amount: 0, cost: Number(r.cost || 0) };
     prev.amount = round(prev.amount + Number(r.amount || 0), 4);
     if (r.cost != null && r.cost !== '') prev.cost = Number(r.cost || 0);
@@ -68,7 +92,7 @@ export function consumeStock(stock, ingredients) {
   const next = structuredClone(stock || []);
   const shortages = [];
   for (const need of ingredients || []) {
-    const idx = next.findIndex(s => s.name.toLowerCase() === need.name.toLowerCase() && s.unit.toLowerCase() === need.unit.toLowerCase());
+    const idx = next.findIndex(s => inventoryItemKey(s) === inventoryItemKey(need));
     const have = idx >= 0 ? Number(next[idx].amount || 0) : 0;
     if (have < Number(need.amount || 0)) shortages.push({ name: need.name, unit: need.unit, need: need.amount, have: round(have,4) });
     if (idx >= 0) next[idx].amount = round(have - Number(need.amount || 0), 4);
@@ -84,7 +108,7 @@ export function reconcileConfirmedRequisition(stock, oldItems, newItems) {
   const delta = aggregateIngredients(deltaRows);
   const next = structuredClone(stock || []);
   for (const d of delta) {
-    const idx = next.findIndex(s => s.name.toLowerCase() === d.name.toLowerCase() && s.unit.toLowerCase() === d.unit.toLowerCase());
+    const idx = next.findIndex(s => inventoryItemKey(s) === inventoryItemKey(d));
     if (idx >= 0) {
       next[idx].amount = round(Number(next[idx].amount || 0) + Number(d.amount || 0), 4);
       if (d.cost) next[idx].cost = d.cost;

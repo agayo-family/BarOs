@@ -18,7 +18,7 @@ const ALCOHOL_RULES = [
 
 export const ALCOHOL_CATEGORIES = ALCOHOL_RULES.map(([category]) => category);
 const UNKNOWN_ALCOHOL = /(?:^|[^\p{L}])(?:алкогол[а-я]*|настойк[а-я]*|наливк[а-я]*|основа|основы|база|базы|liquor|alcohol|spirit)(?=$|[^\p{L}])/iu;
-const NON_ALCOHOLIC = /без\s*[-–—]?\s*алкогол[а-я]*|без\s+спирта|non\s*[-–—]?\s*alcoholic|alcohol\s*[-–—]?\s*free|\b0[.,]0\s*%|(?:^|\s)0\s*%|(?:^|\s)б\s*\/\s*а(?:\s|$)|(?:^|\s)б\s*\/\s*алк/iu;
+const NON_ALCOHOLIC = /без\s*[-–—]?\s*алкогол[а-я]*|(?:^|[^\p{L}])безалк(?:ог)?\.?(?=$|[^\p{L}])|без\s+спирта|non\s*[-–—]?\s*alcoholic|alcohol\s*[-–—]?\s*free|\b0[.,]0\s*%|(?:^|\s)0\s*%|(?:^|[^\p{L}])б\s*\/\s*(?:алк|а)\.?(?=$|[^\p{L}])/iu;
 
 const UNIT_MAP = new Map([
   ...['г','гр','грамм','грамма','граммов','g','gr','gram','grams'].map(x => [x, 'г']),
@@ -100,6 +100,7 @@ function ingredientFromSegment(segment) {
   if (!line) return { ingredient: null, rest: '' };
   const cells = line.split(line.includes('|') ? '|' : ';').map(clean);
   if (cells.length >= 2 && number(cells[1]) !== null) {
+    if (/\//u.test(cells[2] || '')) return { ingredient: null, rest: line };
     const amount = number(cells[1]);
     const ingredient = cells[0] && amount >= 0 ? { name: cells[0], amount, unit: unit(cells[2] || 'шт'), cost: number(cells[3]) ?? 0 } : null;
     const rest = [...(cells.length > 4 ? cells.slice(4) : []), ...(cells[3] && number(cells[3]) === null ? [`Цена не распознана: ${cells[3]}`] : [])].join(' | ');
@@ -109,6 +110,7 @@ function ingredientFromSegment(segment) {
   if (matches.length !== 1) return { ingredient: null, rest: line };
   const match = matches[0];
   if (/(?:\d\s*[-–—]\s*|[-−])$/.test(line.slice(0, match.index))) return { ingredient: null, rest: line };
+  if (/^\s*\//u.test(line.slice(match.index + match[0].length))) return { ingredient: null, rest: line };
   let before = line.slice(0, match.index).trim();
   let after = line.slice(match.index + match[0].length).trim();
   before = before.replace(/\s*[-–—:=]+\s*$/, '').replace(/^(?:примерно|около)\s+/iu, '').trim();
@@ -154,6 +156,20 @@ export function parseRecipeText(text) {
   const lines = rawText.replace(/\r\n?/g, '\n').split('\n').map(clean).filter(Boolean);
   for (const original of lines) {
     const line = stripBullet(original);
+    const explicitTitle = !section && !titleTaken && line.match(/^(?:технологическая\s+карта|техкарта|тк)(?=\s|:|：)(?:\s*[:：]\s*|\s+)(.+)$/iu);
+    if (explicitTitle) {
+      const title = explicitTitle[1].replace(/^(?:№|No\.?)\s*\d+\s*[.:-]?\s*/iu, '').trim();
+      const withOutput = title.match(new RegExp(`^(.*?)\\s*(?:\\(\\s*)?(${NUMBER_SOURCE})\\s*(${UNIT_SOURCE})\\s*\\)?$`, 'iu'));
+      const outputUnit = withOutput && unit(withOutput[3]);
+      if (withOutput && clean(withOutput[1]) && ['л','мл','сл','дл'].includes(outputUnit) && !/(?:\d\s*[-–—]\s*|[-−])$/.test(withOutput[1].trim())) {
+        recipe.name = withOutput[1].replace(/\s*[-–—:,]+\s*$/u, '').trim();
+        const outputAmount = number(withOutput[2]);
+        if (outputAmount > 0) recipe.yield = round(outputAmount * ({'л':1,'мл':.001,'сл':.01,'дл':.1}[outputUnit]));
+        else unknown.push(`Выход из заголовка требует проверки: ${withOutput[2]} ${withOutput[3]}`);
+      } else recipe.name = title || explicitTitle[1];
+      titleTaken = true;
+      continue;
+    }
     const nameMatch = line.match(/^(?:название(?:\s+тк|\s+карты)?|наименование|настойка|технологическая\s+карта|техкарта|тк)\s*[:：]\s*(.+)$/iu);
     if (!section && nameMatch && !titleTaken) { recipe.name = nameMatch[1].trim(); titleTaken = true; continue; }
     const output = line.match(/^(?:базовый\s+)?(?:выход(?:\s+(?:готового\s+продукта|настойки))?|(?:общий\s+)?об[ъь][её]м(?:\s+готового\s+продукта)?|итого)(?=\s|[,，:：=–—-]|$)\s*(?:[,，]\s*(л|мл))?\s*[:：=–—-]?\s*(.*)$/iu);
@@ -209,8 +225,16 @@ function detectAlcohol(ingredients, unparsedText = '') {
   const unparsedIngredients = String(unparsedText || '').split('\n').filter(line => !/^(?:категория|раздел)\s*[:：]/iu.test(line)).map(name => ({name}));
   for (const ingredient of [...(ingredients || []), ...unparsedIngredients]) {
     const name = clean(ingredient?.name);
-    if (!name || NON_ALCOHOLIC.test(name)) continue;
+    if (!name) continue;
     const matched = ALCOHOL_RULES.filter(([, pattern]) => pattern.test(name)).map(([category]) => category);
+    if (NON_ALCOHOLIC.test(name)) {
+      const clauses = name.split(/\s+(?:и|с|или)\s+|\s*\+\s*|\s+\/\s+/iu);
+      const mixedBase = clauses.some(clause => !NON_ALCOHOLIC.test(clause) && ALCOHOL_RULES.some(([, pattern]) => pattern.test(clause)));
+      // A qualifier in one clause cannot make another base alcohol disappear.
+      // Mixed or ambiguous compound names require explicit user confirmation.
+      if (!(clauses.length > 1 && mixedBase) && !(clauses.length === 1 && matched.length > 1)) continue;
+      uncertain = true;
+    }
     // Vermouth is a specific wine category, not two independent base alcohols.
     if (matched.includes('Вермут') && matched.includes('Вино')) matched.splice(matched.indexOf('Вино'), 1);
     for (const category of matched) candidates.add(category);
