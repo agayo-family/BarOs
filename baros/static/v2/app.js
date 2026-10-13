@@ -1,17 +1,11 @@
-import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute} from './core.js?v=2.5.0';
-import {cardsPage} from './cards.js?v=2.5.0';
-import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.5.0';
-import {authPage} from './auth.js?v=2.5.0';
-import {overview,coursesPage,staffPage,reportsPage,sourcesPage,aiPage,interviewPage} from './manage.js?v=2.5.0';
-import {editorPage} from './editor.js?v=2.5.0';
-import {learningPage,lessonPage,examPage,historyPage} from './learn.js?v=2.5.0';
-import {ownerHome,venueSettingsPage,ownerAuditPage,ownerSettingsPage} from './owner.js?v=2.5.0';
+import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute,pageHead,dismissModal} from './core.js?v=2.5.1';
+import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.5.1';
+import {mountShell} from './shell.js?v=2.5.1';
 
-import {gamesPage} from './games.js?v=2.5.0';
-import {shiftsPage} from './shifts.js?v=2.5.0';
-
-import {mentorPage} from './mentor.js?v=2.5.0';
-import {profilePage,syncCompanion,clearCompanion} from './growth.js?v=2.5.0';
+let shellCleanup=null;
+const loadPage=name=>import('./'+name+'.js?v=2.5.1');
+async function renderAuth(path,ticket){const module=await loadPage('auth');if(ticket!==state.renderTicket)return;return module.authPage(path,ticket)}
+function loading(active){let bar=$('#route-progress');if(!bar){bar=document.createElement('div');bar.id='route-progress';bar.className='route-progress';bar.setAttribute('aria-hidden','true');document.body.append(bar)}bar.hidden=!active;$app()?.setAttribute('aria-busy',String(active));const content=$('#page-content');if(content)content.inert=active;}
 
 const $app=()=>$('#app');
 function path(){return location.pathname.replace(/\/$/,'')||'/'}
@@ -24,49 +18,53 @@ function navFor(a){
  return `<div class="nav-caption">АКАДЕМИЯ</div><nav class="nav"><a class="${active(path(),'/app')}" href="/app">${icon('dashboard')}Обзор</a><a class="${active(path(),'/app/courses')}" href="/app/courses">${icon('book')}Обучение</a><a class="${active(path(),'/app/cards')}" href="/app/cards">${icon('cards')}Карточки</a><a class="${active(path(),'/app/games')}" href="/app/games">${icon('games')}Игры</a><a class="${active(path(),'/app/mentor')}" href="/app/mentor">${icon('heart')}Мой наставник</a><a class="${active(path(),'/app/shifts')}" href="/app/shifts">${icon('calendar')}Смены и заработок</a><a class="${active(path(),'/app/staff')}" href="/app/staff">${icon('users')}Команда</a><a class="${active(path(),'/app/sources')}" href="/app/sources">${icon('file')}Материалы</a><a class="${active(path(),'/app/ai')}" href="/app/ai">${icon('spark')}AI-методист</a></nav><div class="nav-caption section-space">КОНТРОЛЬ</div><nav class="nav"><a class="${active(path(),'/app/reports')}" href="/app/reports">${icon('chart')}Аналитика</a><a class="${active(path(),'/app/interview')}" href="/app/interview">${icon('interview')}Интервью</a><a class="${active(path(),'/app/notices')}" href="/app/notices">${icon('bell')}Уведомления${state.me.unread?`<span class="count">${state.me.unread}</span>`:''}</a></nav>`;
 }
 function shell(a,content){const org=state.me.venue;const ownerRemote=a.role==='owner'&&state.org;const orgName=ownerRemote?(state.venue?.name||org?.name||'Выбранное заведение'):org?.name||'BarOS';const banner=ownerRemote?`<div class="owner-banner"><span>${icon('shield')} Режим удалённого контроля: <strong>${esc(orgName)}</strong></span><a href="/app/venues" data-clear-org>Вернуться к платформе</a></div>`:'';return `${banner}<aside class="sidebar" id="sidebar">${brand()}${orgName?`<div class="workspace"><div class="icon-box">${icon(ownerRemote?'building':'shield')}</div><div class="grow"><strong>${esc(orgName)}</strong><small>${esc(roleName(a.role))}</small></div></div>`:''}${navFor(a)}<div class="side-bottom"><div class="side-help">${icon('spark')}<strong>Нужна помощь?</strong><p>Откройте справку BarOS или напишите владельцу платформы.</p><button data-support class="btn text">Связаться ${icon('arrow')}</button></div><div class="account-strip">${avatar(a.name)}<div class="grow"><a href="/app/profile"><strong>${esc(a.name)}</strong></a><small>${esc(roleName(a.role))}</small></div><a class="btn icon-only ghost" href="/app/settings" aria-label="Настройки">${icon('settings')}</a></div></div></aside><div class="mobile-overlay" id="mobile-overlay"></div><main class="shell-main"><header class="topbar"><button class="btn icon-only ghost mobile-menu" id="mobile-menu" aria-label="Открыть меню">${icon('menu')}</button><div class="mobile-brand">${brand()}</div><div class="breadcrumbs"><span>BarOS</span>${orgName?`${icon('chevron')}<strong>${esc(orgName)}</strong>`:''}</div><div class="top-actions">${themeButton()}<span class="date">${new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long',timeZone:'Europe/Moscow'}).format(new Date())}</span><a class="btn icon-only ghost bell" href="/app/notices" aria-label="Уведомления">${icon('bell')}${state.me.unread?'<span class="notification-dot"></span>':''}</a><a class="btn icon-only ghost" href="/app/profile" aria-label="Профиль">${avatar(a.name)}</a></div></header><div class="content" id="page-content">${content}</div></main><nav class="bottom-nav">${(a.role==='employee'?`<a class="${active(path(),'/app')}" href="/app">${icon('dashboard')}Главная</a><a class="${active(path(),'/app/learning')}" href="/app/learning">${icon('book')}Обучение</a><a class="${active(path(),'/app/shifts')}" href="/app/shifts">${icon('calendar')}Смены</a><a class="${active(path(),'/app/games')}" href="/app/games">${icon('games')}Игры</a>`:`<a class="${active(path(),'/app')}" href="/app">${icon('dashboard')}Обзор</a><a class="${active(path(),'/app/courses')}" href="/app/courses">${icon('book')}Обучение</a><a class="${active(path(),'/app/staff')}" href="/app/staff">${icon('users')}Команда</a><a class="${active(path(),'/app/shifts')}" href="/app/shifts">${icon('calendar')}Смены</a>`)}<a href="/app/profile">${icon('users')}Профиль</a></nav>`}
-function closeMobile(){const s=$('#sidebar'),o=$('#mobile-overlay');s?.classList.remove('open');o?.classList.remove('open')}
-function setupShell(){const menu=$('#mobile-menu');menu?.addEventListener('click',()=>{$('#sidebar')?.classList.add('open');$('#mobile-overlay')?.classList.add('open')});$('#mobile-overlay')?.addEventListener('click',closeMobile);document.querySelectorAll('[data-clear-org]').forEach(e=>e.addEventListener('click',()=>{localStorage.removeItem('baros:venue');state.org='';closeMobile()}));document.querySelectorAll('.sidebar a,.bottom-nav a').forEach(a=>a.addEventListener('click',closeMobile))}
+function setupShell(){shellCleanup?.();shellCleanup=mountShell()}
 
 async function notificationsPage(root){const ns=await api('/notices');root.innerHTML=`<div class="page-head"><div><div class="eyebrow">ЦЕНТР УВЕДОМЛЕНИЙ</div><h1>Уведомления</h1><p>Новые курсы, сроки и важные события команды.</p></div><div class="actions">${btn('Отметить прочитанными','check','soft','data-read-all')}</div></div><section class="card notifications">${ns.length?ns.map(n=>`<a class="line-item ${n.read?'':'unread'}" href="${esc(n.url||'/app')}"><div class="icon-box">${icon(n.title.toLowerCase().includes('срок')?'clock':n.title.toLowerCase().includes('обучение')?'book':'bell')}</div><div class="grow"><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p><time>${fmtDate(n.at,true)} · ${new Date(n.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div>${n.read?'':badge('Новое','purple')}</a>`).join(''):empty('Пока нет уведомлений','Здесь появятся новые назначения и напоминания.','bell')}</section><section class="card section-space"><div class="card-head"><div><h2>Push-уведомления</h2><p>Разрешите уведомления браузера, чтобы не пропускать дедлайны.</p></div><div class="icon-box">${icon('bell')}</div></div><div class="row">${btn('Включить уведомления','bell','primary','data-enable-push')}<span id="push-status" class="muted tiny"></span></div><p class="footnote">Работает по HTTPS и зависит от поддержки браузера. Внутри BarOS уведомления сохраняются в любом случае.</p></section>`;$$('[data-read-all]',root).forEach(b=>b.onclick=async()=>{await api('/notices/read','POST',{});toast('Уведомления отмечены');notificationsPage(root)});$$('[data-enable-push]',root).forEach(b=>b.onclick=async()=>{try{if(!('Notification'in window)||!('serviceWorker'in navigator))throw new Error('Этот браузер не поддерживает push-уведомления');const perm=await Notification.requestPermission();if(perm!=='granted')throw new Error('Разрешение на уведомления не выдано');const reg=await navigator.serviceWorker.register('/sw.js');const key=await api('/push/key');const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64(key.public_key)});await api('/push','POST',sub.toJSON());$('#push-status',root).textContent='Уведомления включены';toast('Push-уведомления включены')}catch(e){toast(e.message,true)}})}
 function base64(s){const pad='='.repeat((4-s.length%4)%4),str=(s+pad).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(str);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
 function empty(title,desc,ic,action=''){return `<div class="empty">${icon(ic)}<h3>${esc(title)}</h3><p>${esc(desc)}</p>${action}</div>`}
 
 async function renderAuthed(ticket){if(state.cleanup){state.cleanup();state.cleanup=null}const a=state.me.account;const p=path();
- if(a.role==='owner'&&state.org){try{const venue=await api('/venue');if(ticket!==state.renderTicket)return;state.venue=venue}catch(e){if(ticket!==state.renderTicket)return;localStorage.removeItem('baros:venue');state.org='';state.venue=null}}
+ const page=async(file,name,...args)=>{const module=await loadPage(file);if(ticket!==state.renderTicket)return;return module[name](root,...args)};
+ if(a.role==='owner'&&state.org&&(!state.venue||String(state.venue.id)!==state.org||Date.now()-(state.venueLoadedAt||0)>30000)){try{const venue=await api('/venue');if(ticket!==state.renderTicket)return;state.venue=venue;state.venueLoadedAt=Date.now()}catch(e){if(ticket!==state.renderTicket)return;if(![400,403,404].includes(e.status))throw e;setOrg('')}}
  const root=document.createElement('div');let rendered;
  try{
-  if(p==='/app/profile')rendered=await profilePage(root);
-  else if(a.role==='owner'&&!state.org&&['/app','/app/venues'].includes(p))rendered=await ownerHome(root);
-  else if(a.role==='owner'&&!state.org&&p==='/app/audit')rendered=await ownerAuditPage(root);
-  else if(a.role==='owner'&&!state.org&&p==='/app/settings')rendered=await ownerSettingsPage(root);
-  else if(a.role==='owner'&&!state.org&&p!=='/app/notices')rendered=await ownerHome(root,{returnTo:p+location.search});
-  else if(p==='/app/mentor')rendered=await mentorPage(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app')rendered=await overview(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/courses')rendered=await coursesPage(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/staff')rendered=await staffPage(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/reports')rendered=await reportsPage(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/sources')rendered=await sourcesPage(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/ai')rendered=await aiPage(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/interview')rendered=await interviewPage(root);
-  else if((a.role==='employee'||a.role==='manager'||state.org)&&(p==='/app/games'||/^\/app\/games\/\d+$/.test(p)))rendered=await gamesPage(root,p==='/app/games'?null:Number(p.split('/').at(-1)));
-  else if(p==='/app/shifts'&&(a.role!=='owner'||state.org))rendered=await shiftsPage(root);
-  else if(p==='/app/settings')rendered=await ownerSettingsPage(root);
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/venues')rendered=await venueSettingsPage(root);
-  else if((a.role==='employee')&&['/app','/app/learning'].includes(p))rendered=await learningPage(root,p==='/app/learning');
-  else if((a.role==='employee'||a.role==='manager'||state.org)&&(p==='/app/cards'||/^\/app\/cards\/\d+$/.test(p)))rendered=await cardsPage(root,p==='/app/cards'?null:Number(p.split('/').at(-1)));
-  else if(a.role==='employee'&&p==='/app/history')rendered=await historyPage(root);
+  if(p==='/app/profile')rendered=await page('growth','profilePage');
+  else if(a.role==='owner'&&!state.org&&['/app','/app/venues'].includes(p))rendered=await page('owner','ownerHome');
+  else if(a.role==='owner'&&!state.org&&p==='/app/audit')rendered=await page('owner','ownerAuditPage');
+  else if(a.role==='owner'&&!state.org&&p==='/app/settings')rendered=await page('owner','ownerSettingsPage');
+  else if(a.role==='owner'&&!state.org&&p!=='/app/notices')rendered=await page('owner','ownerHome',{returnTo:p+location.search});
+  else if(p==='/app/mentor')rendered=await page('mentor','mentorPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app')rendered=await page('manage','overview');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/courses')rendered=await page('manage','coursesPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/staff')rendered=await page('manage','staffPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/reports')rendered=await page('manage','reportsPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/sources')rendered=await page('manage','sourcesPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/ai')rendered=await page('manage','aiPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/interview')rendered=await page('manage','interviewPage');
+  else if((a.role==='employee'||a.role==='manager'||state.org)&&(p==='/app/games'||/^\/app\/games\/\d+$/.test(p)))rendered=await page('games','gamesPage',p==='/app/games'?null:Number(p.split('/').at(-1)));
+  else if(p==='/app/shifts'&&(a.role!=='owner'||state.org))rendered=await page('shifts','shiftsPage');
+  else if(p==='/app/settings')rendered=await page('owner','ownerSettingsPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/venues')rendered=await page('owner','venueSettingsPage');
+  else if((a.role==='employee')&&['/app','/app/learning'].includes(p))rendered=await page('learn','learningPage',p==='/app/learning');
+  else if((a.role==='employee'||a.role==='manager'||state.org)&&(p==='/app/cards'||/^\/app\/cards\/\d+$/.test(p)))rendered=await page('cards','cardsPage',p==='/app/cards'?null:Number(p.split('/').at(-1)));
+  else if(a.role==='employee'&&p==='/app/history')rendered=await page('learn','historyPage');
   else if(p==='/app/notices')rendered=await notificationsPage(root);
-  else {const cid=routeMatch(p,/^\/app\/courses\/(\d+)$/);const lid=routeMatch(p,/^\/app\/learn\/(\d+)$/);const eid=routeMatch(p,/^\/app\/exam\/([^/]+)$/);if(cid&&(a.role==='manager'||a.role==='owner'))rendered=await editorPage(root,Number(cid));else if(lid&&a.role==='employee')rendered=await lessonPage(root,Number(lid));else if(eid&&a.role==='employee')rendered=await examPage(root,eid);else if(p==='/app')rendered=a.role==='employee'?await learningPage(root):await overview(root);else rendered=await learningPage(root)}
- }catch(e){if(ticket!==state.renderTicket)return;if(e.status===401){state.me=null;return authPage('/',ticket)}root.innerHTML=`<section class="card">${notice(e.message,'error','Не удалось открыть раздел')}<a class="btn primary" href="/app">Вернуться на главную</a></section>`}
+  else {const cid=routeMatch(p,/^\/app\/courses\/(\d+)$/);const lid=routeMatch(p,/^\/app\/learn\/(\d+)$/);const eid=routeMatch(p,/^\/app\/exam\/([^/]+)$/);if(cid&&(a.role==='manager'||a.role==='owner'))rendered=await page('editor','editorPage',Number(cid));else if(lid&&a.role==='employee')rendered=await page('learn','lessonPage',Number(lid));else if(eid&&a.role==='employee')rendered=await page('learn','examPage',eid);else if(p==='/app')rendered=a.role==='employee'?await page('learn','learningPage'):await page('manage','overview');else root.innerHTML=pageHead('Страница не найдена','Проверьте адрес или вернитесь к своему разделу обучения.')+`<a class="btn primary" href="/app">На главную</a>`}
+ }catch(e){if(ticket!==state.renderTicket)return;if(e.status===401){state.me=null;return renderAuth('/',ticket)}root.innerHTML=`<section class="card">${notice(e.message,'error','Не удалось открыть раздел')}<a class="btn primary" href="/app">Вернуться на главную</a></section>`}
  if(ticket!==state.renderTicket)return;
  if(p==='/app/settings')root.insertAdjacentHTML('beforeend',experienceSettings());
  const wrapped=document.createElement('div');wrapped.innerHTML=shell(a,'');
  const content=wrapped.querySelector('#page-content');root.id=content.id;root.className=content.className;content.replaceWith(root);
- $app().innerHTML='';$app().append(wrapped);setupShell();syncThemeControls();syncCompanion(false);
+ $app().innerHTML='';$app().append(wrapped);setupShell();syncThemeControls();loadPage('growth').then(module=>{if(ticket===state.renderTicket)module.syncCompanion(false)}).catch(()=>{});root.querySelector('h1')?.setAttribute('tabindex','-1');root.querySelector('h1')?.focus({preventScroll:true});
 }
 
-async function render(){const ticket=++state.renderTicket;if(state.cleanup){state.cleanup();state.cleanup=null}const p=path();if(!p.startsWith('/app')){clearCompanion();return authPage(p,ticket)}try{if(!state.me||!state.me.account)await reloadMe(ticket);if(ticket!==state.renderTicket)return;await renderAuthed(ticket)}catch(e){if(ticket!==state.renderTicket)return;if(e.status===401||!state.me)return authPage(p,ticket);$app().innerHTML=`<div class="loading"><span class="spinner"></span> ${esc(e.message)}</div>`}}
+async function render(){dismissModal();const ticket=++state.renderTicket;if(state.cleanup){state.cleanup();state.cleanup=null}shellCleanup?.();shellCleanup=null;const p=path();loading(true);
+ try{if(!p.startsWith('/app')){const module=await loadPage('growth');module.clearCompanion();return await renderAuth(p,ticket)}if(!state.me||!state.me.account)await reloadMe(ticket);if(ticket!==state.renderTicket)return;await renderAuthed(ticket)}
+ catch(e){if(ticket!==state.renderTicket)return;if(e.status===401||!state.me)return await renderAuth(p,ticket);$app().innerHTML=`<main class="content"><section class="card">${notice(e.message,'error','Не удалось открыть раздел')}<button class="btn primary" data-route-retry>Повторить</button><a class="btn" href="/app">На главную</a></section></main>`;$('[data-route-retry]').onclick=()=>render()}
+ finally{if(ticket===state.renderTicket)loading(false)}
+}
 
-document.addEventListener('click',e=>{const a=e.target.closest('a');if(!a||a.target==='_blank'||a.hasAttribute('download')||a.origin!==location.origin)return;const href=a.getAttribute('href');if(!href||href.startsWith('/api')||href.startsWith('mailto:'))return;e.preventDefault();go(href)});
+document.addEventListener('click',e=>{const a=e.target.closest('a');if(!a||a.target==='_blank'||a.hasAttribute('download')||a.origin!==location.origin)return;const href=a.getAttribute('href');if(!href||href.startsWith('/api')||href.startsWith('mailto:'))return;e.preventDefault();go(href,false,a.hasAttribute('data-clear-org')?()=>setOrg(''):undefined)});
 window.addEventListener('popstate',()=>render());window.addEventListener('baros:navigate',()=>render());window.addEventListener('error',e=>{if(e.message)console.error('BarOS UI',e.message)});
 initExperience();render();

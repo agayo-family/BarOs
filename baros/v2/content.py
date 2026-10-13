@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from fastapi.responses import Response
 from sqlalchemy import select, delete, func
+from sqlalchemy.orm import defer
 from ..db import get_db
 from ..models import Organization, Course, Lesson, Question
 from .models import *
@@ -22,10 +23,11 @@ def get_course(db,oid,cid):
     c=db.get(Course,cid);require(c and c.organization_id==oid,'Курс не найден',404);return c
 
 
-def course_card(db,c):
-    s=course_settings(db,c)
+def course_card(db,c,s=None,counts=None):
+    s=s or course_settings(db,c)
+    lesson_count,question_count=counts if counts is not None else (len(c.lessons),len(c.questions))
     return {'id':c.id,'title':c.title,'description':c.description,'published':c.published,'archived':s.archived,'version':s.version,
-            'edit_version':s.edit_version,'positions':parse(s.positions_json,['all']),'lessons':len(c.lessons),'questions':len(c.questions),
+            'edit_version':s.edit_version,'positions':parse(s.positions_json,['all']),'lessons':lesson_count,'questions':question_count,
             'quiz_size':s.quiz_size,'is_intro':s.is_intro,'ai_generated':s.ai_generated,'bank_target':s.bank_target,'required':c.required,
             'passing_score':c.passing_score,'due_at':iso(s.due_at),'updated_at':iso(s.updated_at)}
 
@@ -33,7 +35,13 @@ def course_card(db,c):
 @router.get('/api/courses')
 def courses(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
-    return [course_card(db,c) for c in db.scalars(select(Course).where(Course.organization_id==oid).order_by(Course.id.desc())).all()]
+    rows=db.scalars(select(Course).where(Course.organization_id==oid).order_by(Course.id.desc())).all()
+    ids=[c.id for c in rows]
+    if not ids:return []
+    configs={s.course_id:s for s in db.scalars(select(CourseSettings).where(CourseSettings.course_id.in_(ids))).all()}
+    lessons=dict(db.execute(select(Lesson.course_id,func.count(Lesson.id)).where(Lesson.course_id.in_(ids)).group_by(Lesson.course_id)).all())
+    questions=dict(db.execute(select(Question.course_id,func.count(Question.id)).where(Question.course_id.in_(ids)).group_by(Question.course_id)).all())
+    return [course_card(db,c,configs.get(c.id),(lessons.get(c.id,0),questions.get(c.id,0))) for c in rows]
 
 
 @router.get('/api/courses/{cid}')
@@ -167,17 +175,21 @@ def interview_draft(request:Request,a=Depends(actor),db=Depends(get_db)):
     log(db,a,oid,'Создан вводный черновик из интервью',course_id=c.id);db.commit();return {'id':c.id}
 
 
-def source_card(s):
+def source_card(s,characters=None,original=None):
     from .ai_vision import needs_vision, available
-    return {'id':s.id,'name':s.name,'size':s.size,'characters':len(s.text),'positions':parse(s.positions_json,['all']),
-            'status':s.extraction_status,'warning':s.warning,'created_at':iso(s.created_at),'original_available':s.content is not None,
-            'vision_ready':bool(s.content and needs_vision(s) and available())}
+    has_original=s.content is not None if original is None else original
+    return {'id':s.id,'name':s.name,'size':s.size,'characters':len(s.text) if characters is None else characters,'positions':parse(s.positions_json,['all']),
+            'status':s.extraction_status,'warning':s.warning,'created_at':iso(s.created_at),'original_available':has_original,
+            'vision_ready':bool(has_original and s.size and available() and needs_vision(s))}
 
 
 @router.get('/api/sources')
 def sources(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
-    return [source_card(s) for s in db.scalars(select(SourceFile).where(SourceFile.organization_id==oid).order_by(SourceFile.id.desc())).all()]
+    rows=db.execute(select(SourceFile,func.length(SourceFile.text),SourceFile.content.is_not(None))
+        .options(defer(SourceFile.text),defer(SourceFile.content))
+        .where(SourceFile.organization_id==oid).order_by(SourceFile.id.desc())).all()
+    return [source_card(s,characters,original) for s,characters,original in rows]
 
 
 @router.post('/api/sources')

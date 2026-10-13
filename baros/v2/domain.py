@@ -6,7 +6,8 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from sqlalchemy import select, func
+from collections import defaultdict
+from sqlalchemy import select, func, and_
 from fastapi import HTTPException
 from ..models import Organization, User, Employee, Course, Lesson, Question, Upload, Attempt, VenueControl, ManagerControl
 from ..security import hash_password
@@ -67,7 +68,7 @@ def payload(db, c):
     program=db.get(CourseProgram,c.id)
     program_data=parse(program.payload) if program else None
     if program_data is not None:
-        program_data['steps']=[{'lesson_index':i,'title':l.title,'minutes':max(2,math.ceil(len(l.body.split())/140))} for i,l in enumerate(c.lessons)]
+        program_data['steps']=[{'lesson_index':i,'title':l.title,'minutes':max(1,math.ceil(len(l.body.split())/180))} for i,l in enumerate(c.lessons)]
         program_data['bank_size']=len(c.questions)
     return {'title': c.title, 'description': c.description, 'positions': parse(s.positions_json, ['all']),
             'program':program_data,
@@ -106,22 +107,38 @@ def enroll(db, account, rev):
     return row
 
 
-def accessible_courses(db, account):
+def course_bundle(db, org_id):
+    """Load current publications once, without reading draft lesson/question blobs."""
+    rows = db.execute(select(Course, CourseSettings, CourseRevision)
+        .outerjoin(CourseSettings, CourseSettings.course_id == Course.id)
+        .outerjoin(CourseRevision, and_(CourseRevision.course_id == Course.id,
+                                      CourseRevision.version == CourseSettings.version))
+        .where(Course.organization_id == org_id, Course.published == True)).all()
     result = []
-    courses = db.scalars(select(Course).where(Course.organization_id == account.organization_id, Course.published == True)).all()
-    for c in courses:
-        s = course_settings(db, c)
-        rev = revision(db, c)
-        if s.archived or not rev: continue
-        data = parse(rev.payload)
-        if applies(account, data):
-            result.append((c, s, rev, data))
+    for c, s, rev in rows:
+        s = s or course_settings(db, c)
+        if not s.archived and rev:
+            result.append((c, s, rev, parse(rev.payload)))
     return sorted(result, key=lambda r: (not r[3].get('is_intro'), -r[0].id))
 
 
-def ensure_enrollments(db, account):
+def accessible_courses(db, account, bundle=None):
+    result = []
+    for c, s, rev, data in bundle if bundle is not None else course_bundle(db, account.organization_id):
+        if applies(account, data):
+            result.append((c, s, rev, data))
+    return result
+
+
+def ensure_enrollments(db, account, bundle=None, existing=None):
     if account.role == 'employee' and account.active:
-        for _, _, rev, _ in accessible_courses(db, account): enroll(db, account, rev)
+        rows = accessible_courses(db, account, bundle)
+        if existing is None:
+            existing = {(e.account_id, e.revision_id): e for e in db.scalars(select(Enrollment)
+                .where(Enrollment.account_id == account.id)).all()}
+        for _, _, rev, _ in rows:
+            key = (account.id, rev.id)
+            if key not in existing: existing[key] = enroll(db, account, rev)
 
 
 def exams_for(db, account, rev_id=None):
@@ -130,14 +147,38 @@ def exams_for(db, account, rev_id=None):
     return db.scalars(q.order_by(Exam.started_at.desc())).all()
 
 
+def learner_stats_many(db, accounts, ensure=False, bundle=None):
+    """Constant read-query count per venue, regardless of staff/course count."""
+    if not accounts: return {}
+    bundles = {oid: course_bundle(db, oid) for oid in {a.organization_id for a in accounts}} if bundle is None else {accounts[0].organization_id: bundle}
+    aids = [a.id for a in accounts]
+    enrolled = {(e.account_id, e.revision_id): e for e in db.scalars(select(Enrollment)
+        .where(Enrollment.account_id.in_(aids))).all()}
+    if ensure:
+        for a in accounts: ensure_enrollments(db, a, bundles[a.organization_id], enrolled)
+    exams = defaultdict(list)
+    for exam in db.scalars(select(Exam).where(Exam.account_id.in_(aids)).order_by(Exam.started_at.desc())).all():
+        exams[exam.account_id].append(exam)
+    reads = {(aid, rid): count for aid, rid, count in db.execute(select(LessonRead.account_id, LessonRead.revision_id, func.count(LessonRead.id))
+        .where(LessonRead.account_id.in_(aids), LessonRead.completed_at.is_not(None))
+        .group_by(LessonRead.account_id, LessonRead.revision_id)).all()}
+    return {a.id: _learner_stats(a, accessible_courses(db, a, bundles[a.organization_id]), enrolled, exams[a.id], reads) for a in accounts}
+
+
 def learner_stats(db, account):
+    return learner_stats_many(db, [account])[account.id]
+
+
+def _learner_stats(account, visible, enrolled, all_exams, reads):
     cards = []
-    for c, s, rev, data in accessible_courses(db, account):
-        e = db.scalar(select(Enrollment).where(Enrollment.account_id == account.id, Enrollment.revision_id == rev.id))
-        exams = exams_for(db, account, rev.id)
+    by_revision = defaultdict(list)
+    for exam in all_exams: by_revision[exam.revision_id].append(exam)
+    for c, s, rev, data in visible:
+        e = enrolled.get((account.id, rev.id))
+        exams = by_revision[rev.id]
         done = [x for x in exams if x.finished_at]
         results = [parse(x.result_json) for x in done]
-        read_count = db.scalar(select(func.count(LessonRead.id)).where(LessonRead.account_id == account.id, LessonRead.revision_id == rev.id, LessonRead.completed_at.is_not(None))) or 0
+        read_count = reads.get((account.id, rev.id), 0)
         passed = any(x.get('passed') for x in results)
         cards.append({'id': c.id, 'title': data['title'], 'description': data['description'], 'positions': data['positions'],
                       'required': data['required'], 'is_intro': data.get('is_intro', False), 'version': rev.version,
@@ -148,7 +189,6 @@ def learner_stats(db, account):
                       'best_score': max([r.get('score', 0) for r in results], default=None),
                       'latest_score': results[0].get('score') if results else None,
                       'progress': round(100*(read_count + int(passed))/(len(data['lessons'])+1))})
-    all_exams = exams_for(db, account)
     done = [parse(x.result_json) for x in all_exams if x.finished_at]
     durations = [r['duration_seconds'] for r in done if r.get('duration_seconds') is not None]
     weak = {}

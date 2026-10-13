@@ -9,11 +9,12 @@ globalThis.confirm=()=>true;
 dom.window.scrollTo=()=>{};
 dom.window.HTMLElement.prototype.scrollIntoView=function(){};
 const nativeFetch=globalThis.fetch;
-const requests=[];
+const requests=[];let saveGate=null;
 globalThis.fetch=async(path,options={})=>{
  const url=new URL(path,base).href,headers=new Headers(options.headers||{});
  const cookie=dom.cookieJar.getCookieStringSync(base);
  if(cookie)headers.set('cookie',cookie);
+ if(saveGate&&options.method==='PUT'&&/^\/api\/courses\/\d+$/.test(new URL(url).pathname))await saveGate;
  const response=await nativeFetch(url,{...options,headers});
  for(const c of response.headers.getSetCookie())dom.cookieJar.setCookieSync(c,base);
  requests.push({path:new URL(url).pathname,method:options.method||'GET',status:response.status});
@@ -28,7 +29,7 @@ function submit(selector){element(selector).dispatchEvent(new Event('submit',{bu
 async function request(path,method='GET',body){const r=await fetch('/api'+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});const data=await r.json();assert(r.ok,JSON.stringify(data));return data;}
 await request('/auth/setup','POST',{token:'baros-ui-audit-only',name:'Тестовый владелец',login:'ui.owner',password:'audit-owner-password'});
 await import('./ui/app.js');
-const core=await import('./ui/core.js?v=2.5.0');
+const core=await import('./ui/core.js?v=2.5.1');
 await until(()=>document.querySelector('[data-new-venue]'),'Owner screen');
 click('[data-new-venue]');
 assert(document.querySelector('#venue-form'),'Owner button must retain its handler after shell mounting');
@@ -48,8 +49,24 @@ const courseId=Number(location.pathname.split('/').at(-1));
 click('[data-add-lesson]');
 input('#lesson-title','Стандарты подачи');
 input('#lesson-body','В нашем заведении лимонад подают в высоком стакане со льдом. Сначала кладут лёд, затем добавляют напиток.');
+let releaseSave;saveGate=new Promise(resolve=>releaseSave=resolve);
+const savesBefore=requests.filter(r=>r.path==='/api/courses/'+courseId&&r.method==='PUT').length;
 click('[data-save]');
-await until(()=>requests.some(r=>r.path==='/api/courses/'+courseId&&r.method==='PUT'&&r.status===200),'Save theory');
+assert([...document.querySelectorAll('[data-save]')].every(b=>b.disabled),'Both save buttons lock during a request');
+assert.match(element('#save-state').textContent,/Сохраняем/);
+document.querySelectorAll('[data-save]')[1].click();
+input('#lesson-body',element('#lesson-body').value+' После подачи проверьте чистоту приборов.');
+releaseSave();saveGate=null;
+await until(()=>!element('[data-save]').disabled,'Delayed save finishes');
+assert.equal(requests.filter(r=>r.path==='/api/courses/'+courseId&&r.method==='PUT').length,savesBefore+1,'Double save does not duplicate a request');
+assert(core.state.dirty,'Edits made during saving remain unsaved');
+click('[data-save]');await until(()=>!core.state.dirty&&!element('[data-save]').disabled,'Save changes entered during request');
+assert((await core.api('/courses/'+courseId)).lessons[0].body.includes('чистоту приборов'),'Newer theory is persisted');
+const theoryTab=element('[data-editor-tab=theory]');theoryTab.focus();
+theoryTab.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+assert.equal(document.activeElement?.dataset.editorTab,'questions','Keyboard tab retains focus after redraw');
+assert.equal(element('[data-editor-tab=questions]').getAttribute('aria-selected'),'true');
+
 click('[data-editor-tab=questions]');
 click('[data-add-question]');
 input('#question-form [name=prompt]','В какой посуде подают лимонад по стандарту заведения?');
@@ -115,7 +132,7 @@ assert.equal(element('[data-flip]').getAttribute('aria-pressed'),'false');const 
 assert.equal(element('[data-flip]'),originalFace,'Flip keeps the same DOM for the CSS animation');assert.equal(element('[data-flip]').getAttribute('aria-pressed'),'true');
 assert.equal(element('.flashcard-answer').textContent,'Высокий стакан');click('[data-remember=yes]');
 await until(()=>/1 \/ 1/.test(element('.practice-progress').textContent),'Card mark persisted');assert.equal((await core.api('/learning')).attempts,1);
-const {mountDeck}=await import('./ui/cards.js?v=2.5.0');const fixture=document.createElement('section');document.body.append(fixture);
+const {mountDeck}=await import('./ui/cards.js?v=2.5.1');const fixture=document.createElement('section');document.body.append(fixture);
 mountDeck(fixture,{revision_id:'gesture-test',cards:[{id:0,question:'First?',answer:'First answer'},{id:1,question:'Second?',answer:'Second answer'}]});
 function pointer(target,type,x,y){target.dispatchEvent(new MouseEvent(type,{bubbles:true,clientX:x,clientY:y,button:0}))}
 let gesture=fixture.querySelector('[data-flip]');pointer(gesture,'pointerdown',250,100);pointer(gesture,'pointerup',80,108);
@@ -125,7 +142,7 @@ pointer(gesture,'pointerdown',70,100);pointer(gesture,'pointerup',240,106);await
 gesture=fixture.querySelector('[data-flip]');pointer(gesture,'pointerdown',180,70);pointer(gesture,'pointerup',200,250);assert.equal(fixture.querySelector('.flashcard-question').textContent,'First?','Vertical scrolling does not change cards');
 gesture.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await until(()=>fixture.querySelector('.flashcard-question')?.textContent==='Second?','Keyboard advances');
 core.state.cleanup?.();core.state.cleanup=null;fixture.remove();
-const {renderLesson}=await import('./ui/learning-ui.js?v=2.5.0');const safe=renderLesson('## Факты\nВ напитке 2.5 мл сиропа. <img src=x onerror=alert(1)>\n\n4. Налейте 20 мл.\n> Важно: **90 °C**');const parsed=new JSDOM(safe).window.document;
+const {renderLesson}=await import('./ui/learning-ui.js?v=2.5.1');const safe=renderLesson('## Факты\nВ напитке 2.5 мл сиропа. <img src=x onerror=alert(1)>\n\n4. Налейте 20 мл.\n> Важно: **90 °C**');const parsed=new JSDOM(safe).window.document;
 assert(!parsed.querySelector('img'),'Lesson renderer escapes source HTML');assert(safe.includes('2.5 мл'));assert.equal(parsed.querySelector('li').value,4);assert(parsed.querySelector('.learning-fact strong'));
 console.log('CARDS: published API, flip DOM animation, remembered state, left/right pointer swipes, vertical-scroll guard, keyboard and XSS-safe lesson blocks OK');
 core.go('/app/settings');await until(()=>document.querySelector('[data-logout]'),'Employee profile');
@@ -139,8 +156,16 @@ input('#auth-form [name=name]','UI управляющий');submit('#auth-form')
 await until(()=>core.state.me?.account?.role==='manager'&&document.querySelector('[data-create]'),'Manager accepted invite');
 if(document.querySelector('[data-close]'))click('[data-close]');
 core.go('/app/courses');await until(()=>document.querySelector('[data-filter=draft]'),'Manager academy');
-click('[data-filter=draft]');assert(!document.querySelector('.course-card'),'Published course hidden by draft filter');
+click('[data-filter=draft]');assert(!document.querySelector('.course-card'),'Published course hidden by draft filter');assert(document.body.textContent.includes('Нет черновиков'));assert(!document.body.textContent.includes('Создать первый курс'));
 click('[data-filter=published]');assert(document.querySelector('.course-card'),'Published filter retains listeners');
+input('[data-search]','нет-такого-курса');assert(document.body.textContent.includes('Курсы не найдены'));assert(!document.querySelector('[data-empty-create]'));
+input('[data-search]','');assert(document.querySelector('.course-card'));
+core.go('/app/staff');await until(()=>document.querySelector('[data-staff]'),'Team loaded');
+input('[data-search]','нет-такого-сотрудника');assert(document.body.textContent.includes('Никого не нашли'));assert(!document.querySelector('[data-code]'));
+input('[data-search]','');assert(document.querySelector('[data-staff]'));
+core.go('/app/sources');await until(()=>document.querySelector('[data-upload]'),'Sources loaded');
+input('[data-search]','нет-такого-файла');assert(document.body.textContent.includes('Материалы не найдены'));assert(!document.querySelector('[data-first-upload]'));
+
 core.go('/app/reports');await until(()=>document.querySelector('#page-content')?.textContent.includes('UI сотрудник'),'Manager sees actual learner report');
 core.go('/app/ai');await until(()=>document.querySelector('[data-refresh-jobs]'),'AI history');const before=requests.length;click('[data-refresh-jobs]');assert(element('[data-refresh-jobs]').disabled);assert.match(element('[data-refresh-jobs]').textContent,/Обновляем/);await until(()=>!element('[data-refresh-jobs]').disabled,'Refresh completes');assert(requests.slice(before).some(r=>r.path==='/api/jobs'));assert.match(element('.refresh-status').textContent,/состояние не изменилось/);
 console.log('EXPERIENCE: night theme persistence, contact destinations, PWA instructions and actual refresh with visible feedback OK');
@@ -152,6 +177,28 @@ input('#auth-form [name=login]','ui.owner');input('#auth-form [name=password]','
 await until(()=>core.state.me?.account?.role==='owner'&&document.querySelector('[data-enter-venue]'),'Owner returns');click('[data-enter-venue]');await until(()=>document.querySelector('[data-create]'),'Owner remote dashboard returns');
 core.go('/app/ai');await until(()=>document.querySelector('#ai-budget [data-ai-budget-detail=setup]'),'Owner AI instructions');const setupDetails=element('#ai-budget [data-ai-budget-detail=setup]');setupDetails.open=true;click('[data-refresh-jobs]');await until(()=>!element('[data-refresh-jobs]').disabled,'Owner refresh completes');assert.equal(element('#ai-budget [data-ai-budget-detail=setup]'),setupDetails);assert(setupDetails.open,'AI instructions stay open while history refreshes');
 console.log('AI: owner instructions remain open and retain focusable DOM while history refreshes OK');
+dom.window.innerWidth=390;
+core.go('/app');await until(()=>document.querySelector('[data-create]')&&document.querySelector('#app')?.getAttribute('aria-busy')==='false','Mobile owner shell');
+click('#mobile-menu');assert(element('#sidebar').classList.contains('open'));assert(element('.shell-main').inert,'Background is inert while the mobile menu is open');
+assert.equal(element('#mobile-menu').getAttribute('aria-expanded'),'true');
+element('#sidebar .account-strip a:last-child').focus();
+document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+assert.equal(document.activeElement,element('#sidebar a'),'Tab wraps within mobile menu');
+document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+assert(!element('#sidebar').classList.contains('open'));assert.equal(document.activeElement,element('#mobile-menu'));assert(element('#sidebar').inert,'Closed mobile sidebar cannot receive focus');
+click('[data-support]');assert(element('#app').inert,'Modal background is inert');
+click('[data-close]');assert(!element('#app').inert,'Closing modal restores background interaction');
+dom.window.innerWidth=1024;
+console.log('AUDIT CONTROLS: delayed save, newer unsaved edits, empty search/filter states, editor keyboard tabs, mobile focus trap/Escape and modal inert restoration OK');
+
+const {execFileSync}=await import('node:child_process');
+execFileSync('python',['-c',"import sys;from baros.db import SessionLocal;from baros.models import Course;from baros.v2.models import CourseSettings,CourseProgram;from baros.v2.domain import dump;from baros.v2.methodology import review_material;db=SessionLocal();cid=int(sys.argv[1]);c=db.get(Course,cid);db.get(CourseSettings,cid).ai_generated=True;ls=[{'title':l.title,'body':l.body} for l in c.lessons];db.add(CourseProgram(course_id=cid,payload=dump({'steps':[],'practice':['cards','games','exam'],'bank_size':len(c.questions),'review':review_material(ls,[])})));db.commit();db.close()",String(courseId)],{env:process.env});
+core.go('/app/courses/'+courseId);await until(()=>document.querySelector('[data-course-program]'),'Generated course programme displayed');
+click('[data-course-program] summary');assert(element('[data-course-program]').open);
+assert(element('[data-course-program]').textContent.includes('Стандарты подачи'));
+assert(element('[data-course-program]').textContent.includes('Укажите, что сотрудник сможет'));
+assert(!element('[data-course-program]').textContent.includes('100%'),'No false quality guarantee');
+console.log('METHODOLOGY UI: generated programme, reading estimate and human review flags displayed OK');
 assert(!requests.some(r=>r.status>=500),'No server errors');
 console.log('REAL API + DOM AUDIT PASS; requests='+requests.length);
 if(core.state.cleanup)core.state.cleanup();

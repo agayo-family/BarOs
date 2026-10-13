@@ -43,7 +43,8 @@ export const empty=(title,desc,ic='book',action='')=>`<div class="empty"><div cl
 export const fmtDate=(d,long=false)=>d?new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:long?'long':'short',year:long?'numeric':undefined,timeZone:'Europe/Moscow'}).format(new Date(d)):'—';
 export const fmtTime=s=>s==null?'—':s<60?`${s} с`:`${Math.floor(s/60)} мин ${s%60?`${s%60} с`:''}`;
 export const percent=(v)=>v==null?'—':`${Math.round(v)}%`;
-export const dateValue=s=>s?new Date(s).toISOString().slice(0,10):'';
+export const plural=(n,forms)=>{const value=Math.abs(Number(n)),last=value%10;return `${n} ${forms[value%100>=11&&value%100<=14?2:last===1?0:last>=2&&last<=4?1:2]}`};
+export const dateValue=s=>{if(!s)return '';const parts=Object.fromEntries(new Intl.DateTimeFormat('en',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(s)).map(p=>[p.type,p.value]));return `${parts.year}-${parts.month}-${parts.day}`};
 export const roleName=r=>({owner:'Владелец BarOS',manager:'Управляющий',employee:'Сотрудник'}[r]||r);
 export const positionTags=ps=>(ps||[]).map(p=>badge(state.me?.positions?.[p]|| (p==='all'?'Все должности':p),'outline')).join('');
 export const progress=(v,cls='')=>`<div class="progress ${cls}"><span style="width:${Math.max(0,Math.min(100,Number(v)||0))}%"></span></div>`;
@@ -57,26 +58,52 @@ export const check=(name,label,checked=false)=>`<label class="check-label"><inpu
 export const positions=(selected=['all'],all=true,name='positions')=>`<div class="check-group">${Object.entries({...all?{all:'Все должности'}:{},...state.me?.positions}).map(([v,l])=>`<label class="check-chip"><input type="checkbox" name="${name}" value="${v}" ${selected.includes(v)?'checked':''}>${esc(l)}</label>`).join('')}</div>`;
 export const selected=(form,name='positions')=>$$(`[name="${name}"]:checked`,form).map(x=>x.value);
 export function wirePositions(root=document){$$('.check-group',root).forEach(g=>g.addEventListener('change',e=>{if(e.target.value==='all'&&e.target.checked)$$('input',g).filter(x=>x.value!=='all').forEach(x=>x.checked=false);else if(e.target.checked){const all=$('[value="all"]',g);if(all)all.checked=false}}));}
+const inFlightReads=new Map();
 export async function api(path,method='GET',body){
+ const key=`${state.me?.account?.id||0}:${state.me?.account?.role||''}:${state.org}:${path}`;
+ if(method==='GET'&&inFlightReads.has(key))return inFlightReads.get(key);
+ const task=request(path,method,body);
+ if(method==='GET')inFlightReads.set(key,task);
+ try{return await task}finally{if(inFlightReads.get(key)===task)inFlightReads.delete(key)}
+}
+async function request(path,method,body){
  const headers={}; if(state.me?.csrf)headers['x-csrf-token']=state.me.csrf;if(state.org&&state.me?.account?.role==='owner')headers['x-organization-id']=state.org;
  if(!(body instanceof FormData))headers['content-type']='application/json';
- let res;try{res=await fetch('/api'+path,{method,headers,credentials:'same-origin',body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)})}catch{throw new Error('Нет связи с сервером. Проверьте интернет и повторите действие.')}
+ const controller=new AbortController(),timeout=path==='/mentor/messages'?110000:body instanceof FormData?120000:25000;
+ const timer=setTimeout(()=>controller.abort(),timeout);
+ try{
+ let res;try{res=await fetch('/api'+path,{method,headers,signal:controller.signal,credentials:'same-origin',body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)})}catch(e){throw new Error(e.name==='AbortError'?'Сервер отвечает слишком долго. Повторите действие.':'Нет связи с сервером. Проверьте интернет и повторите действие.')}
  let data;try{data=await res.json()}catch{throw new Error('Сервер не ответил. Подождите немного и повторите.')}
- if(!res.ok){let err=new Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить действие');err.status=res.status;err.fields=data.fields;throw err}return data;
+ if(!res.ok){let err=new Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить действие');err.status=res.status;err.fields=data.fields;throw err}
+ if(method!=='GET'&&(path.startsWith('/venues/')||path.startsWith('/venue')))state.venueLoadedAt=0;
+ return data;
+ }finally{clearTimeout(timer)}
 }
 export async function reloadMe(ticket){const me=await api('/me');if(ticket===undefined||ticket===state.renderTicket)state.me=me;return me}
 export function toast(message,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.textContent=message;$('#toast-root').append(el);setTimeout(()=>el.remove(),6000)}
-export function go(path,replace=false){if(state.dirty&&!confirm('Есть несохранённые изменения. Покинуть редактор?'))return;state.dirty=false;replace?history.replaceState({},'',path):history.pushState({},'',path);window.dispatchEvent(new Event('baros:navigate'));}
-export function on(selector,event,callback,root=document){$$(selector,root).forEach(el=>el.addEventListener(event,async e=>{try{await callback(e,el)}catch(err){toast(err.message,true)}}))}
-export function modal(title,content,{wide=false}={}){const previous=document.activeElement;const root=$('#modal-root');root.innerHTML=`<div class="modal-backdrop"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2><button class="btn icon-only ghost" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body">${content}</div></section></div>`;
- const close=()=>{root.innerHTML='';document.body.style.overflow='';document.removeEventListener('keydown',key);previous?.focus?.()};
- const key=e=>{if(e.key==='Escape')close();if(e.key==='Tab'){const controls=$$('a,button,input,select,textarea,[tabindex="0"]',root).filter(x=>!x.disabled&&!x.hidden);const first=controls[0],last=controls.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};
- document.addEventListener('keydown',key);document.body.style.overflow='hidden';$('[data-close]',root).onclick=close;$('.modal-backdrop',root).addEventListener('click',e=>{if(e.target.classList.contains('modal-backdrop'))close()});wirePositions(root);setTimeout(()=>($('input:not([type=checkbox]),textarea,select',root)||$('[data-close]',root))?.focus(),50);return {root,close};}
-export function bindForm(selector,submit,root=document){const form=$(selector,root);form.addEventListener('submit',async e=>{e.preventDefault();$('.form-error',form)?.remove();const submitters=$$('button[type=submit]',form);submitters.forEach(b=>{b.disabled=true;b.dataset.old=b.innerHTML;b.innerHTML='<span class="spinner"></span> Сохраняем…'});try{await submit(new FormData(form),form)}catch(err){const el=document.createElement('div');el.className='form-error';el.textContent=err.message+(err.fields?.length?' · '+err.fields.join('; '):'');form.prepend(el);el.scrollIntoView({block:'nearest'});}finally{submitters.forEach(b=>{b.disabled=false;b.innerHTML=b.dataset.old})}})}
+export function go(path,replace=false,beforeNavigate){if(state.dirty&&!confirm('Есть несохранённые изменения. Покинуть редактор?'))return false;state.dirty=false;beforeNavigate?.();replace?history.replaceState({},'',path):history.pushState({},'',path);window.dispatchEvent(new Event('baros:navigate'));return true;}
+const pendingActions=new WeakSet();
+export function on(selector,event,callback,root=document){$$(selector,root).forEach(el=>el.addEventListener(event,async e=>{if(pendingActions.has(el))return;pendingActions.add(el);try{const result=callback(e,el);if(result?.then){el.setAttribute('aria-busy','true');await result}}catch(err){toast(err.message,true)}finally{pendingActions.delete(el);el.removeAttribute('aria-busy')}}))}
+let closeActiveModal=null;
+export function dismissModal(){closeActiveModal?.()}
+export function modal(title,content,{wide=false}={}){
+ dismissModal();const previous=document.activeElement,root=$('#modal-root'),overflow=document.body.style.overflow;
+ const background=[$('#app'),$('#companion-root')].filter(Boolean).map(node=>({node,inert:node.inert,attribute:node.hasAttribute('inert')}));
+ root.innerHTML=`<div class="modal-backdrop"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2><button class="btn icon-only ghost" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="modal-body">${content}</div></section></div>`;
+ const dialog=$('.modal',root);let closed=false,timer;
+ const controls=()=>$$('a[href],button,input,select,textarea,[tabindex="0"]',dialog).filter(x=>!x.disabled&&!x.closest('[hidden]')&&window.getComputedStyle(x).display!=='none');
+ const close=()=>{if(closed)return;closed=true;clearTimeout(timer);root.innerHTML='';document.body.style.overflow=overflow;document.removeEventListener('keydown',key);background.forEach(({node,inert,attribute})=>{node.inert=inert;node.toggleAttribute('inert',attribute)});const companion=$('#companion-root');if(companion&&!background.some(x=>x.node===companion)){companion.inert=!!$('#sidebar.open');companion.toggleAttribute('inert',companion.inert)}if(closeActiveModal===close)closeActiveModal=null;if(previous?.isConnected)previous.focus?.({preventScroll:true})};
+ const key=e=>{if(e.key==='Escape'){e.preventDefault();close();return}if(e.key==='Tab'){const list=controls(),first=list[0],last=list.at(-1);if(!first){e.preventDefault();return}if(!dialog.contains(document.activeElement)){e.preventDefault();first.focus()}else if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};
+ closeActiveModal=close;document.addEventListener('keydown',key);document.body.style.overflow='hidden';background.forEach(({node})=>{node.inert=true;node.setAttribute('inert','')});
+ $('[data-close]',root).onclick=close;$('.modal-backdrop',root).addEventListener('click',e=>{if(e.target.classList.contains('modal-backdrop'))close()});wirePositions(root);
+ timer=setTimeout(()=>{if(!closed)($('input:not([type=checkbox]),textarea,select',dialog)||$('[data-close]',dialog))?.focus()},50);return {root,close};
+}
+
+export function bindForm(selector,submit,root=document){const form=$(selector,root);let busy=false;form.addEventListener('submit',async e=>{e.preventDefault();if(busy)return;busy=true;$('.form-error',form)?.remove();const submitters=$$('button[type=submit]',form);form.setAttribute('aria-busy','true');submitters.forEach(b=>{b.disabled=true;b.dataset.old=b.innerHTML;b.innerHTML='<span class="spinner"></span> Сохраняем…'});try{await submit(new FormData(form),form)}catch(err){const el=document.createElement('div');el.className='form-error';el.setAttribute('role','alert');el.tabIndex=-1;el.textContent=err.message+(err.fields?.length?' · '+err.fields.join('; '):'');form.prepend(el);el.focus({preventScroll:true});el.scrollIntoView?.({block:'nearest'});}finally{busy=false;form.removeAttribute('aria-busy');submitters.forEach(b=>{b.disabled=false;b.innerHTML=b.dataset.old;delete b.dataset.old})}})}
 export async function copy(text){try{await navigator.clipboard.writeText(text);toast('Скопировано')}catch{modal('Скопируйте текст',`<div class="secret-box">${esc(text)}</div>`)}}
 export const absolute=path=>new URL(path,location.origin).href;
 export function showLink(title,url,detail='Ссылка одноразовая. Передайте её получателю лично.'){const m=modal(title,`<p class="lead">${esc(detail)}</p><div class="secret-box">${esc(absolute(url))}</div><div class="modal-actions">${btn('Скопировать ссылку','copy','primary','data-copy')}</div>`);$('[data-copy]',m.root).onclick=()=>copy(absolute(url));}
-export function setOrg(id){state.org=String(id);localStorage.setItem('baros:venue',state.org)}
+export function setOrg(id){const value=id?String(id):'';if(state.org!==value){state.venue=null;state.venueLoadedAt=0}state.org=value;if(value)localStorage.setItem('baros:venue',value);else localStorage.removeItem('baros:venue')}
 export async function download(path,name){const res=await fetch('/api'+path,{credentials:'same-origin',headers:state.org&&state.me.account.role==='owner'?{'x-organization-id':state.org}:{}});if(!res.ok){const j=await res.json();throw new Error(j.detail||'Не удалось скачать')};const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 export function hero(title,desc,action='',eyebrow='АКАДЕМИЯ КОМАНДЫ'){return `<div class="hero"><div><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(title)}</h2><p>${esc(desc)}</p>${action}</div><div class="hero-graphic" aria-hidden="true"><div class="orb"><div class="paper">${icon('book')}<i></i><i></i><i></i></div><span class="spark">${icon('spark')}</span><span class="check">${icon('check')}</span></div></div></div>`}
 export const ring=(value,label)=>`<div class="ring" style="--value:${Math.min(100,Math.max(0,value||0))}"><div><strong>${Math.round(value||0)}%</strong><small>${esc(label)}</small></div></div>`;

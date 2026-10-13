@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.5.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.5.1', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -92,13 +92,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.5.0'}
+    return {'status':'ok','service':'baros','version':'2.5.1'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.5.0'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.5.1'}
 
 
 @app.post('/api/auth/setup')
@@ -216,10 +216,12 @@ def account_data(a):
             'created_at':iso(a.created_at),'last_seen_at':iso(a.last_seen_at)}
 
 
-def venue_data(db,org):
-    s=settings(db,org.id)
-    count=db.scalar(select(func.count(Account.id)).where(Account.organization_id==org.id,Account.role=='employee',Account.active==True)) or 0
-    course_count=db.scalar(select(func.count(Course.id)).where(Course.organization_id==org.id)) or 0
+def venue_data(db,org,counts=None,venue_settings=None):
+    s=venue_settings or settings(db,org.id)
+    if counts is None:
+        count=db.scalar(select(func.count(Account.id)).where(Account.organization_id==org.id,Account.role=='employee',Account.active==True)) or 0
+        course_count=db.scalar(select(func.count(Course.id)).where(Course.organization_id==org.id)) or 0
+    else: count,course_count=counts
     return {'id':org.id,'name':org.name,'join_code':s.join_code,'status':s.status,'plan':s.plan,
             'subscription_status':s.subscription_status,'paid_until':iso(s.paid_until),'seat_limit':s.seat_limit,
             'storage_limit_mb':s.storage_limit_mb,'ai_daily_limit':s.ai_daily_limit,'note':s.note,'permissions':parse(s.permissions_json),
@@ -251,7 +253,12 @@ def profile(data:ProfileIn,request:Request,a=Depends(actor),db=Depends(get_db)):
 def venues(a=Depends(actor),db=Depends(get_db)):
     owner(a)
     orgs=db.scalars(select(Organization).where(Organization.name!='__BAROS_PLATFORM__').order_by(Organization.id.desc())).all()
-    return [venue_data(db,o) for o in orgs]
+    ids=[o.id for o in orgs]
+    if not ids:return []
+    configs={s.organization_id:s for s in db.scalars(select(VenueSettings).where(VenueSettings.organization_id.in_(ids))).all()}
+    staff_counts=dict(db.execute(select(Account.organization_id,func.count(Account.id)).where(Account.organization_id.in_(ids),Account.role=='employee',Account.active==True).group_by(Account.organization_id)).all())
+    course_counts=dict(db.execute(select(Course.organization_id,func.count(Course.id)).where(Course.organization_id.in_(ids)).group_by(Course.organization_id)).all())
+    return [venue_data(db,o,(staff_counts.get(o.id,0),course_counts.get(o.id,0)),configs.get(o.id)) for o in orgs]
 
 
 @app.post('/api/venues')
@@ -299,10 +306,12 @@ def venue(request:Request,a=Depends(actor),db=Depends(get_db)):
 @app.get('/api/staff')
 def staff(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
+    accounts=db.scalars(select(Account).where(Account.organization_id==oid).order_by(Account.name)).all()
+    stats=learner_stats_many(db,[e for e in accounts if e.role=='employee'],ensure=True)
     result=[]
-    for employee in db.scalars(select(Account).where(Account.organization_id==oid).order_by(Account.name)).all():
+    for employee in accounts:
         item=account_data(employee)
-        if employee.role=='employee': ensure_enrollments(db,employee);item['stats']=learner_stats(db,employee)
+        if employee.role=='employee':item['stats']=stats[employee.id]
         result.append(item)
     db.commit();return result
 
@@ -351,8 +360,10 @@ def staff_history(account_id:int,request:Request,a=Depends(actor),db=Depends(get
 
 def history_data(db,a):
     rows=[]
-    for exam in exams_for(db,a):
-        rev=db.get(CourseRevision,exam.revision_id);data=parse(rev.payload)
+    exams=exams_for(db,a)
+    revisions={r.id:r for r in db.scalars(select(CourseRevision).where(CourseRevision.id.in_({e.revision_id for e in exams}))).all()} if exams else {}
+    for exam in exams:
+        rev=revisions[exam.revision_id];data=parse(rev.payload)
         rows.append({'id':exam.id,'title':data['title'],'version':rev.version,'started_at':iso(exam.started_at),
                      'finished_at':iso(exam.finished_at),'result':parse(exam.result_json) if exam.finished_at else None})
     return rows
@@ -384,8 +395,10 @@ def export(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
     out=io.StringIO();writer=csv.writer(out,delimiter=';')
     writer.writerow(['Сотрудник','Логин','Должности','Назначено','Пройдено тестов','Успешных курсов','Попыток','Средний балл','Среднее время (сек)','Просрочено'])
-    for e in db.scalars(select(Account).where(Account.organization_id==oid,Account.role=='employee')).all():
-        s=learner_stats(db,e)
+    employees=db.scalars(select(Account).where(Account.organization_id==oid,Account.role=='employee')).all()
+    stats=learner_stats_many(db,employees)
+    for e in employees:
+        s=stats[e.id]
         values=[e.name,e.login,', '.join(POSITIONS.get(p,p) for p in parse(e.positions_json,[])),s['assigned'],s['completed'],s['passed'],s['attempts'],s['average_score'],s['average_seconds'],s['overdue']]
         writer.writerow([("'"+str(v)) if str(v).lstrip().startswith(('=','+','-','@')) else v for v in values])
     log(db,a,oid,'Экспортирован отчёт сотрудников');db.commit()

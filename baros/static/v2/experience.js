@@ -1,4 +1,4 @@
-import {$,$$,icon,modal,notice,toast} from './core.js?v=2.5.0';
+import {$,$$,icon,modal,notice,toast} from './core.js?v=2.5.1';
 
 let installPrompt=null,changing=false;
 export const themeButton=()=>`<button class="btn icon-only ghost" data-theme-toggle aria-label="Переключить цветовую тему">${icon('moon')}</button>`;
@@ -24,5 +24,6 @@ export function initExperience(){
  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e});window.addEventListener('appinstalled',()=>{installPrompt=null;toast('BarOS установлен — ищите значок на главном экране')});
  document.addEventListener('click',e=>{const theme=e.target.closest('[data-theme-toggle]'),support=e.target.closest('[data-support]'),app=e.target.closest('[data-install]');if(theme)toggleTheme(theme);else if(support)contact();else if(app)install().catch(err=>toast(err.message,true))});
  window.addEventListener('storage',e=>{if(e.key==='baros:theme'&&['light','dark'].includes(e.newValue))applyTheme(e.newValue)});
+ document.addEventListener('visibilitychange',()=>document.documentElement.classList.toggle('page-hidden',document.visibilityState!=='visible'));
  if('serviceWorker'in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 }

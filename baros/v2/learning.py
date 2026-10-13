@@ -35,7 +35,7 @@ def learning(request:Request,a=Depends(actor),db=Depends(get_db)):
     # Profile statistics remain readable after subscription expiry.
     require(a.role=='employee','Откройте кабинет сотрудника',403)
     tenant(request,db,a,learning=False)
-    ensure_enrollments(db,a);result=learner_stats(db,a);db.commit();return result
+    result=learner_stats_many(db,[a],ensure=True)[a.id];db.commit();return result
 
 
 @router.get('/api/learning/history')

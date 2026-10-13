@@ -1,0 +1,49 @@
+/* Accessibility and layout corrections; keep the existing BarOS palette. */
+:root{--muted:#696579}
+.sidebar{height:100dvh;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-gutter:stable}
+.sidebar>*{flex-shrink:0}
+.sidebar .workspace strong,.account-strip strong{overflow-wrap:anywhere}
+.side-help{display:block}
+.search>input[type=search]{padding-inline-start:40px;padding-inline-end:32px}
+.search>.icon{top:50%;transform:translateY(-50%);pointer-events:none}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+.nav a,.course-meta,th,.footnote,.notifications time,.form-section-title,.question-number,.question-nav button,.bottom-nav a,.login-story .intro,.login-story footer,.preview-card .label{color:var(--muted)}
+input:focus-visible,select:focus-visible,textarea:focus-visible,.table-wrap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+fieldset.field{border:0;padding:0;margin:0 0 18px;font-size:.77rem;font-weight:550}
+fieldset.field>legend{padding:0;margin:0 0 7px;font-size:inherit}
+fieldset.field>.check-group{font-weight:400}
+.modal{display:flex;flex-direction:column;overflow:hidden}
+.modal-head{flex:0 0 auto}
+.modal-body{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.route-progress{position:fixed;top:0;left:0;right:0;height:3px;z-index:95;background:var(--lav);overflow:hidden;pointer-events:none}
+.route-progress:before{content:'';display:block;width:35%;height:100%;background:var(--accent);animation:route-loading 1s ease-in-out infinite}
+.route-progress[hidden]{display:none}
+.page-hidden *{animation-play-state:paused!important}
+@keyframes route-loading{from{transform:translateX(-100%)}to{transform:translateX(390%)}}
+@media(max-width:760px){
+ .side-help{display:block}
+ .sidebar{max-width:calc(100vw - 40px)}
+ .btn,.btn.sm,.btn.text{min-height:44px}
+ .btn.icon-only{width:44px;min-height:44px}
+ .top-actions .btn{width:44px;min-height:44px}
+ .topbar{gap:8px;background:var(--white);backdrop-filter:none}
+ .mobile-brand .brand{font-size:1.18rem;gap:7px}
+ .bottom-nav{background:var(--white);backdrop-filter:none}
+ .bottom-nav a{min-height:48px}
+ .check-label,.check-chip{min-height:44px;align-items:center}
+ .question-nav button{min-width:44px;min-height:44px}
+ input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}
+ .tabs{flex-wrap:wrap}
+ .tabs button{min-height:44px}
+ .modal-head .btn{flex-shrink:0}
+}
+@media(max-width:430px){
+ .mobile-brand .brand small{display:none}
+ .top-actions>a[aria-label="Профиль"]{display:none}
+ .topbar{padding-inline:12px}
+}
+@media(prefers-reduced-motion:reduce){.route-progress:before{animation:none;width:100%}}
+
+.btn[aria-busy="true"]{cursor:progress}
+.btn[aria-busy="true"]>.icon{opacity:.5}
+[role="tabpanel"]:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
