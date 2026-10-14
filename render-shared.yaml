@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: tincture-lab-shared
+    runtime: docker
+    dockerfilePath: ./Dockerfile.shared
+    branch: tincture-lab-shared
+    region: frankfurt
+    plan: free
+    healthCheckPath: /api/live
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FIRST_RUN_TOKEN
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

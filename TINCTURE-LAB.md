@@ -1,27 +1,35 @@
-# Tincture Lab: technological cards update, 2026-10-12
+# Tincture Lab — общая база и технологические карты
 
-Continuation of the existing `tincture-lab-production` site. `main` and BarOS are separate.
+Обновление от 13 октября 2026 года продолжает существующее приложение. Подготовленная версия ещё не опубликована; подключение к настоящему PostgreSQL и облачная настройка не проверены. Инструкции запуска, переноса и API находятся в [SHARED-STORAGE.md](SHARED-STORAGE.md).
 
-## Architecture
+## Архитектура
 
-The original static ES-module application is retained. `app.js` controls routes/forms and the existing IndexedDB database `tincture-lab-db`, version 1, object store `kv`, state key `state`. Recipes remain in `state.recipes`. Existing IDs, archive flags, custom metadata, stock, requisitions, plans, batches, statistics and settings are preserved. Optional Supabase synchronization uses the existing workspace record.
+`tincture-site/` содержит интерфейс на ES-модулях. `app.js` управляет разделами, формами, входом и общей базой через `/api/`. `server/index.mjs` обслуживает интерфейс и API; `server/database.mjs` сохраняет данные в PostgreSQL. SQLite разрешена только при явно заданном `SQLITE_PATH` для локальной работы и тестов.
 
-`recipes.mjs` adds text recognition, ingredient-based classification, normalization, duplicate signatures and process quantity scaling. `imports.mjs` reads JSON, CSV/TSV, TXT and Excel through a local copy of SheetJS CE 0.20.3 (license in vendor). No new backend, paid AI service or recipe storage is introduced.
+Общая база включает карты, фотографии, архив, заявки, склад, планы, партии, стоп-лист, статистику и просмотренные уведомления. Она хранится согласованным документом с номером версии. Устаревшая копия не заменит новые данные другого устройства. Повторы сохранения защищены `mutationId` и подтверждениями операций, хранимыми семь дней.
 
-New recipe fields: nullable yield, process, rawText, unparsedText, ingredientsText, photos, categoryMode, primaryAlcohol, alcoholCandidates and importSignatures. Legacy explicit categories are treated as manual to preserve existing choices. A user can explicitly request automatic sorting. Unknown alcohol bases and multiple alcohols require clarification.
+Вход необходим для чтения и изменения рабочих данных. Владелец выполняет первый перенос и меняет пароли; сотрудники работают с общей базой. Пароли хранятся как scrypt-хеши. Сессии постоянны в базе; cookie имеет HttpOnly, SameSite=Strict и Secure в production. Изменения проверяются по Origin и CSRF. API не кэшируется; сервис-воркер сохраняет только общедоступный интерфейс. Для входа, открытия базы и сохранения нужен интернет.
 
-## Validation and preservation
+Прежняя IndexedDB `tincture-lab-db`, версия 1, хранилище `kv`, ключ `state` открывается только для чтения при первом переносе владельцем. Новые данные в неё не записываются. Supabase больше не используется; старые supabaseUrl, supabaseKey и workspaceId исключаются из серверных записей. При смене адреса нужен перенос через полную резервную копию JSON со старого сайта.
 
-A title is the only required recipe field. A provided yield must be a positive finite number; shelf life is optional or a nonnegative integer. Uncertain text and source are retained. Imported records are previewed before saving. Exact repeats are skipped, including historical source signatures after edits. Metadata conflicts require an explicit update of the existing record and preserve manual category by default. Name-only records remain visible as unfinished cards.
+## Технологические карты
 
-Calculations never infer output from summed ingredients. If yield is missing, the user supplies a temporary base volume. Ingredient quantities and unambiguous mass/volume/piece quantities in the process scale; time, temperature, percentages and uncertain ranges remain unchanged. The original recipe is not mutated.
+`recipes.mjs` распознаёт текст, классифицирует карты по ингредиентам, нормализует записи, определяет повторы и масштабирует количества процесса. `imports.mjs` читает JSON, CSV/TSV, TXT и Excel через локальную SheetJS CE 0.20.3; лицензия находится в vendor.
 
-## Build and checks
+Сохраняются идентификаторы, архивные отметки, пользовательские поля, исходный и нераспознанный текст. Поля включают необязательный выход, процесс, фотографии, режим категории, основной алкоголь и сигнатуры импорта. Старые явные категории считаются ручными; автоматическую сортировку пользователь включает сам. Неизвестные и смешанные алкогольные основы требуют уточнения.
 
-The readable files under `tincture-site/` are the source of truth. Retained historical base64 bundles are no longer the build input. Render must not reconstruct app.js or enforce the historical 50789-byte size. Publish `tincture-site` after syntax checks, or run `bash build-tincture.sh` and publish `tincture-public`.
+Для сохранения обязательно только название. Указанный выход должен быть положительным конечным числом; срок годности необязателен либо является целым числом от нуля. Импорт показывает предварительный просмотр. Повторы пропускаются, включая сигнатуры исходников после правок. Различия можно явно применить к существующей карте; ручная категория по умолчанию сохраняется.
 
-Run `node --test tests/*.test.mjs`. Browser acceptance tests cover the saved workflow and responsive layout. No real Supabase connection or physical iOS/Android device is assumed available; those need environment-specific verification.
+Расчёт не выводит выход из суммы ингредиентов. Если выход неизвестен, пользователь задаёт временный исходный объём. Состав и однозначные количества массы, объёма и штук масштабируются; время, температура, проценты и неоднозначные диапазоны остаются прежними. Исходная карта не изменяется.
 
-## Limits
+## Сборка и проверки
 
-Recognition handles common text formats and units, with preserved unknowns and manual correction. OCR extraction from scanned photos/PDF is not implemented. Photographs attached to cards are stored with the existing record. JSON imports allow up to 100 MiB, Excel/text up to 10 MiB, maximum 10000 cards per import. Original source files with further unsupported structures remain available for manual conversion.
+Источники — читаемые файлы tincture-site/ и server/. Исторические base64-бандлы не используются. build-tincture.sh относится к прежней статической публикации; статический хостинг сам по себе не запускает API. Для общей версии нужны Dockerfile.shared и PostgreSQL; зависимости закреплены pnpm-lock.yaml и pnpm 11.25.0.
+
+Проверки: `pnpm test` или `node --test tests/*.test.mjs`. Серверные интеграционные тесты используют локальную SQLite: вход, роли, Origin/CSRF, версии, безопасный повтор, смена паролей и восстановление базы/сессий после перезапуска. Они не подтверждают настоящий PostgreSQL, публикацию или физические iOS/Android-устройства. Эти проверки выполняются в целевой среде.
+
+## Ограничения
+
+Поддерживаются распространённые текстовые форматы и единицы; неизвестные фрагменты сохраняются для ручной проверки. OCR отсканированных фото/PDF не реализован. Прикреплённые фотографии хранятся внутри записи; внешние HTTPS-ссылки зависят от исходного сайта.
+
+Серверное сохранение по умолчанию ограничено 100 МиБ. Импорт JSON — до 100 МиБ, Excel/текст — до 10 МиБ и до 10 000 карт. Фотография — до 3 МиБ; на карту — до восьми фотографий общим размером до 10 МиБ. Полные JSON-копии следует регулярно сохранять отдельно; для production нужны постоянный PostgreSQL и резервное копирование провайдера.
