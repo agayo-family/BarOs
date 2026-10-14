@@ -172,6 +172,91 @@ test('legacy normalization does not insert demo recipes and rejects broken colle
   assert.deepEqual(corrupt, { recipes: [], stock: { wrong: true } });
 });
 
+const standardAlcoholStrengths = { Водка: 40, Виски: 40, Джин: 40, Ром: 40, Текила: 40 };
+const alcoholStrengthControls = {
+  Водка: 'strengthVodka', Виски: 'strengthWhisky', Джин: 'strengthGin', Ром: 'strengthRum', Текила: 'strengthTequila',
+};
+
+function fillAlcoholStrengthForm(h, values = standardAlcoholStrengths) {
+  for (const [name, id] of Object.entries(alcoholStrengthControls)) h.document.querySelector('#' + id).value = String(values[name]);
+}
+
+const submitAlcoholStrengths = h => h.document.querySelector('#alcoholStrengthForm').onsubmit({ preventDefault() {} });
+
+test('new and legacy workspaces receive editable 40 percent standards without resetting saved settings', () => {
+  const { app } = application();
+  const first = app.freshState(), second = app.freshState();
+  assert.deepEqual(structuredClone(first.settings.alcoholStrengths), standardAlcoholStrengths);
+  first.settings.alcoholStrengths.Водка = 0;
+  assert.equal(second.settings.alcoholStrengths.Водка, 40, 'each workspace owns its settings object');
+  const old = workingState({ settings: { notifications: true, workspaceId: 'old', custom: { keep: true }, alcoholStrengths: { Водка: 0, Ром: 57, Спирт: 96 } } });
+  const before = structuredClone(old), normalized = app.normalizeState(old);
+  assert.deepEqual(structuredClone(normalized.settings.alcoholStrengths), { ...standardAlcoholStrengths, Водка: 0, Ром: 57, Спирт: 96 });
+  assert.equal(normalized.settings.notifications, true);assert.equal(normalized.settings.workspaceId, 'old');
+  assert.deepEqual(structuredClone(normalized.settings.custom), { keep: true });
+  assert.deepEqual(structuredClone(app.normalizeState(workingState()).settings.alcoholStrengths), standardAlcoholStrengths);
+  assert.deepEqual(old, before);
+});
+
+test('settings save all alcohol standards to the shared server while preserving every working collection', async () => {
+  const h = application();
+  h.app.state = h.app.normalizeState(workingState({
+    recipes: [recipes.normalizeRecipe({ id: 'keep', name: 'Рабочая ТК', yield: 2, ingredients: [{ name: 'Ром', amount: 1, unit: 'л' }] })],
+    stock: [{ name: 'Водка', amount: 7, unit: 'л' }], batches: [{ id: 'batch', actualYield: 4 }],
+    settings: { notifications: true, customSetting: 'keep', alcoholStrengths: { ...standardAlcoholStrengths, Спирт: 96 } },
+  }));
+  const before = structuredClone(h.app.state);
+  h.app.renderSettings();
+  const html = h.document.querySelector('#content').innerHTML;
+  assert.match(html, /id="alcoholStrengthForm"/);
+  for (const id of Object.values(alcoholStrengthControls)) assert.match(html, new RegExp('id="' + id + '"[^>]*value="40"'));
+  const values = { Водка: 0, Виски: 43, Джин: 47.5, Ром: 60, Текила: 100 };
+  fillAlcoholStrengthForm(h, values);await submitAlcoholStrengths(h);
+  assert.equal(h.writes.length, 1);
+  const stored = structuredClone(h.writes[0].value);
+  assert.deepEqual(stored.settings.alcoholStrengths, { ...values, Спирт: 96 });
+  for (const key of ['recipes', 'requisitions', 'stock', 'plans', 'batches', 'stopList', 'stats', 'readNotices']) assert.deepEqual(stored[key], before[key], key);
+  assert.equal(stored.settings.notifications, true);assert.equal(stored.settings.customSetting, 'keep');
+  assert.equal(h.app.state.settings.alcoholStrengths.Ром, 60);
+  assert.match(h.app.recipeStrengthBadge(h.app.state.recipes[0]), /≈30\s*%/);
+});
+
+test('settings refuse blank, negative, excessive and nonfinite standards before changing the shared database', async () => {
+  const h = application();h.app.state = h.app.normalizeState(workingState());
+  h.app.renderSettings();const before = structuredClone(h.app.state);
+  for (const invalid of ['', ' ', '-1', '100.01', 'Infinity', 'NaN']) {
+    fillAlcoholStrengthForm(h);h.document.querySelector('#strengthGin').value = invalid;
+    await submitAlcoholStrengths(h);
+    assert.equal(h.writes.length, 0, JSON.stringify(invalid));assert.deepEqual(structuredClone(h.app.state), before);
+    assert.equal(h.document.querySelector('#alcoholStrengthError').hidden, false);
+    assert.ok(h.document.querySelector('#alcoholStrengthError').textContent.length > 0);
+    assert.equal(h.document.querySelector('#strengthGin').value, invalid, 'validation leaves the input available for correction');
+  }
+});
+
+test('failed settings save restores shared standards and retains all entered values for a successful retry', async () => {
+  const h = application();h.app.state = h.app.normalizeState(workingState());h.app.renderSettings();
+  const before = structuredClone(h.app.state), values = { Водка: 37.5, Виски: 46, Джин: 47, Ром: 57, Текила: 38 };
+  fillAlcoholStrengthForm(h, values);h.app.setStorage(async () => { throw Error('Server write rejected'); });
+  await submitAlcoholStrengths(h);
+  assert.deepEqual(structuredClone(h.app.state), before);assert.equal(h.app.busy, false);
+  for (const [name, id] of Object.entries(alcoholStrengthControls)) assert.equal(h.document.querySelector('#' + id).value, String(values[name]));
+  assert.equal(h.document.querySelector('#saveAlcoholStrengths').disabled, false);
+  h.app.setStorage(async () => {});await submitAlcoholStrengths(h);
+  assert.deepEqual(structuredClone(h.app.state.settings.alcoholStrengths), values);
+});
+
+test('recipe badges use shared standards while explicit ingredient and named percentages retain priority', () => {
+  const { app } = application();app.state = app.normalizeState(workingState({ settings: { alcoholStrengths: { ...standardAlcoholStrengths, Водка: 50, Ром: 60 } } }));
+  const recipe = { yield: 2, ingredients: [{ name: 'Водка', amount: 1, unit: 'л' }, { name: 'Ром', amount: .5, unit: 'л' }, { name: 'Вода', amount: .5, unit: 'л' }] };
+  const before = structuredClone(recipe);
+  assert.match(app.recipeStrengthBadge(recipe), /≈40\s*%/);
+  assert.match(app.recipeStrengthBadge({ yield: 2, ingredients: [{ name: 'Водка', amount: 1, unit: 'л', abv: 30 }] }), /≈15\s*%/);
+  assert.match(app.recipeStrengthBadge({ yield: 2, ingredients: [{ name: 'Водка 45%', amount: 1, unit: 'л' }] }), /≈22,5\s*%/);
+  assert.match(app.recipeStrengthBadge({ yield: 2, ingredients: [{ name: 'Водка 45%', amount: 1, unit: 'л', abv: 0 }] }), /≈0\s*%/);
+  assert.deepEqual(recipe, before);
+});
+
 test('optional-yield calculator uses only temporary base and leaves the source card unchanged', () => {
   const { app } = application();
   app.state = workingState({ recipes: [{ id: 'no-yield', name: 'Без выхода', yield: null, ingredients: [{ name: 'Водка', amount: .5, unit: 'л', cost: 500 }, { name: 'Ягоды', amount: .2, unit: 'кг', cost: 100 }], process: 'Влить 500 мл водки.' }] });
@@ -363,7 +448,7 @@ test('ingredient strengths survive actual editor save and reopen, and measured o
 
 test('strength badge distinguishes missing alcoholic strength from an explicit alcohol-free base', () => {
   const { app } = application();
-  const unknown = { name: 'Черновая крепость', yield: 2, ingredients: [{ name: 'Водка', amount: 1, unit: 'л' }, { name: 'Ягоды', amount: 100, unit: 'г' }] };
+  const unknown = { name: 'Черновая крепость', yield: 2, ingredients: [{ name: 'Основа', amount: 1, unit: 'л' }, { name: 'Ягоды', amount: 100, unit: 'г' }] };
   const unknownBadge = app.recipeStrengthBadge(unknown);
   assert.match(unknownBadge, /recipe-strength[^"<>]*missing/);
   assert.match(unknownBadge, /—/);assert.doesNotMatch(unknownBadge, /(?:≈)?0\s*%/);
@@ -372,7 +457,7 @@ test('strength badge distinguishes missing alcoholic strength from an explicit a
   assert.match(explicitZero, /≈0\s*%/);
 });
 
-test('editor rejects invalid ingredient strength and clearing a saved value returns to missing', async () => {
+test('editor rejects invalid ingredient strength and clearing a saved value returns to the shared default', async () => {
   const h = application();
   const source = recipes.normalizeRecipe({ id: 'strength-edit', name: 'Крепость для правки', yield: 2, rawText: '', ingredients: [{ name: 'Водка', amount: 1, unit: 'л', abv: 40 }] });
   h.app.state = workingState({ recipes: [source] });const before = structuredClone(h.app.state);
@@ -385,12 +470,71 @@ test('editor rejects invalid ingredient strength and clearing a saved value retu
     assert.equal(h.document.querySelector('#modalBackdrop').hidden, false, value);
   }
   const field = h.document.querySelector('#rAbv0');field.value = '';field.oninput();
-  assert.match(h.document.querySelector('#rStrengthPreview').innerHTML, /recipe-strength[^"<>]*missing/);
+  assert.match(h.document.querySelector('#rStrengthPreview').innerHTML, /≈20\s*%/);
   await h.document.querySelector('#saveRecipe').onclick();
   assert.equal(h.writes.length, 1);
   const result = h.writes[0].value.recipes[0];
   assert.ok(result.ingredients[0].abv == null);
-  assert.match(h.app.recipeStrengthBadge(result), /recipe-strength[^"<>]*missing/);
+  assert.match(h.app.recipeStrengthBadge(result), /≈20\s*%/);
+});
+
+test('saving and reopening a recipe keeps its shared default dynamic instead of copying it into the ingredient', async () => {
+  const h = application();h.app.state = h.app.normalizeState(workingState());h.app.recipeModal();
+  fillRecipeForm(h, { name: 'Общая крепость', yield: 2, rawText: '', process: '', ingredients: [{ name: 'Водка', amount: 1, unit: 'л', cost: 0 }] });
+  h.document.querySelector('#rLines').dispatchEvent({ type: 'input' });
+  const control = h.document.querySelector('#rStrengthFields').innerHTML.match(/<input[^>]*id="rAbv0"[^>]*>/)?.[0];
+  assert.ok(control);assert.match(control, /value=""/);assert.match(control, /placeholder="[^"]*40/);
+  assert.match(h.document.querySelector('#rStrengthPreview').innerHTML, /≈20\s*%/);
+  await h.document.querySelector('#saveRecipe').onclick();
+  const stored = structuredClone(h.writes[0].value), recipe = stored.recipes[0];
+  assert.ok(!Object.hasOwn(recipe.ingredients[0], 'abv'));
+
+  const reopened = application();reopened.app.state = reopened.app.normalizeState(stored);
+  reopened.app.recipeModal(recipe.id);fillRecipeForm(reopened, recipe);
+  reopened.document.querySelector('#rLines').dispatchEvent({ type: 'input' });
+  assert.match(reopened.document.querySelector('#rStrengthFields').innerHTML, /id="rAbv0"[^>]*value=""/);
+  await reopened.document.querySelector('#saveRecipe').onclick();
+  assert.ok(!Object.hasOwn(reopened.writes[0].value.recipes[0].ingredients[0], 'abv'));
+
+  reopened.app.renderSettings();fillAlcoholStrengthForm(reopened, { ...standardAlcoholStrengths, Водка: 50 });
+  await submitAlcoholStrengths(reopened);
+  assert.match(reopened.app.recipeStrengthBadge(reopened.app.state.recipes[0]), /≈25\s*%/);
+  assert.match(reopened.app.recipeList(reopened.app.state.recipes, false), /≈25\s*%/);
+  reopened.app.recipeCalculationModal(recipe.id);
+  for (const target of ['0.5', '4']) {
+    reopened.document.querySelector('#recipeCalcTarget').value = target;
+    reopened.document.querySelector('#recipeCalcTarget').oninput();
+    assert.match(reopened.document.querySelector('#recipeCalcResult').innerHTML, /≈25\s*%/);
+  }
+  assert.ok(!Object.hasOwn(reopened.app.state.recipes[0].ingredients[0], 'abv'));
+});
+
+test('an individual recipe strength survives shared setting changes and clearing it restores the current shared value', async () => {
+  const h = application();
+  const recipe = recipes.normalizeRecipe({ id: 'individual-strength', name: 'Своя крепость', yield: 2, rawText: '', process: '', ingredients: [{ name: 'Водка', amount: 1, unit: 'л', abv: 70 }] });
+  h.app.state = h.app.normalizeState(workingState({ recipes: [recipe] }));
+  h.app.renderSettings();fillAlcoholStrengthForm(h, { ...standardAlcoholStrengths, Водка: 60 });await submitAlcoholStrengths(h);
+  assert.match(h.app.recipeStrengthBadge(h.app.state.recipes[0]), /≈35\s*%/);
+  h.app.recipeModal(recipe.id);fillRecipeForm(h, h.app.state.recipes[0]);
+  h.document.querySelector('#rLines').dispatchEvent({ type: 'input' });
+  assert.match(h.document.querySelector('#rStrengthFields').innerHTML, /id="rAbv0"[^>]*value="70"/);
+  const field = h.document.querySelector('#rAbv0');field.value = '';field.oninput();
+  assert.match(h.document.querySelector('#rStrengthPreview').innerHTML, /≈30\s*%/);
+  await h.document.querySelector('#saveRecipe').onclick();
+  assert.ok(!Object.hasOwn(h.app.state.recipes[0].ingredients[0], 'abv'));
+  assert.match(h.app.recipeStrengthBadge(h.app.state.recipes[0]), /≈30\s*%/);
+});
+
+test('a percentage in the ingredient name remains visible and takes priority over the shared setting after save', async () => {
+  const h = application();h.app.state = h.app.normalizeState(workingState({ settings: { alcoholStrengths: { ...standardAlcoholStrengths, Водка: 60 } } }));
+  h.app.recipeModal();fillRecipeForm(h, { name: 'Процент из названия', yield: 2, rawText: '', process: '', ingredients: [{ name: 'Водка 45%', amount: 1, unit: 'л', cost: 0 }] });
+  h.document.querySelector('#rLines').dispatchEvent({ type: 'input' });
+  assert.match(h.document.querySelector('#rStrengthFields').innerHTML, /id="rAbv0"[^>]*value="45"/);
+  assert.match(h.document.querySelector('#rStrengthPreview').innerHTML, /≈22,5\s*%/);
+  await h.document.querySelector('#saveRecipe').onclick();
+  assert.equal(h.app.state.recipes[0].ingredients[0].name, 'Водка 45%');
+  assert.ok(!Object.hasOwn(h.app.state.recipes[0].ingredients[0], 'abv'));
+  assert.match(h.app.recipeStrengthBadge(h.app.state.recipes[0]), /≈22,5\s*%/);
 });
 
 test('one-litre view and arbitrary-volume calculation keep the same alcohol percentage without modifying the card', () => {
@@ -475,12 +619,12 @@ test('changing the amount of a unique alcohol row and its volume unit keeps its 
 test('deleting one of indistinguishable alcohol rows asks for its strength again instead of guessing', async () => {
   const h = application();
   const source = recipes.normalizeRecipe({ id: 'ambiguous-bases', name: 'Неотличимые основы', yield: 3, rawText: '', ingredients: [
-    { name: 'Водка', amount: 1, unit: 'л', abv: 40 },
-    { name: 'Водка', amount: 1, unit: 'л', abv: 96 },
+    { name: 'Основа', amount: 1, unit: 'л', abv: 40 },
+    { name: 'Основа', amount: 1, unit: 'л', abv: 96 },
   ] });
   h.app.state = workingState({ recipes: [source] });h.app.recipeModal(source.id);fillRecipeForm(h, source);
   const lines = h.document.querySelector('#rLines');
-  lines.value = 'Водка | 1 | л | 0';lines.dispatchEvent({ type: 'input' });
+  lines.value = 'Основа | 1 | л | 0';lines.dispatchEvent({ type: 'input' });
   assert.match(h.document.querySelector('#rStrengthPreview').innerHTML, /recipe-strength[^"<>]*missing/);
   assert.match(h.document.querySelector('#rStrengthFields').innerHTML, /id="rAbv0"[^>]*value=""/);
   await h.document.querySelector('#saveRecipe').onclick();
