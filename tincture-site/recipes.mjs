@@ -120,7 +120,7 @@ function ingredientFromSegment(segment) {
   let name = before || after;
   let rest = '';
   if (before && after) {
-    if (/^[([][^\])]*[\])]$/.test(after) && /\d\s*%|жирн|крепост/iu.test(after)) name = `${before} ${after}`;
+    if ((/^[([][^\])]*[\])]$/.test(after) && /\d\s*%|жирн|крепост/iu.test(after)) || /^[-+]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*%(?:\s*об\.?)?$/iu.test(after)) name = `${before} ${after}`;
     else rest = after;
   }
   name = name.replace(/^(?:добавить|добавьте|взять|возьмите|нужно|требуется)\s+/iu, '').replace(/\s*[-–—:,]+\s*$/, '').trim();
@@ -243,6 +243,84 @@ function detectAlcohol(ingredients, unparsedText = '') {
   return { candidates: ALCOHOL_CATEGORIES.filter(x => candidates.has(x)), uncertain };
 }
 
+const VOLUME_LITRES = { 'л': 1, 'мл': .001, 'сл': .01, 'дл': .1 };
+const KNOWN_NON_ALCOHOLIC = /(?:^|[^\p{L}])(?:вод[аыуе]|водой|water|сок[а-я]*|juice|нектар[а-я]*|nectar|сироп[а-я]*|syrup|молок[а-я]*|milk|сливк[а-я]*|cream|ча[йяю]|tea|кофе|coffee|тоник[а-я]*|tonic|газировк[а-я]*|содов[а-я]*|soda|лимонад[а-я]*|lemonade|кефир[а-я]*|йогурт[а-я]*|yogurt|yoghurt)(?=$|[^\p{L}])/iu;
+const PERCENT_OTHER_MEANING = /жирн[а-я]*|концентр[а-я]*|раствор[а-я]*|сливк[а-я]*|молок[а-я]*|шоколад[а-я]*|\b(?:fat|concentration|cream|milk|chocolate)\b/iu;
+const hasExplicitStrength = item => item?.abv !== null && item?.abv !== undefined && clean(item.abv) !== '';
+
+// A name can supply a strength only when it is a recognizable alcohol with one
+// unambiguous percentage. Brands have no implicit default strength. Unknown
+// liquid ingredients require an explicit percentage (including an explicit 0).
+export function ingredientStrengthInfo(item) {
+  const name = clean(item?.name);
+  const volume = Object.hasOwn(VOLUME_LITRES, unit(item?.unit));
+  const detection = detectAlcohol([{ name }]);
+  const recognizedAlcohol = detection.candidates.length > 0 || detection.uncertain;
+  if (hasExplicitStrength(item)) {
+    const abv = number(item.abv);
+    const invalid = abv === null || abv < 0 || abv > 100;
+    return { alcoholic: recognizedAlcohol || (!invalid && abv > 0), abv: invalid ? null : abv, invalid, requiresStrength: true, needsVolume: !volume && (invalid || abv !== 0) };
+  }
+  if (!recognizedAlcohol) {
+    const requiresStrength = volume && !NON_ALCOHOLIC.test(name) && !KNOWN_NON_ALCOHOLIC.test(name);
+    return { alcoholic: false, abv: requiresStrength ? null : 0, invalid: false, requiresStrength, needsVolume: false };
+  }
+  let abv = null;
+  let invalid = false;
+  const percentages = [...name.matchAll(/(?<![\p{N}.,])([-+]?(?:\d+(?:[ \u00a0]\d{3})*(?:[.,]\d+)?|[.,]\d+))\s*%/giu)];
+  if (percentages.length === 1 && (name.match(/%/g) || []).length === 1 && !PERCENT_OTHER_MEANING.test(name) && !NON_ALCOHOLIC.test(name) && detection.candidates.length <= 1) {
+    const match = percentages[0];
+    const preceding = name.slice(0, match.index);
+    // Reject a range or ratio such as 40–45% and 40/45%, rather than using its end.
+    const range = /\d(?:[.,]\d+)?\s*%?\s*(?:[-–—−/]|до|to)\s*[-+]?$/iu.test(preceding) || /^[-+]/u.test(match[1]) && /\d(?:[.,]\d+)?\s*$/u.test(preceding);
+    if (!range) {
+      const parsed = number(match[1]);
+      invalid = parsed === null || parsed < 0 || parsed > 100;
+      if (!invalid) abv = parsed;
+    }
+  }
+  return { alcoholic: true, abv, invalid, requiresStrength: true, needsVolume: !volume && abv !== 0 };
+}
+
+// This is a theoretical balance of the supplied ethanol and actual batch yield.
+// Heating, extraction, evaporation and filtration losses are not measurable from
+// a recipe, so this estimate never pretends to replace measuring the final drink.
+export function recipeAlcoholStrength(recipe) {
+  const source = recipe && typeof recipe === 'object' ? recipe : {};
+  const missing = [];
+  const errors = [];
+  const output = number(source.yield);
+  if (source.yield == null || clean(source.yield) === '' || output === 0) missing.push('Выход');
+  else if (output === null || output < 0) errors.push('Укажите положительный выход в литрах.');
+  const parsed = Array.isArray(source.ingredients) ? null : parseIngredientsText(source.ingredients);
+  const ingredients = parsed ? parsed.ingredients : source.ingredients;
+  if (!ingredients.length) missing.push('Состав');
+  let ethanolLitres = 0;
+  for (const item of ingredients) {
+    const name = clean(item?.name) || 'Ингредиент без названия';
+    const amount = number(item?.amount);
+    if (amount === null || amount < 0) errors.push(`${name}: проверьте количество.`);
+    const info = ingredientStrengthInfo(item);
+    if (info.invalid) errors.push(`${name}: крепость должна быть от 0 до 100%.`);
+    else if (info.requiresStrength && info.abv === null) missing.push(`${name}: крепость`);
+    if (info.needsVolume) missing.push(`${name}: объём в л или мл`);
+    if (!info.invalid && info.abv !== null && info.abv > 0 && !info.needsVolume && amount !== null && amount >= 0) {
+      ethanolLitres += amount * VOLUME_LITRES[unit(item.unit)] * info.abv / 100;
+    }
+  }
+  for (const line of appendText(source.unparsedText, parsed?.unparsedText).split('\n').map(clean).filter(Boolean)) {
+    if (/^(?:категория|раздел)\s*[:：]/iu.test(line)) continue;
+    const quantity = line.match(quantityRegex('iu'));
+    const info = ingredientStrengthInfo({ name: line, unit: quantity?.[2] });
+    if (info.alcoholic || info.requiresStrength) missing.push(`Проверьте строку: ${line}`);
+  }
+  if (errors.length) return { status: 'invalid', value: null, missing: [...new Set(missing)], message: [...new Set(errors)].join(' ') };
+  if (missing.length) return { status: 'missing', value: null, missing: [...new Set(missing)], message: `Для расчёта укажите: ${[...new Set(missing)].join('; ')}.` };
+  const value = ethanolLitres / output * 100;
+  if (!Number.isFinite(value) || value < 0 || value > 100 + 1e-8) return { status: 'invalid', value: null, missing: [], message: 'Расчётная крепость превышает 100%. Проверьте выход и количество алкогольных ингредиентов.' };
+  return { status: 'ready', value: Math.min(100, round(value)), missing: [], ethanolLitres: round(ethanolLitres), message: 'Расчётная крепость без учёта потерь спирта при приготовлении.' };
+}
+
 export function classifyRecipe(recipe, { force = false } = {}) {
   const result = { ...recipe };
   const { candidates, uncertain } = detectAlcohol(result.ingredients, result.unparsedText);
@@ -298,7 +376,10 @@ function canonicalIngredient(item) {
   const multiplier = { 'кг': 1000, 'г': 1, 'мг': .001, 'л': 1000, 'мл': 1, 'сл': 10, 'дл': 100 }[normalizedUnit] ?? 1;
   const canonicalUnit = ['кг','г','мг'].includes(normalizedUnit) ? 'г' : (['л','мл','сл','дл'].includes(normalizedUnit) ? 'мл' : normText(normalizedUnit));
   const amount = number(item.amount);
-  return [normText(item.name).replace(/\s*[-–—]\s*/g, '-'), amount === null ? normText(item.amount) : round(amount * multiplier), canonicalUnit];
+  const signature = [normText(item.name).replace(/\s*[-–—]\s*/g, '-'), amount === null ? normText(item.amount) : round(amount * multiplier), canonicalUnit];
+  // Keep older signatures unchanged when the additional strength field is absent.
+  if (hasExplicitStrength(item)) signature.push({ abv: number(item.abv) ?? normText(item.abv) });
+  return signature;
 }
 
 export function recipeFingerprint(recipe) {

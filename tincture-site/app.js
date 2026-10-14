@@ -3,7 +3,7 @@ import {
   consumeStock, reconcileConfirmedRequisition, expiryDate,
   expiryStatus, daysUntil, batchVelocity, round, inventoryItemKey
 } from './logic.mjs';
-import {parseRecipeText, parseIngredientsText, classifyRecipe, normalizeRecipe, recipeFingerprint, scaleProcess, ALCOHOL_CATEGORIES} from './recipes.mjs';
+import {parseRecipeText, parseIngredientsText, classifyRecipe, normalizeRecipe, recipeFingerprint, scaleProcess, ingredientStrengthInfo, recipeAlcoholStrength, ALCOHOL_CATEGORIES} from './recipes.mjs';
 import {readRecipeFile} from './imports.mjs';
 
 const $ = (s, root=document) => root.querySelector(s);
@@ -522,6 +522,10 @@ function renderRecipes(){
 function recipePhotoSource(photo){const src=typeof photo==='string'?photo:photo?.dataUrl||photo?.url||'';return /^(data:image\/(?:png|jpeg|webp|gif);base64,|https?:\/\/)/i.test(src)?src:'';}
 function recipeIngredientText(ingredients){return (ingredients||[]).map(i=>`${i.name} | ${i.amount??''} | ${i.unit||'шт'} | ${i.cost||0}`).join('\n');}
 function recipeCompositionHTML(ingredients){return ingredients?.length?`<ul class="recipe-ingredients">${ingredients.map(i=>`<li><span>${esc(i.name)}</span><strong>${Number.isFinite(Number(i.amount))?fmtNum(i.amount,4):'—'} ${esc(i.unit||'')}</strong></li>`).join('')}</ul>`:'<p class="tiny muted">Состав ещё не заполнен.</p>';}
+function recipeStrengthBadge(recipe){
+  const strength=recipeAlcoholStrength(recipe),value=strength.status==='ready'?`≈${fmtNum(strength.value,1)}%`:'—';
+  return `<span class="recipe-strength ${strength.status}" role="img" aria-label="${esc(strength.status==='ready'?`Расчётная крепость ${fmtNum(strength.value,1)} процентов`:strength.message)}" title="${esc(strength.message)}"><strong>${value}</strong><span>крепость</span></span>`;
+}
 function recipeCardView(recipe){
   const base=Number(recipe?.yield),ingredients=recipe?.ingredients||[];
   if(!Number.isFinite(base)||base<=0||!ingredients.length||ingredients.some(i=>!i.name||!i.unit||!Number.isFinite(Number(i.amount))||Number(i.amount)<=0))return null;
@@ -532,10 +536,10 @@ function recipeList(list,arch){
   return `<div class="recipe-grid">${[...list].sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru')).map(r=>{
     const card=recipeCardView(r),incomplete=!card,view=card||r;
     const photos=(r.photos||[]).map(p=>({src:recipePhotoSource(p),name:typeof p==='string'?'Фото приготовления':p?.name||'Фото приготовления'})).filter(p=>p.src);
-    return `<article class="card recipe-card ${incomplete?'recipe-incomplete':''}"><details><summary><span class="recipe-card-title">${esc(r.name||'Без названия')}</span><span class="recipe-card-meta">${incomplete?'<span class="pill burg">Черновик</span>':''}${r.category==='Требует уточнения'?'<span class="pill burg">Выберите основной алкоголь</span>':''}<span>${card?'ТК на 1 л':Number(r.yield)>0?'Проверьте состав':'Укажите выход'}</span><span class="recipe-disclosure">Раскрыть карту</span></span><span class="recipe-composition-preview">${(view.ingredients||[]).length?esc(view.ingredients.map(i=>`${i.name} — ${fmtNum(i.amount,4)} ${i.unit||''}`).join(' · ')):'Состав ещё не заполнен'}</span></summary>
+    return `<article class="card recipe-card ${incomplete?'recipe-incomplete':''}"><details><summary><span class="recipe-card-heading"><span class="recipe-card-heading-text"><span class="recipe-card-title">${esc(r.name||'Без названия')}</span><span class="recipe-card-meta">${incomplete?'<span class="pill burg">Черновик</span>':''}${r.category==='Требует уточнения'?'<span class="pill burg">Выберите основной алкоголь</span>':''}<span>${card?'ТК на 1 л':Number(r.yield)>0?'Проверьте состав':'Укажите выход'}</span><span class="recipe-disclosure">Раскрыть карту</span></span></span>${recipeStrengthBadge(r)}</span><span class="recipe-composition-preview">${(view.ingredients||[]).length?esc(view.ingredients.map(i=>`${i.name} — ${fmtNum(i.amount,4)} ${i.unit||''}`).join(' · ')):'Состав ещё не заполнен'}</span></summary>
       <div class="recipe-card-body"><h3>${card?'Состав на 1 л':'Исходный состав'}</h3>${recipeCompositionHTML(view.ingredients)}${card?`<p class="tiny muted">Исходный выход: ${fmtNum(r.yield,4)} л. Введённый состав и выход сохранены в редакторе.</p>`:''}<h3>Процесс приготовления${card?' на 1 л':''}</h3><div class="recipe-process">${esc(view.process||'Процесс ещё не добавлен.')}</div>${photos.length?`<div class="recipe-photos">${photos.map(p=>`<img src="${esc(p.src)}" alt="${esc(p.name)}" loading="lazy">`).join('')}</div>`:''}
       ${r.unparsedText?`<div class="notice warn recipe-preserved"><b>${card?'Дополнительный текст не пересчитан — проверьте':'Проверьте и дополните'}</b><div class="recipe-process">${esc(r.unparsedText)}</div></div>`:''}
-      <p class="tiny muted">${r.shelfLifeDays!=null?`Срок годности: ${fmtNum(r.shelfLifeDays,0)} дн. · `:''}${r.categoryMode==='manual'?'Категория выбрана вручную':r.categoryMode==='confirmed'?'Основной алкоголь подтверждён':'Автоматическая категория'}</p>${r.rawText?`<details class="recipe-source"><summary>Исходный текст</summary><div class="recipe-process">${esc(r.rawText)}</div></details>`:''}</div></details>
+      <p class="tiny muted recipe-strength-note">${esc(recipeAlcoholStrength(r).message)}</p><p class="tiny muted">${r.shelfLifeDays!=null?`Срок годности: ${fmtNum(r.shelfLifeDays,0)} дн. · `:''}${r.categoryMode==='manual'?'Категория выбрана вручную':r.categoryMode==='confirmed'?'Основной алкоголь подтверждён':'Автоматическая категория'}</p>${r.rawText?`<details class="recipe-source"><summary>Исходный текст</summary><div class="recipe-process">${esc(r.rawText)}</div></details>`:''}</div></details>
       <div class="actions recipe-card-actions"><button class="soft" data-editrecipe="${esc(r.id)}">Редактировать</button><button class="primary" data-recipe-calc="${esc(r.id)}">Рассчитать</button><button class="ghost" data-archive="${esc(r.id)}">${arch?'Вернуть':'В архив'}</button>${r.isDemo?`<button class="icon-btn" data-delete-recipe="${esc(r.id)}" aria-label="Удалить демо-карту" title="Удалить демо">×</button>`:''}</div></article>`;
   }).join('')}</div>`;
 }
@@ -544,6 +548,18 @@ function recipeModal(id){
   const r=normalizeRecipe(existing?structuredClone(existing):{id:null,name:'',yield:null,shelfLifeDays:30,ingredients:[],process:'',rawText:'',unparsedText:'',categoryMode:'auto',photos:[]});
   let photos=structuredClone(r.photos||[]), categoryMode=r.categoryMode||'auto', primaryAlcohol=r.primaryAlcohol||'', parseTimer=null, lastParsed={}, lastSourceParsed=r.rawText||'', photoBusy=false;
   const manuallyChanged=new Set();
+  // Keep ingredient metadata through textarea parsing, including explicit 0%.
+  const repeatedIngredientNames=new Set();
+  const ingredientKeys=ingredients=>{
+    const names=ingredients.map(item=>String(item.name||'').trim().toLocaleLowerCase('ru')),nameCounts=new Map();
+    names.forEach(name=>nameCounts.set(name,(nameCounts.get(name)||0)+1));
+    nameCounts.forEach((count,name)=>{if(count>1)repeatedIngredientNames.add(name);});
+    const signatures=ingredients.map((item,index)=>{const multiplier={'л':1000,'мл':1,'сл':10,'дл':100}[item.unit],family=multiplier?'volume':item.unit;return JSON.stringify([names[index],family,...repeatedIngredientNames.has(names[index])?[Number(item.amount)*(multiplier||1)]:[]]);});
+    const counts=new Map(),occurrences=new Map();signatures.forEach(signature=>counts.set(signature,(counts.get(signature)||0)+1));
+    return signatures.map(signature=>{const occurrence=occurrences.get(signature)||0;occurrences.set(signature,occurrence+1);return `${signature}:${counts.get(signature)}:${occurrence}`;});
+  };
+  const originalKeys=ingredientKeys(r.ingredients),ingredientMetadata=new Map(r.ingredients.map((item,index)=>[originalKeys[index],item]));
+  const strengthOverrides=new Map(r.ingredients.flatMap((item,index)=>Object.hasOwn(item,'abv')?[[originalKeys[index],item.abv]]:[]));
   modal(`<div class="section-head"><h2>${id?'Технологическая карта':'Добавить ТК'}</h2><button class="icon-btn" id="closeM" aria-label="Закрыть">×</button></div>
     <div class="field full"><label for="rSource">Вставить готовую ТК целиком</label><textarea id="rSource" class="recipe-source-input" placeholder="Клюквенная настойка\nВодка — 1 л\nКлюква 300 г\nСахар 100 г\nПриготовление: смешать и настоять 7 дней.">${esc(r.rawText||'')}</textarea><p class="tiny muted">Текст распознаётся автоматически. Исправленные вручную поля сохраняются. Исходный текст остаётся в карточке.</p></div>
     <div class="actions"><button class="soft" id="parseRecipeSource">Распознать текст</button><button class="ghost" id="replaceRecipeSource">Заменить поля из текста</button></div><p id="rParseStatus" class="tiny muted" role="status" aria-live="polite"></p>
@@ -552,6 +568,7 @@ function recipeModal(id){
       <div class="field"><label for="rYield">Выход, л — необязательно</label><input id="rYield" type="number" min=".001" step="any" inputmode="decimal" value="${esc(r.yield??'')}" placeholder="Можно оставить пустым"><span id="rYieldHint" class="tiny muted"></span></div>
       <div class="field"><label for="rShelf">Срок годности, дней</label><input id="rShelf" type="number" min="0" step="1" inputmode="numeric" value="${esc(r.shelfLifeDays??'')}"></div>
       <div class="field full"><label for="rLines">Состав — в любом привычном формате</label><textarea id="rLines" class="recipe-lines-input" placeholder="Водка 1 л\n300 г клюквы\nСахар — 100 г">${esc(r.ingredientsText||recipeIngredientText(r.ingredients))}</textarea><span class="tiny muted">Например: «Водка 1 л», «300 г клюквы» или «Водка | 1 | л | 500». Нераспознанные строки сохранятся для исправления.</span></div>
+      <div class="field full recipe-strength-editor"><h3>Крепость настойки</h3><p class="tiny muted">Укажите крепость жидких ингредиентов. Процент в названии алкоголя распознаётся автоматически, вода и сок учитываются как 0%. Алкоголь указывайте в л или мл.</p><div id="rStrengthFields" class="recipe-strength-fields"></div><div id="rStrengthPreview" class="recipe-strength-preview" aria-live="polite"></div></div>
       <div class="field full"><label for="rProcess">Процесс приготовления</label><textarea id="rProcess" class="recipe-lines-input" placeholder="Опишите все шаги приготовления">${esc(r.process||'')}</textarea></div>
       <div class="field full"><label for="rUnparsed">Дополнительный текст / требует проверки</label><textarea id="rUnparsed" placeholder="Здесь останется информация, которую не удалось распределить автоматически">${esc(r.unparsedText||'')}</textarea></div>
       <div class="field full"><label for="rCat">Категория</label><input id="rCat" list="recipeCategories" value="${esc(r.category||'Без категории')}"><datalist id="recipeCategories">${ALCOHOL_CATEGORIES.map(c=>`<option value="${esc(c)}"></option>`).join('')}</datalist><span id="rCategoryStatus" class="tiny muted"></span><div class="actions"><button class="soft" id="rAutoCategory">Повторить автоматическую сортировку</button></div></div>
@@ -564,10 +581,19 @@ function recipeModal(id){
   for(const [key,fieldId] of Object.entries(fields))$('#'+fieldId).addEventListener('input',()=>manuallyChanged.add(key));
   const readDraft=()=>{
     const parsed=parseIngredientsText($('#rLines').value);
-    return {...r,name:$('#rName').value.trim(),yield:$('#rYield').value===''?null:Number($('#rYield').value),shelfLifeDays:$('#rShelf').value===''?null:Number($('#rShelf').value),ingredients:parsed.ingredients,ingredientsText:$('#rLines').value,process:$('#rProcess').value.trim(),rawText:$('#rSource').value,unparsedText:mergeRecipeNotes($('#rUnparsed').value,parsed.unparsedText),category:$('#rCat').value.trim()||'Без категории',categoryMode,primaryAlcohol,photos:structuredClone(photos)};
+    const keys=ingredientKeys(parsed.ingredients),ingredients=parsed.ingredients.map((item,index)=>{const key=keys[index],row={...ingredientMetadata.get(key),...item};if(strengthOverrides.has(key)){const value=strengthOverrides.get(key);if(value==null||String(value).trim()==='')delete row.abv;else row.abv=Number(String(value).replace(',','.'));}return row;});
+    return {...r,name:$('#rName').value.trim(),yield:$('#rYield').value===''?null:Number($('#rYield').value),shelfLifeDays:$('#rShelf').value===''?null:Number($('#rShelf').value),ingredients,ingredientsText:$('#rLines').value,process:$('#rProcess').value.trim(),rawText:$('#rSource').value,unparsedText:mergeRecipeNotes($('#rUnparsed').value,parsed.unparsedText),category:$('#rCat').value.trim()||'Без категории',categoryMode,primaryAlcohol,photos:structuredClone(photos)};
+  };
+  const renderStrengthPreview=draft=>{$('#rStrengthPreview').innerHTML=`${recipeStrengthBadge(draft)}<p class="tiny muted">${esc(recipeAlcoholStrength(draft).message)}</p>`;};
+  const renderStrengthFields=draft=>{
+    const keys=ingredientKeys(draft.ingredients),rows=draft.ingredients.map((item,index)=>({item,index,info:ingredientStrengthInfo(item)})).filter(row=>row.info.requiresStrength||Object.hasOwn(row.item,'abv')||['л','мл','сл','дл'].includes(row.item.unit));
+    $('#rStrengthFields').innerHTML=rows.map(({item,index,info})=>`<div class="recipe-strength-field"><label for="rAbv${index}">${esc(item.name)}<span class="tiny muted">${fmtNum(item.amount,4)} ${esc(item.unit)}</span></label><div class="recipe-percent-input"><input id="rAbv${index}" type="number" min="0" max="100" step="any" inputmode="decimal" value="${esc(Object.hasOwn(item,'abv')?item.abv:info.abv??'')}" placeholder="Укажите %" aria-label="Крепость ${esc(item.name)}, %"><span>%</span></div></div>`).join('')||'<p class="tiny muted">Добавьте жидкие ингредиенты в состав.</p>';
+    rows.forEach(({index})=>{$('#rAbv'+index).oninput=()=>{strengthOverrides.set(keys[index],$('#rAbv'+index).value);renderStrengthPreview(readDraft());};});
+    renderStrengthPreview(draft);
   };
   const updateCategory=(force=false)=>{
     const classified=classifyRecipe(readDraft(),{force});categoryMode=classified.categoryMode;primaryAlcohol=classified.primaryAlcohol||'';
+    renderStrengthFields(classified);
     const ready=!!recipeCardView(classified);
     $('#saveRecipe').textContent=ready?'Сохранить ТК':'Сохранить черновик';
     $('#rYieldHint').textContent=ready?'После сохранения карта покажет состав на 1 л. Укажите фактический выход всего введённого состава.':'Состав можно сохранить в черновик. Когда укажете выход, карта автоматически пересчитается на 1 л.';
@@ -623,6 +649,8 @@ function recipeModal(id){
     if(!next.name){toast('Укажите название. Остальные поля можно заполнить позже.','error');$('#rName').focus();return;}
     if(next.yield!==null&&(!Number.isFinite(next.yield)||next.yield<=0)){toast('Выход должен быть больше нуля или оставлен пустым.','error');$('#rYield').focus();return;}
     if(next.shelfLifeDays!==null&&(!Number.isInteger(next.shelfLifeDays)||next.shelfLifeDays<0)){toast('Срок годности должен быть целым числом от нуля.','error');$('#rShelf').focus();return;}
+    const invalidStrength=next.ingredients.findIndex(item=>ingredientStrengthInfo(item).invalid);
+    if(invalidStrength>=0){toast('Крепость ингредиента должна быть от 0 до 100%.','error');$('#rAbv'+invalidStrength)?.focus();return;}
     next=normalizeRecipe(classifyRecipe({...next,id:existing?.id||uid(),archived:existing?.archived||false,updatedAt:nowISO(),isDemo:false}));
     const duplicate=findRecipeDuplicate(next,state.recipes.filter(x=>x.id!==next.id));
     if(duplicate){toast(`Такая ТК уже существует: «${duplicate.name}». Карта не продублирована.`,'error');return;}
@@ -638,11 +666,12 @@ function recipeModal(id){
 }
 function mergeRecipeNotes(...values){return [...new Set(values.flatMap(value=>String(value||'').split(/\r?\n/)).map(s=>s.trim()).filter(Boolean))].join('\n');}
 function parseIngredientLines(text){return parseIngredientsText(text).ingredients;}
-function recipeImportMetadata(recipe){return JSON.stringify({shelfLifeDays:recipe.shelfLifeDays??null,category:recipe.category||'',prices:(recipe.ingredients||[]).map(i=>[String(i.name).toLowerCase(),i.unit,Number(i.amount),Number(i.cost||0)]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),photos:(recipe.photos||[]).map(p=>[recipePhotoSource(p),typeof p==='string'?'':p?.name||'']).filter(p=>p[0])});}
+function recipeImportMetadata(recipe){return JSON.stringify({shelfLifeDays:recipe.shelfLifeDays??null,category:recipe.category||'',prices:(recipe.ingredients||[]).map(i=>[String(i.name).toLowerCase(),i.unit,Number(i.amount),Number(i.cost||0),i.abv??null]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),photos:(recipe.photos||[]).map(p=>[recipePhotoSource(p),typeof p==='string'?'':p?.name||'']).filter(p=>p[0])});}
+function recipeIngredientStrengthText(recipe){return (recipe.ingredients||[]).filter(i=>ingredientStrengthInfo(i).requiresStrength||Object.hasOwn(i,'abv')).map(i=>{const info=ingredientStrengthInfo(i);return `${i.name}: ${info.invalid?'проверьте значение':info.abv===null?'не указана':`${fmtNum(info.abv,2)}%`}`;}).join('\n');}
 function recipeImportDifferences(current,incoming){
   const changes=[],add=(label,a,b)=>{if(String(a??'')!==String(b??''))changes.push({label,current:String(a??'не указано'),incoming:String(b??'не указано')});};
   if(recipeFingerprint(current)!==recipeFingerprint(incoming)){add('Название',current.name,incoming.name);add('Выход, л',current.yield,incoming.yield);add('Процесс',current.process,incoming.process);add('Дополнительный текст',current.unparsedText,incoming.unparsedText);}
-  add('Состав и цены',recipeIngredientText(current.ingredients),recipeIngredientText(incoming.ingredients));add('Срок годности, дней',current.shelfLifeDays,incoming.shelfLifeDays);add('Категория',current.category,incoming.category);
+  add('Состав и цены',recipeIngredientText(current.ingredients),recipeIngredientText(incoming.ingredients));add('Крепость ингредиентов',recipeIngredientStrengthText(current),recipeIngredientStrengthText(incoming));add('Срок годности, дней',current.shelfLifeDays,incoming.shelfLifeDays);add('Категория',current.category,incoming.category);
   const photoKey=r=>JSON.stringify((r.photos||[]).map(p=>[recipePhotoSource(p),typeof p==='string'?'':p?.name||'']).filter(p=>p[0]));
   if(photoKey(current)!==photoKey(incoming))changes.push({label:'Фотографии',current:`${(current.photos||[]).length} шт.`,incoming:`${(incoming.photos||[]).length} шт. (существующие фотографии сохранятся)`});
   return changes;
@@ -667,7 +696,8 @@ function recipeCalculationModal(id){
     if(!(target>0)||!(base>0)||!Number.isFinite(target)||!Number.isFinite(base)){$('#recipeCalcResult').innerHTML='<div class="notice">Укажите нужный объём и исходный выход, чтобы получить расчёт.</div>';return;}
     const factor=target/base;const rows=recipe.ingredients.map(i=>({...i,amount:Number(i.amount)*factor}));
     if(rows.some(i=>!i.name||!i.unit||!Number.isFinite(i.amount)||i.amount<=0)){$('#recipeCalcResult').innerHTML='<div class="notice warn">Проверьте состав: каждому ингредиенту нужно положительное количество и единица измерения.</div>';return;}
-    $('#recipeCalcResult').innerHTML=`<h3>Состав на ${fmtNum(target,4)} л</h3>${recipeCompositionHTML(rows)}<h3>Процесс приготовления</h3><div class="recipe-process">${esc(scaleProcess(recipe.process||'',factor)||'Процесс ещё не добавлен.')}</div>${recipe.unparsedText?`<div class="notice warn"><b>Дополнительный текст не пересчитан — проверьте вручную</b><div class="recipe-process">${esc(recipe.unparsedText)}</div></div>`:''}<p class="tiny muted">Количество масштабировано в ${fmtNum(factor,4)} раза. Время, температура и проценты остаются прежними.</p>`;
+    const scaled={...recipe,yield:target,ingredients:rows};
+    $('#recipeCalcResult').innerHTML=`<div class="recipe-calculation-heading"><div><h3>Состав на ${fmtNum(target,4)} л</h3><p class="tiny muted">${esc(recipeAlcoholStrength(scaled).message)}</p></div>${recipeStrengthBadge(scaled)}</div>${recipeCompositionHTML(rows)}<h3>Процесс приготовления</h3><div class="recipe-process">${esc(scaleProcess(recipe.process||'',factor)||'Процесс ещё не добавлен.')}</div>${recipe.unparsedText?`<div class="notice warn"><b>Дополнительный текст не пересчитан — проверьте вручную</b><div class="recipe-process">${esc(recipe.unparsedText)}</div></div>`:''}<p class="tiny muted">Количество масштабировано в ${fmtNum(factor,4)} раза. Время, температура и проценты остаются прежними.</p>`;
   };
   $('#recipeCalcTarget').oninput=calculate;if($('#recipeCalcBase'))$('#recipeCalcBase').oninput=calculate;$('#closeM').onclick=$('#closeM2').onclick=closeModal;calculate();
 }
