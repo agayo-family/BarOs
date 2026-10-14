@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 import { MAX_RECIPE_FILE_BYTES, MAX_JSON_RECIPE_FILE_BYTES, MAX_IMPORTED_RECIPES, parseDelimitedRows, recipesFromRows, readRecipeFile } from '../tincture-site/imports.mjs';
 
-const require = createRequire(import.meta.url);
-globalThis.XLSX = require('../tincture-site/vendor/xlsx.full.min.js');
+// The browser vendor bundle is UMD. Evaluate its CommonJS branch independently
+// of the application's package type so the real XLS/XLSX regression cases run.
+const vendorExports = {};
+const loadVendor = vm.runInThisContext('(function(exports, module) {\n' + await readFile(new URL('../tincture-site/vendor/xlsx.full.min.js', import.meta.url), 'utf8') + '\n})', { filename: 'xlsx.full.min.js' });
+loadVendor(vendorExports, { exports: vendorExports });
+globalThis.XLSX = vendorExports;
 const file = (name, value) => {
   const data = typeof value === 'string' ? Buffer.from(value) : Buffer.from(value);
   return { name, size: data.length, text: async () => data.toString('utf8'), arrayBuffer: async () => data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) };
