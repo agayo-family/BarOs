@@ -26,7 +26,7 @@ function application({ authenticated = true, legacyState, browserStorage = new M
     files: [],
     classList: { add() {}, remove() {}, toggle() {} },
     addEventListener() {}, setAttribute() {}, append() {}, remove() {}, focus() {}, click() {},
-    querySelector() { return null; }, querySelectorAll() { return []; },
+    querySelector(selector) { return nodes.get(selector) ?? null; }, querySelectorAll() { return []; },
   });
   const document = {
     activeElement: null, hidden: false,
@@ -93,7 +93,8 @@ function application({ authenticated = true, legacyState, browserStorage = new M
     globalThis.__app = {
       freshState, normalizeState, canCalculate, calculationRecipe, calcRows,
       findRecipeDuplicate, useStatVersion, confirmRequest, commitStateChange,
-      recipeIngredientText, renderProductionExplanation, stockAdjustModal,
+      recipeIngredientText, recipeModal, recipeList, recipeCalculationModal, recipeCardView,
+      renderProductionExplanation, stockAdjustModal,
       openFinishBatch, stopBatch, addToRequest, editRequest, savePlan,
       load, loadSharedState, renderMigration, initializeShared, renderAuth, logout,
       completeLogout, api, sharedStateCopy, resolveUncertainSave, renderSettings,
@@ -189,6 +190,118 @@ test('calculator prefers saved yield and refuses incomplete or invalid ingredien
     app.state.recipes[0].ingredients = ingredients;
     assert.equal(app.canCalculate(), false);
     assert.deepEqual(structuredClone(app.calcRows()), []);
+  }
+});
+
+const draftRecipeSource = 'Клюквенная проверка\nВодка 2 л\nЯгоды 500 г\nСахар 250 г';
+const draftRecipeProcess = 'Смешать 2 л водки, 500 г ягод и 250 г сахара. Настаивать 7 дней при 20 °C.';
+const draftRecipeIngredients = [
+  { name: 'Водка', amount: 2, unit: 'л', cost: 500 },
+  { name: 'Ягоды', amount: 500, unit: 'г', cost: .2 },
+  { name: 'Сахар', amount: 250, unit: 'г', cost: .1 },
+];
+
+// The document substitute does not parse HTML into controls. Supply the values a
+// user enters, while exercising the application's actual save/input handlers.
+function fillRecipeForm(h, recipe = {}) {
+  const values = {
+    rName: recipe.name ?? 'Клюквенная проверка',
+    rYield: recipe.yield == null ? '' : String(recipe.yield),
+    rShelf: String(recipe.shelfLifeDays ?? 30),
+    rLines: recipe.ingredientsText ?? h.app.recipeIngredientText(recipe.ingredients ?? draftRecipeIngredients),
+    rProcess: recipe.process ?? draftRecipeProcess,
+    rSource: recipe.rawText ?? draftRecipeSource,
+    rUnparsed: recipe.unparsedText ?? '',
+    rCat: recipe.category ?? 'Водка',
+  };
+  for (const [id, value] of Object.entries(values)) h.document.querySelector('#' + id).value = value;
+}
+
+test('recipe draft survives server reload and becomes a one-litre card after adding its measured output', async () => {
+  const first = application();first.app.state = workingState();first.app.recipeModal();
+  assert.equal(first.document.querySelector('#saveRecipe').textContent, 'Сохранить черновик');
+  fillRecipeForm(first);await first.document.querySelector('#saveRecipe').onclick();
+  assert.equal(first.writes.length, 1);
+  const storedDraft = structuredClone(first.writes[0].value);
+  const draft = storedDraft.recipes[0];
+  assert.equal(draft.yield, null);
+  assert.deepEqual(draft.ingredients, draftRecipeIngredients);
+  assert.equal(draft.rawText, draftRecipeSource);assert.equal(draft.process, draftRecipeProcess);
+  assert.match(first.app.recipeList([draft], false), /Черновик/);
+  assert.match(first.app.recipeList([draft], false), /Укажите выход/);
+  assert.doesNotMatch(first.app.recipeList([draft], false), /ТК на 1 л/);
+
+  const reloaded = application();reloaded.app.state = reloaded.app.normalizeState(storedDraft);
+  reloaded.app.recipeModal(draft.id);fillRecipeForm(reloaded, reloaded.app.state.recipes[0]);
+  reloaded.document.querySelector('#rYield').value = '2.5';
+  await reloaded.document.querySelector('#saveRecipe').onclick();
+  assert.equal(reloaded.writes.length, 1);assert.equal(reloaded.app.state.recipes.length, 1);
+  const ready = structuredClone(reloaded.writes[0].value.recipes[0]);
+  assert.equal(ready.id, draft.id);assert.equal(ready.yield, 2.5);
+  assert.deepEqual(ready.ingredients, draftRecipeIngredients);
+  assert.equal(ready.ingredientsText, draft.ingredientsText);
+  assert.equal(ready.rawText, draftRecipeSource);assert.equal(ready.process, draftRecipeProcess);
+  const card = reloaded.app.recipeList([ready], false);
+  assert.match(card, /ТК на 1 л/);assert.doesNotMatch(card, /Черновик/);
+  for (const quantity of ['0,8 л', '200 г', '100 г']) assert.ok(card.includes(`<strong>${quantity}</strong>`), quantity);
+  assert.match(card, /Смешать 0,8 л водки, 200 г ягод и 100 г сахара/);
+  assert.match(card, /7 дней при 20 °C/);
+
+  reloaded.app.recipeModal(ready.id);fillRecipeForm(reloaded, ready);
+  await reloaded.document.querySelector('#saveRecipe').onclick();
+  assert.equal(reloaded.writes.length, 2);
+  assert.equal(reloaded.writes[1].value.recipes[0].yield, 2.5);
+  assert.deepEqual(reloaded.writes[1].value.recipes[0].ingredients, draftRecipeIngredients);
+  assert.equal(reloaded.writes[1].value.recipes[0].process, draftRecipeProcess);
+});
+
+test('one-litre presentation preserves original precision, prices, source and photographs', () => {
+  const { app } = application();
+  const original = { id: 'precision', name: 'Точная карта', yield: 3, ingredients: [{ name: 'Водка', amount: 1, unit: 'л', cost: 500, supplier: 'keep' }], process: 'Влить 1 л водки. Настаивать 7 дней при 20 °C.', rawText: 'Неизменённый исходный текст', photos: [{ name: 'Шаг', dataUrl: 'data:image/png;base64,abc' }], custom: 'keep' };
+  const before = structuredClone(original), view = app.recipeCardView(original);
+  assert.equal(view.yield, 1);assert.equal(view.ingredients[0].amount, 1 / 3);
+  assert.equal(view.ingredients[0].cost, 500);assert.equal(view.ingredients[0].supplier, 'keep');
+  assert.equal(view.rawText, original.rawText);assert.equal(view.custom, 'keep');
+  assert.deepEqual(structuredClone(view.photos), original.photos);
+  assert.match(view.process, /7 дней при 20 °C/);
+  assert.deepEqual(original, before);
+  assert.match(app.recipeList([original], false), /data:image\/png;base64,abc/);
+  assert.deepEqual(original, before);
+  for (const yieldValue of [null, 0, -1, Infinity, 'invalid']) assert.equal(app.recipeCardView({ ...original, yield: yieldValue }), null);
+  for (const ingredients of [[], [{ name: 'Водка', amount: 0, unit: 'л' }], [{ name: 'Водка', amount: -1, unit: 'л' }], [{ name: '', amount: 1, unit: 'л' }], [{ name: 'Водка', amount: 1, unit: '' }]]) assert.equal(app.recipeCardView({ ...original, ingredients }), null);
+});
+
+test('saved-output calculation modal starts at one litre and calculates larger and fractional volumes without changing the recipe', () => {
+  const h = application();
+  const recipe = recipes.normalizeRecipe({ id: 'r', name: 'Клюквенная проверка', yield: 2.5, ingredients: draftRecipeIngredients, process: draftRecipeProcess, rawText: draftRecipeSource, photos: [{ name: 'Шаг', dataUrl: 'data:image/png;base64,abc' }] });
+  h.app.state = workingState({ recipes: [recipe] });const before = structuredClone(h.app.state);
+  h.app.recipeCalculationModal(recipe.id);
+  assert.match(h.document.querySelector('#modal').innerHTML, /id="recipeCalcTarget"[^>]*value="1"/);
+  for (const [target, quantities, process] of [
+    ['1', ['0,8 л', '200 г', '100 г'], 'Смешать 0,8 л водки, 200 г ягод и 100 г сахара'],
+    ['4', ['3,2 л', '800 г', '400 г'], 'Смешать 3,2 л водки, 800 г ягод и 400 г сахара'],
+    ['0.5', ['0,4 л', '100 г', '50 г'], 'Смешать 0,4 л водки, 100 г ягод и 50 г сахара'],
+  ]) {
+    h.document.querySelector('#recipeCalcTarget').value = target;
+    h.document.querySelector('#recipeCalcTarget').oninput();
+    const result = h.document.querySelector('#recipeCalcResult').innerHTML;
+    for (const quantity of quantities) assert.ok(result.includes(`<strong>${quantity}</strong>`), `${target}: ${quantity}`);
+    assert.ok(result.includes(process), target);assert.match(result, /7 дней при 20 °C/);
+    assert.deepEqual(h.app.state, before);assert.equal(h.writes.length, 0);
+  }
+});
+
+test('recipe editor refuses zero, negative and nonfinite output without replacing the saved draft', async () => {
+  const h = application();
+  h.app.state = workingState({ recipes: [recipes.normalizeRecipe({ id: 'draft', name: 'Клюквенная проверка', yield: null, ingredients: draftRecipeIngredients, process: draftRecipeProcess, rawText: draftRecipeSource })] });
+  const before = structuredClone(h.app.state);
+  h.app.recipeModal('draft');fillRecipeForm(h, h.app.state.recipes[0]);
+  for (const output of ['0', '-2.5', 'Infinity']) {
+    h.document.querySelector('#rYield').value = output;
+    await h.document.querySelector('#saveRecipe').onclick();
+    assert.equal(h.writes.length, 0);assert.deepEqual(h.app.state, before);
+    assert.equal(h.document.querySelector('#modalBackdrop').hidden, false);
+    assert.match(h.toasts.at(-1).message, /Выход должен быть больше нуля/);
   }
 });
 
