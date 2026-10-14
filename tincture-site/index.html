@@ -4,15 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#2d2a24" />
-  <meta name="description" content="Tincture Lab — локальная PWA-система управления цехом настоек" />
+  <meta name="description" content="Tincture Lab — общая база цеха настоек с доступом по паролю" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
-  <meta name="application-version" content="2026.10.12-tk.3" />
+  <meta name="application-version" content="2026.10.14-shared.2" />
   <title>Tincture Lab</title>
 </head>
 <body>
-  <div class="app-shell">
+  <main class="auth-panel" id="authPanel"><section class="card auth-card"><div class="brand-mark">TL</div><h1>Tincture Lab</h1><p>Подключаемся к общей базе…</p></section></main>
+  <div class="app-shell" id="appShell" hidden>
     <aside class="sidebar" id="sidebar">
       <div class="brand-row">
         <div class="brand-mark">TL</div>
@@ -20,8 +21,10 @@
       </div>
       <nav id="nav"></nav>
       <div class="sidebar-foot">
+        <div class="tiny" id="sessionRole"></div>
+        <button class="ghost full" id="logoutBtn" hidden>Выйти</button>
         <button class="ghost full" id="installBtn" hidden>Установить приложение</button>
-        <div class="sync-line"><span id="syncDot" class="sync-dot"></span><span id="syncLabel">Локально</span></div>
+        <div class="sync-line"><span id="syncDot" class="sync-dot"></span><span id="syncLabel">Подключение к серверу</span></div>
       </div>
     </aside>
 
@@ -31,6 +34,7 @@
         <div class="page-title"><h1 id="pageTitle">Калькулятор</h1><p id="pageSubtitle">Точный расчёт без ручной математики</p></div>
         <div class="top-actions"><button class="icon-btn" id="notificationBtn" title="Уведомления">◌<span class="badge" id="notificationBadge" hidden>0</span></button></div>
       </header>
+      <section class="shared-banner" id="sharedBanner" aria-live="polite" hidden></section>
       <section class="content" id="content"></section>
     </main>
   </div>

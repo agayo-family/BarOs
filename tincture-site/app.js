@@ -8,7 +8,11 @@ import {readRecipeFile} from './imports.mjs';
 
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
-const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+const uid = () => {
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=[...bytes].map(value=>value.toString(16).padStart(2,'0')).join('');return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+};
 const nowISO = () => new Date().toISOString();
 const localDateTime = () => {const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);};
 const fmtDate = (iso) => {const date=new Date(iso);return Number.isFinite(date.getTime())?new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'short',year:'numeric'}).format(date):'дата не указана';};
@@ -30,7 +34,7 @@ const demoRecipe = {
 const freshState = () => ({
   version:1,
   meta:{lastModified:nowISO(),lastSynced:null,dirty:false},
-  recipes:[demoRecipe],
+  recipes:[],
   requisitions:[],
   stock:[],
   plans:[],
@@ -38,16 +42,28 @@ const freshState = () => ({
   stopList:[],
   stats:[],
   readNotices:[],
-  settings:{supabaseUrl:'',supabaseKey:'',workspaceId:'tincture-lab-main',notifications:false}
+  settings:{notifications:false}
 });
 let state = freshState();
 let route = 'calculator';
 let calcMode = 'request';
 let ui = {recipeId:'',target:10,baseYield:null};
 let deferredInstallPrompt = null;
-let syncTimer = null;
 let stateMutationBusy = false;
-let syncPullBusy = false;
+let session = {authenticated:false,role:null,csrfToken:null,initialized:true};
+let stateReady = false;
+let serverRevision = 0;
+let remotePending = false;
+let formDirty = false;
+let formVersion = 0;
+let refreshBusy = false;
+let revisionCheckBusy = false;
+let uncertainSave = null;
+let networkIssue = false;
+let authGeneration = 0;
+let logoutPending = false;
+let logoutBusy = false;
+try{logoutPending=localStorage.getItem('tincture-lab-logout-pending')==='1';}catch(error){}
 
 const pages = {
   calculator:['Калькулятор','Заявка и постановка настоек','⌁'],
@@ -58,18 +74,18 @@ const pages = {
   batches:['Партии и сроки','Контроль срока годности готовых продуктов','◷'],
   stats:['Статистика','Производство, скорость расхода и история технологий','↗'],
   notifications:['Уведомления','Что скоро испортится и что требует внимания','◉'],
-  settings:['Настройки','Офлайн-режим, установка и синхронизация','⚙']
+  settings:['Настройки','Общая база, доступ и установка','⚙']
 };
 
 function openDB(){
   return new Promise((resolve,reject)=>{
     const req=indexedDB.open('tincture-lab-db',1);
-    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('kv'))db.createObjectStore('kv',{keyPath:'key'});};
+    // Read the previous installation only. Never create or modify a local base.
+    req.onupgradeneeded=()=>req.transaction.abort();
     req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
   });
 }
 async function dbGet(key){const db=await openDB();try{return await new Promise((res,rej)=>{const r=db.transaction('kv','readonly').objectStore('kv').get(key);r.onsuccess=()=>res(r.result?.value);r.onerror=()=>rej(r.error)});}finally{db.close();}}
-async function dbSet(key,value){const db=await openDB();try{return await new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put({key,value});tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error||Error('Сохранение отменено'));});}finally{db.close();}}
 function normalizeState(saved){
   const defaults=freshState();
   if(!saved || typeof saved!=='object' || !Array.isArray(saved.recipes))throw Error('Неверная структура рабочей базы');
@@ -77,32 +93,234 @@ function normalizeState(saved){
   return {...defaults,...saved,recipes:saved.recipes.map(normalizeRecipe),settings:{...defaults.settings,...saved.settings},meta:{...defaults.meta,...saved.meta}};
 }
 async function load(){
+  if(logoutPending){await completeLogout();return;}
   try{
-    const saved=await dbGet('state');if(saved)state=normalizeState(saved);
-    ensureCurrentRequisition();await persist(false);renderNav();setRoute('calculator');updateNetwork();checkExpiryNotifications();
+    const current=await api('/api/session');session=current;
+    if(!session.authenticated){renderAuth();return;}
+    await loadSharedState();
   }catch(e){
-    console.error('Не удалось открыть рабочую базу',e);
-    $('#content').innerHTML='<section class="card"><h2>Не удалось открыть данные</h2><p>Рабочая база сохранена. Освободите место или разрешите браузеру локальное хранение и повторите открытие.</p><button class="primary" id="retryLoad">Повторить</button></section>';
-    $('#retryLoad').onclick=()=>location.reload();
+    if(e.status===401)return;
+    showConnectionGate('Не удалось связаться с сервером. Проверьте интернет и повторите открытие.');
   }
 }
 async function persist(markDirty=true){
-  state.meta.lastModified=nowISO(); if(markDirty) state.meta.dirty=true;
-  await dbSet('state',state);
-  updateNetwork();
-  if(markDirty && navigator.onLine && state.settings.supabaseUrl && state.settings.supabaseKey){
-    clearTimeout(syncTimer); syncTimer=setTimeout(()=>syncPush().catch(()=>{}),900);
+  const candidate=sharedStateCopy(state);
+  candidate.meta={...candidate.meta,lastModified:nowISO(),lastSynced:nowISO(),dirty:false};
+  const pending={state:candidate,revision:serverRevision,mutationId:uid()};
+  pending.body=JSON.stringify({state:pending.state,revision:pending.revision,mutationId:pending.mutationId});
+  try{
+    const result=await sendState(pending);
+    serverRevision=result.revision;state=normalizeState(candidate);remotePending=false;formDirty=false;
+    updateNetwork();updateSharedBanner();
+  }catch(error){
+    if(error.status===409){remotePending=true;updateSharedBanner();}
+    if(error.uncertain&&session.authenticated){uncertainSave=pending;updateSharedBanner();}
+    throw error;
   }
 }
 async function commitStateChange(mutate,errorMessage='Не удалось сохранить изменение. Данные не изменены; повторите попытку.',markDirty=true){
+  if(!session.authenticated||!stateReady){toast('Сначала войдите и откройте общую базу.','error');return false;}
+  if(uncertainSave){toast('Сервер ещё проверяет предыдущее сохранение. Нажмите «Проверить сохранение» вверху страницы.','error');return false;}
+  if(remotePending||refreshBusy){toast('Общая база изменилась. Сохраните текст формы, закройте её и обновите данные.','error');return false;}
   if(stateMutationBusy){toast('Дождитесь завершения текущего сохранения.','error');return false;}
   stateMutationBusy=true;
+  const generation=authGeneration;
   const previous=structuredClone(state),buttons=$$('button').map(button=>[button,button.disabled]);
   buttons.forEach(([button])=>button.disabled=true);
+  updateNetwork('syncing');
   try{mutate();await persist(markDirty);return true;}
-  catch(error){state=previous;updateNetwork();toast(errorMessage,'error');return false;}
-  finally{stateMutationBusy=false;buttons.forEach(([button,disabled])=>button.disabled=disabled);}
+  catch(error){
+    if(generation===authGeneration)state=previous;
+    if(error.status!==401)toast(error.status===409?'На сервере уже есть новые изменения. Форма сохранена на экране: скопируйте её текст, закройте и обновите общую базу.':error.uncertain?'Ответ о сохранении не получен. Форма осталась открыта; проверьте результат вверху страницы перед повторной записью.':error.status===413?'База превышает 100 МБ. Уменьшите размер фотографий и повторите сохранение.':errorMessage,'error');
+    updateNetwork();return false;
+  }
+  finally{stateMutationBusy=false;buttons.forEach(([button,disabled])=>button.disabled=disabled);updateNetwork();updateSharedBanner();}
 }
+
+function sharedStateCopy(value){
+  const copy=structuredClone(value);
+  copy.settings={...(copy.settings||{})};
+  delete copy.settings.supabaseUrl;delete copy.settings.supabaseKey;delete copy.settings.workspaceId;
+  return copy;
+}
+async function api(path,options={}){
+  const generation=authGeneration;
+  const headers={'Accept':'application/json',...(options.headers||{})};
+  if(options.body)headers['Content-Type']='application/json';
+  if(options.method&&options.method!=='GET'&&session.csrfToken)headers['X-CSRF-Token']=session.csrfToken;
+  let response;
+  try{response=await fetch(path,{...options,headers,credentials:'same-origin',cache:'no-store'});}
+  catch(cause){networkIssue=true;updateNetwork();const error=Error('Нет связи с сервером');error.network=true;throw error;}
+  if(generation!==authGeneration){const error=Error('Сессия изменена');error.status=401;throw error;}
+  let data={};try{data=await response.json();}catch(error){if(response.ok){const failure=Error('Не удалось прочитать ответ сервера');failure.network=true;throw failure;}}
+  if(generation!==authGeneration){const error=Error('Сессия изменена');error.status=401;throw error;}
+  networkIssue=false;
+  if(!response.ok){
+    const messages={invalid_password:'Пароль должен содержать минимум 12 символов и не быть слишком длинным.',same_password:'Пароли владельца и сотрудников должны различаться.',setup_token:'Неверный код первоначальной настройки.',already_initialized:'Доступ уже настроен. Обновите страницу и войдите по паролю.',invalid_login:'Проверьте пароль и выбранный доступ.',invalid_credentials:'Неверный пароль.',unauthorized:'Войдите по паролю, чтобы продолжить.',owner_required:'Это действие доступно владельцу.',csrf:'Обновите страницу и войдите снова.',origin:'Откройте приложение по его основному адресу и повторите действие.',rate_limited:'Слишком много попыток. Повторите через 15 минут.',body_too_large:'База больше 100 МБ. Уменьшите размер фотографий.',invalid_state:'Неверная структура рабочей базы.',revision_conflict:'Общая база изменилась. Обновите её перед сохранением.',server_error:'Сервер временно недоступен. Повторите позже.'};
+    const error=Error(messages[data.code]||'Сервер не выполнил запрос. Повторите действие.');error.status=response.status;error.code=data.code;
+    if(path==='/api/password'&&data.code==='invalid_credentials')error.message='Текущий пароль владельца указан неверно.';
+    if(response.status===401&&!['/api/login','/api/setup'].includes(path)&&!(path==='/api/password'&&data.code==='invalid_credentials')){
+      clearPrivateState();session={authenticated:false,role:null,csrfToken:null,initialized:true};
+      if(logoutPending)showLogoutGate('Подтверждаем выход из общей базы…');else renderAuth('Сессия закончилась. Войдите снова.');
+    }
+    throw error;
+  }
+  return data;
+}
+async function sendState(pending){
+  for(let attempt=0;attempt<2;attempt++){
+    try{return await api('/api/state',{method:'PUT',body:pending.body});}
+    catch(error){
+      const ambiguous=error.network||error.status>=500;
+      if(ambiguous&&attempt===0)continue;
+      if(ambiguous)error.uncertain=true;
+      throw error;
+    }
+  }
+}
+function clearPrivateState(){
+  authGeneration++;state=freshState();stateReady=false;serverRevision=0;remotePending=false;uncertainSave=null;formDirty=false;refreshBusy=false;
+  ui={recipeId:'',target:10,baseYield:null};route='calculator';calcMode='request';
+  modalAfterClose=null;modalReturnFocus=null;
+  $('#modalBackdrop').hidden=true;$('#modal').innerHTML='';$('#content').innerHTML='';$('#nav').innerHTML='';
+  $('#notificationBadge').hidden=true;$('#sharedBanner').hidden=true;$('#appShell').hidden=true;
+  $('#toasts').innerHTML='';
+}
+function showConnectionGate(message){
+  $('#appShell').hidden=true;$('#authPanel').hidden=false;
+  $('#authPanel').innerHTML=`<section class="card auth-card"><div class="brand-mark">TL</div><h1>Tincture Lab</h1><p class="notice warn" role="alert">${esc(message)}</p><button class="primary full" id="retryConnection">Повторить</button></section>`;
+  $('#retryConnection').onclick=load;
+}
+function renderAuth(message=''){
+  $('#appShell').hidden=true;$('#authPanel').hidden=false;
+  const setup=!session.initialized;
+  $('#authPanel').innerHTML=`<section class="card auth-card"><div class="brand-mark">TL</div><h1>Tincture Lab</h1><p class="muted">${setup?'Настройте доступ к общей базе цеха.':'Войдите в общую базу цеха.'}</p><form id="authForm" class="grid" autocomplete="on">${setup?`<div class="field full"><label for="setupToken">Код первоначальной настройки</label><input id="setupToken" type="password" autocomplete="off" required></div><div class="field full"><label for="ownerPassword">Ваш пароль владельца</label><input id="ownerPassword" type="password" autocomplete="new-password" minlength="12" required><span class="tiny muted">Минимум 12 символов. Владелец переносит базу и меняет пароли.</span></div><div class="field full"><label for="staffPassword">Пароль сотрудников</label><input id="staffPassword" type="password" autocomplete="new-password" minlength="12" required><span class="tiny muted">Минимум 12 символов, отличается от пароля владельца. Сотрудники работают с общей базой.</span></div>`:`<div class="field full"><label for="loginRole">Доступ</label><select id="loginRole"><option value="staff">Сотрудник</option><option value="owner">Владелец</option></select></div><div class="field full"><label for="loginPassword">Пароль</label><input id="loginPassword" type="password" autocomplete="current-password" required></div>`}<p id="authError" class="notice warn" role="alert" ${message?'':'hidden'}>${esc(message)}</p><button class="primary full" id="authSubmit" type="submit">${setup?'Настроить доступ':'Войти'}</button></form><p class="tiny muted auth-foot">Рабочие данные хранятся на сервере. Для входа и сохранения нужен интернет.</p></section>`;
+  $('#authForm').onsubmit=async event=>{
+    event.preventDefault();const button=$('#authSubmit');button.disabled=true;$('#authError').hidden=true;
+    try{
+      const values=setup?{token:$('#setupToken').value,ownerPassword:$('#ownerPassword').value,staffPassword:$('#staffPassword').value}:{password:$('#loginPassword').value,role:$('#loginRole').value};
+      const authenticated=await api(setup?'/api/setup':'/api/login',{method:'POST',body:JSON.stringify(values)});authGeneration++;session=authenticated;
+      $('#authPanel').innerHTML='<section class="card auth-card"><h1>Tincture Lab</h1><p>Открываем общую базу…</p></section>';
+      await loadSharedState();
+    }catch(error){
+      const message=error.status===401?'Неверный пароль или выбранный доступ.':error.network?'Нет связи с сервером. Проверьте интернет.':error.message;
+      if($('#authError')){$('#authError').textContent=message;$('#authError').hidden=false;button.disabled=false;}
+      else if(error.status!==401)showConnectionGate('Вход выполнен, но общая база пока недоступна. Повторите открытие.');
+    }
+  };
+}
+function showAuthenticatedShell(){
+  $('#authPanel').hidden=true;$('#authPanel').innerHTML='';$('#appShell').hidden=false;
+  $('#logoutBtn').hidden=false;$('#sessionRole').textContent=session.role==='owner'?'Владелец':'Сотрудник';
+}
+async function loadSharedState(){
+  const result=await api('/api/state');if(!session.authenticated)return;
+  serverRevision=result.revision;showAuthenticatedShell();
+  if(result.state===null){state=freshState();stateReady=false;renderNav();await renderMigration();updateNetwork();return;}
+  state=normalizeState(result.state);stateReady=true;remotePending=false;formDirty=false;
+  renderNav();setRoute('calculator');updateNetwork();updateSharedBanner();checkExpiryNotifications();
+}
+async function renderMigration(){
+  $('#pageTitle').textContent='Общая база';$('#pageSubtitle').textContent='Первый перенос данных на сервер';
+  $('#notificationBtn').hidden=true;
+  if(session.role!=='owner'){$('#content').innerHTML='<section class="card"><h2>База ещё не перенесена</h2><p>Владелец должен войти и перенести данные с прежнего устройства или загрузить резервную копию.</p><button class="soft" id="checkMigration">Проверить готовность</button></section>';$('#checkMigration').onclick=loadSharedState;return;}
+  const generation=authGeneration;let legacy=null,legacyMessage='На этом устройстве прежняя база не найдена.';
+  try{const saved=await dbGet('state');if(saved){legacy=normalizeState(saved);legacyMessage=`На этом устройстве: ${legacy.recipes.length} ТК, ${legacy.requisitions.length} заявок, ${legacy.stock.length} позиций склада, ${legacy.batches.length} партий, ${legacy.stats.length} записей истории.`;}}
+  catch(error){legacyMessage='Прежняя база на этом устройстве недоступна. Можно загрузить её полную резервную копию JSON.';}
+  if(generation!==authGeneration||!session.authenticated)return;
+  $('#content').innerHTML=`<section class="card migration-card"><h2>Перенести прежние данные</h2><p>После переноса состав, фотографии, архив, заявки, склад, планы, партии и история будут общими на всех устройствах.</p><div class="notice">${esc(legacyMessage)}</div><div class="actions" style="margin-top:18px">${legacy?'<button class="primary" id="migrateLocal">Перенести всю базу с этого устройства</button>':''}<label class="soft file-action">Загрузить полную копию JSON<input id="migrateJson" type="file" accept="application/json,.json" hidden></label></div><p id="migrationError" class="notice warn" role="alert" hidden></p><div class="divider"></div><p class="tiny muted">Если рабочих данных ещё нет, можно создать пустую общую базу. Прежняя локальная копия останется без изменений.</p><button class="soft" id="startEmpty">Создать пустую общую базу</button></section>`;
+  if(legacy)$('#migrateLocal').onclick=()=>initializeShared(legacy);
+  $('#startEmpty').onclick=()=>initializeShared(freshState());
+  $('#migrateJson').onchange=async event=>{
+    const file=event.target.files[0];if(!file)return;
+    try{if(file.size>100*1024*1024)throw Error('Полная копия больше 100 МБ. Уменьшите размер фотографий.');const imported=JSON.parse(await file.text());if(!Array.isArray(imported.recipes)||!imported.settings)throw Error('Выберите полную резервную копию базы, а не отдельный список ТК.');await initializeShared(normalizeState(imported));}
+    catch(error){$('#migrationError').textContent=error.message;$('#migrationError').hidden=false;}
+  };
+}
+async function initializeShared(source){
+  if(stateMutationBusy||uncertainSave||session.role!=='owner')return;
+  stateMutationBusy=true;const buttons=$$('button').map(button=>[button,button.disabled]);buttons.forEach(([button])=>button.disabled=true);
+  state=normalizeState(source);updateNetwork('syncing');
+  try{await persist();stateReady=true;$('#notificationBtn').hidden=false;formDirty=false;setRoute('calculator');toast('Общая база сохранена на сервере.');}
+  catch(error){
+    state=freshState();stateReady=false;
+    if(error.status===409){await loadSharedState();toast('Общая база уже создана. Загружена существующая версия.','error');}
+    else if(error.status!==401){$('#migrationError').textContent=error.uncertain?'Ответ о переносе не получен. Нажмите «Проверить сохранение» вверху страницы.':error.status===413?'База больше 100 МБ. Уменьшите размер фотографий.':'Не удалось перенести данные. Прежняя база сохранена; повторите попытку.';$('#migrationError').hidden=false;}
+  }finally{stateMutationBusy=false;buttons.forEach(([button,disabled])=>button.disabled=disabled);updateNetwork();updateSharedBanner();}
+}
+function isFormOpen(){return !$('#modalBackdrop').hidden||formDirty;}
+function updateSharedBanner(){
+  const banner=$('#sharedBanner');if(!banner)return;
+  banner.hidden=!session.authenticated||(!remotePending&&!uncertainSave);
+  if(banner.hidden)return;
+  banner.innerHTML=`<div class="notice warn shared-notice"><span>${uncertainSave?'Связь прервалась во время сохранения. Сначала проверьте его результат.':'На другом устройстве появились новые изменения. Обновите общую базу перед сохранением.'}</span><button class="soft" id="refreshShared">${uncertainSave?'Проверить сохранение':'Обновить общую базу'}</button></div>`;
+  $('#refreshShared').onclick=()=>uncertainSave?resolveUncertainSave():refreshSharedState(true);
+}
+async function resolveUncertainSave(){
+  if(!uncertainSave||stateMutationBusy||refreshBusy)return;
+  refreshBusy=true;updateNetwork('syncing');const pending=uncertainSave;
+  try{
+    const result=await sendState(pending);if(!session.authenticated)return;
+    serverRevision=result.revision;uncertainSave=null;remotePending=true;
+    toast('Сохранение подтверждено сервером. Закройте форму и обновите общую базу.');
+  }catch(error){if(error.status===409){uncertainSave=null;remotePending=true;toast('Запись не была применена: на сервере уже есть новые данные. Скопируйте текст формы перед обновлением.','error');}else if(error.status!==401)toast('Результат пока недоступен. Проверьте интернет и нажмите ещё раз.','error');}
+  finally{refreshBusy=false;updateNetwork();updateSharedBanner();}
+  if(!uncertainSave&&!isFormOpen()&&session.authenticated){if(!stateReady)await loadSharedState();else await refreshSharedState();}
+}
+async function refreshSharedState(manual=false,navigation=false){
+  if(!session.authenticated||stateMutationBusy||refreshBusy||uncertainSave)return false;
+  if(isFormOpen()&&!navigation){if(manual)toast('Скопируйте несохранённый текст и закройте форму или перейдите в другой раздел.','error');return false;}
+  if(!$('#modalBackdrop').hidden){if(manual)toast('Сначала закройте открытую форму.','error');return false;}
+  refreshBusy=true;const inputVersion=formVersion;
+  try{
+    const result=await api('/api/state');if(!session.authenticated)return false;
+    if(!$('#modalBackdrop').hidden||formVersion!==inputVersion){remotePending=true;updateSharedBanner();return false;}
+    if(result.state===null){state=freshState();stateReady=false;renderNav();await renderMigration();return false;}
+    state=normalizeState(result.state);serverRevision=result.revision;remotePending=false;formDirty=false;stateReady=true;
+    render();updateNetwork();updateSharedBanner();if(manual)toast('Общая база обновлена');return true;
+  }catch(error){if(error.status!==401&&manual)toast('Не удалось обновить общую базу. Форма и текущие данные остались на экране.','error');updateNetwork();return false;}
+  finally{refreshBusy=false;updateNetwork();}
+}
+async function checkSharedRevision(){
+  if(document.hidden||revisionCheckBusy||!session.authenticated||!stateReady||stateMutationBusy||refreshBusy||uncertainSave||!navigator.onLine)return;
+  revisionCheckBusy=true;
+  try{
+    const result=await api('/api/revision');
+    // A hidden tab must not start a second database read after a delayed reply.
+    if(document.hidden||stateMutationBusy||refreshBusy||uncertainSave)return;
+    if(result.revision!==serverRevision){remotePending=true;updateSharedBanner();if(!isFormOpen())await refreshSharedState();}updateNetwork();
+  }
+  catch(error){updateNetwork();}
+  finally{revisionCheckBusy=false;}
+}
+async function logout(){
+  if(stateMutationBusy||refreshBusy){toast('Дождитесь завершения текущего запроса.','error');return;}
+  rememberLogoutPending(true);clearPrivateState();session={authenticated:false,role:null,csrfToken:null,initialized:true};
+  await completeLogout();
+}
+function rememberLogoutPending(value){
+  logoutPending=value;
+  try{if(value)localStorage.setItem('tincture-lab-logout-pending','1');else localStorage.removeItem('tincture-lab-logout-pending');}catch(error){}
+}
+function showLogoutGate(message,loading=false){
+  $('#appShell').hidden=true;$('#authPanel').hidden=false;
+  $('#authPanel').innerHTML=`<section class="card auth-card"><div class="brand-mark">TL</div><h1>Выход из общей базы</h1><p class="notice ${loading?'':'warn'}" role="status">${esc(message)}</p><p class="tiny muted">Рабочие данные скрыты. Для нового входа нужно завершить выход на сервере.</p><button class="primary full" id="retryLogout" ${loading?'disabled':''}>${loading?'Завершаем выход…':'Повторить выход'}</button></section>`;
+  $('#retryLogout').onclick=completeLogout;
+}
+async function completeLogout(){
+  if(logoutBusy)return;logoutBusy=true;showLogoutGate('Подтверждаем выход из общей базы…',true);
+  try{
+    const current=await api('/api/session');session=current;
+    if(current.authenticated)await api('/api/logout',{method:'POST',body:'{}'});
+    rememberLogoutPending(false);session={...current,authenticated:false,role:null,csrfToken:null};renderAuth();
+  }catch(error){
+    if(error.status===401){rememberLogoutPending(false);session={authenticated:false,role:null,csrfToken:null,initialized:true};renderAuth();}
+    else{session={authenticated:false,role:null,csrfToken:null,initialized:session.initialized};showLogoutGate('Сервер пока недоступен. Проверьте интернет и повторите выход.');}
+  }finally{logoutBusy=false;}
+}
+document.addEventListener('input',event=>{if(session.authenticated&&stateReady&&event.target.closest?.('#content,#modal')){formDirty=true;formVersion++;}});
+document.addEventListener('change',event=>{if(session.authenticated&&stateReady&&event.target.closest?.('#content,#modal')){formDirty=true;formVersion++;}});
+$('#logoutBtn').onclick=logout;
 
 function toast(msg,type=''){const el=document.createElement('div');el.className=`toast ${type}`;el.textContent=msg;$('#toasts').append(el);setTimeout(()=>el.remove(),3400)}
 function modal(html){
@@ -128,26 +346,35 @@ document.addEventListener('keydown',e=>{
     if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
   }
 });
-window.addEventListener('unhandledrejection',()=>toast('Операция не сохранена. Проверьте свободное место и повторите действие.','error'));
+window.addEventListener('unhandledrejection',()=>{if(session.authenticated)toast('Не удалось завершить операцию. Проверьте связь с сервером.','error');});
 
 function renderNav(){
+  if(!session.authenticated||!stateReady){$('#nav').innerHTML='';return;}
   $('#nav').innerHTML=Object.entries(pages).filter(([k])=>k!=='notifications').map(([k,v])=>`<button class="nav-btn ${route===k?'active':''}" data-route="${k}"><span class="nav-icon">${v[2]}</span><span>${v[0]}</span></button>`).join('');
   $$('[data-route]').forEach(b=>b.onclick=()=>setRoute(b.dataset.route));
 }
-function setRoute(next){route=next;const p=pages[next];$('#pageTitle').textContent=p[0];$('#pageSubtitle').textContent=p[1];renderNav();render();$('#sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});}
+function setRoute(next){
+  if(!session.authenticated||!stateReady)return;
+  const navigate=()=>{formDirty=false;route=next;const p=pages[next];$('#pageTitle').textContent=p[0];$('#pageSubtitle').textContent=p[1];renderNav();render();$('#sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});};
+  if(uncertainSave){toast('Сначала проверьте результат предыдущего сохранения вверху страницы.','error');return;}
+  if(remotePending){if(!$('#modalBackdrop').hidden){toast('Сначала закройте открытую форму. Её текст можно скопировать перед обновлением.','error');return;}refreshSharedState(false,true).then(saved=>{if(saved)navigate();});return;}
+  navigate();
+}
 $('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
 $('#notificationBtn').onclick=()=>setRoute('notifications');
 
 function render(){
+  if(!session.authenticated||!stateReady)return;
+  $('#notificationBtn').hidden=false;
   const fn={calculator:renderCalculator,request:renderRequest,plans:renderPlans,recipes:renderRecipes,warehouse:renderWarehouse,batches:renderBatches,stats:renderStats,notifications:renderNotifications,settings:renderSettings}[route];
   fn(); updateNoticeBadge();
 }
 
 function activeRecipes(){return state.recipes.filter(r=>!r.archived);}
-function ensureCurrentRequisition(){
+function ensureCurrentRequisition(create=true){
   const wk=isoWeekKey(new Date());
   let req=state.requisitions.find(r=>r.week===wk);
-  if(!req){req={id:uid(),week:wk,status:'draft',items:[],appliedItems:[],createdAt:nowISO(),updatedAt:nowISO()};state.requisitions.push(req);}
+  if(!req){req={id:create?uid():null,week:wk,status:'draft',items:[],appliedItems:[],createdAt:nowISO(),updatedAt:nowISO()};if(create)state.requisitions.push(req);}
   return req;
 }
 function selectedRecipe(){const list=activeRecipes();return state.recipes.find(r=>r.id===ui.recipeId&&!r.archived)||list[0]||null;}
@@ -159,10 +386,10 @@ function recipeOptions(selected){return activeRecipes().map(r=>`<option value="$
 function renderCalculator(){
   const recipes=activeRecipes(); if(!ui.recipeId && recipes[0])ui.recipeId=recipes[0].id;
   const r=selectedRecipe(); const rows=calcRows(); const cost=totalCost(rows);
-  const req=ensureCurrentRequisition();
+  const req=ensureCurrentRequisition(false);
   $('#content').innerHTML=`
     <div class="hero">
-      <div><span class="pill olive">LOCAL-FIRST · PWA</span><h2>Одна технологичка — два разных расчёта.</h2><p>Закупочная заявка агрегирует ингредиенты на неделю. Постановка рассчитывает конкретную варку, может сохраниться в план и после приготовления запускает срок годности.</p></div>
+      <div><span class="pill olive">ОБЩАЯ БАЗА ЦЕХА</span><h2>Одна технологичка — два разных расчёта.</h2><p>Закупочная заявка агрегирует ингредиенты на неделю. Постановка рассчитывает конкретную варку, может сохраниться в план и после приготовления запускает срок годности.</p></div>
       <div class="hero-stat"><span>Текущая неделя</span><strong>${esc(req.week)}</strong><span>${req.status==='confirmed'?'заявка подтверждена':'заявка ещё черновик'}</span></div>
     </div>
     <div style="height:18px"></div>
@@ -505,6 +732,7 @@ function noticeRows(){
 function updateNoticeBadge(){const n=noticeRows().filter(x=>!state.readNotices.includes(x.id)).length;$('#notificationBadge').hidden=!n;$('#notificationBadge').textContent=n>99?'99+':n;}
 function renderNotifications(){const rows=noticeRows();$('#content').innerHTML=`<div class="section-head"><div><h2>Центр уведомлений</h2><p class="tiny muted">Партии попадают сюда за 3 дня до конца срока и остаются до стопа/списания.</p></div><button class="soft" id="markRead">Отметить просмотренными</button></div>${rows.length?`<div class="list">${rows.map(n=>`<div class="list-item"><div class="list-main"><div class="list-title ${n.type==='expired'||n.type==='shortage'?'danger-text':''}">${esc(n.title)}</div><div class="list-sub">${esc(n.sub)}</div></div><span class="pill ${n.type==='soon'?'burg':'dark'}">${n.type==='soon'?'срок':n.type==='expired'?'просрочено':'склад'}</span></div>`).join('')}</div>`:`<div class="empty">Сейчас критичных уведомлений нет.</div>`}`;$('#markRead').onclick=async()=>{if(await commitStateChange(()=>{state.readNotices=[...new Set([...state.readNotices,...rows.map(x=>x.id)])];},'Не удалось сохранить отметки уведомлений.',false)){updateNoticeBadge();toast('Уведомления отмечены просмотренными');}};}
 async function checkExpiryNotifications(){
+  if(!session.authenticated||!stateReady)return;
   const soon=noticeRows().filter(x=>x.type==='soon'&&!state.readNotices.includes(x.id));
   updateNoticeBadge();
   if(soon.length && state.settings.notifications && 'Notification'in window && Notification.permission==='granted'){
@@ -513,42 +741,48 @@ async function checkExpiryNotifications(){
 }
 
 function renderSettings(){
-  $('#content').innerHTML=`<div class="grid two"><section class="card"><h2>Установка и офлайн</h2><div class="notice">Приложение кэширует интерфейс и хранит рабочие данные в IndexedDB. После первого открытия его можно использовать без интернета.</div><div class="divider"></div><div class="actions"><button class="primary" id="installSettings">Установить на устройство</button><button class="soft" id="notifySettings">${state.settings.notifications?'Уведомления включены':'Включить уведомления'}</button></div><div class="divider"></div><p class="tiny muted">На iPhone установка выполняется через Safari → «Поделиться» → «На экран Домой». Фоновая доставка системных уведомлений зависит от браузера; внутренний центр сроков работает всегда.</p></section><section class="card"><h2>Синхронизация с Supabase</h2><div class="form-grid"><div class="field full"><label>Project URL</label><input id="supUrl" value="${esc(state.settings.supabaseUrl||'')}" placeholder="https://xxxx.supabase.co"></div><div class="field full"><label>Anon key</label><input id="supKey" type="password" value="${esc(state.settings.supabaseKey||'')}" placeholder="eyJ..."></div><div class="field full"><label>Workspace ID</label><input id="workspaceId" value="${esc(state.settings.workspaceId||'tincture-lab-main')}"></div></div><div class="divider"></div><div class="actions"><button class="primary" id="saveSync">Сохранить и синхронизировать</button><button class="soft" id="pullSync">Загрузить из облака</button></div><p class="tiny muted">Перед подключением выполните <b>setup.sql</b> в Supabase. Текущая схема рассчитана на один цех/MVP; для нескольких сотрудников лучше добавить авторизацию и RLS.</p></section></div><div style="height:18px"></div><section class="card"><h2>Резервная копия</h2><div class="actions"><button class="soft" id="exportData">Скачать JSON</button><label class="soft" style="display:inline-flex;align-items:center;padding:0 14px"><input id="importData" type="file" accept="application/json" hidden>Загрузить JSON</label></div></section>`;
-  $('#installSettings').onclick=triggerInstall;$('#notifySettings').onclick=enableNotifications;$('#saveSync').onclick=async()=>{const settings={supabaseUrl:$('#supUrl').value.trim().replace(/\/$/,''),supabaseKey:$('#supKey').value.trim(),workspaceId:$('#workspaceId').value.trim()||'tincture-lab-main'};if(await commitStateChange(()=>Object.assign(state.settings,settings),'Не удалось сохранить настройки. Данные остались в форме.')){await syncPush(true);render();}};$('#pullSync').onclick=()=>syncPull(true);$('#exportData').onclick=exportData;$('#importData').onchange=importData;
+  $('#content').innerHTML='<div class="grid two"><section class="card"><h2>Общая база</h2><div class="notice">Все технологические карты, фотографии, заявки, склад, планы, партии и история хранятся на сервере. Сохранённые изменения доступны на других устройствах после обновления.</div><div class="divider"></div><p class="tiny muted">Без интернета интерфейс доступен, а вход, открытие базы и сохранение требуют соединения с сервером.</p><div class="actions"><button class="soft" id="refreshSettings">Обновить общую базу</button><button class="soft" id="installSettings">Установить приложение</button><button class="soft" id="notifySettings">'+(state.settings.notifications?'Уведомления включены':'Включить уведомления')+'</button></div><p class="tiny muted">На iPhone: Safari → «Поделиться» → «На экран Домой». Разрешение системных уведомлений выдаётся отдельно на каждом устройстве.</p></section><section class="card"><h2>Резервная копия</h2><p class="tiny muted">Полная копия содержит все рабочие данные и фотографии. Загрузка копии заменяет общую базу на сервере для всех устройств.</p><div class="actions"><button class="soft" id="exportData">Скачать полную копию JSON</button><label class="soft file-action">Загрузить полную копию JSON<input id="importData" type="file" accept="application/json,.json" hidden></label></div></section></div>'+(session.role==='owner'?'<section class="card password-card"><h2>Пароли доступа</h2><p class="tiny muted">Вы вошли как владелец. Можно сменить свой пароль, пароль сотрудников или оба. После смены устройства с этим доступом войдут заново.</p><form id="passwordForm"><div class="form-grid"><div class="field full"><label for="currentPassword">Текущий пароль владельца</label><input id="currentPassword" type="password" autocomplete="current-password" required></div><div class="field"><label for="newOwnerPassword">Новый пароль владельца</label><input id="newOwnerPassword" type="password" autocomplete="new-password" minlength="12"><span class="tiny muted">Минимум 12 символов, либо оставьте пустым.</span></div><div class="field"><label for="newStaffPassword">Новый пароль сотрудников</label><input id="newStaffPassword" type="password" autocomplete="new-password" minlength="12"><span class="tiny muted">Минимум 12 символов, либо оставьте пустым.</span></div></div><p id="passwordError" class="notice warn" role="alert" hidden></p><div class="actions" style="margin-top:16px"><button class="primary" type="submit" id="savePasswords">Сменить пароли</button></div></form></section>':'<section class="card password-card"><h2>Доступ сотрудника</h2><p class="tiny muted">Вы можете работать с общей базой. Пароли доступа меняет владелец.</p></section>');
+  $('#installSettings').onclick=triggerInstall;$('#notifySettings').onclick=enableNotifications;
+  $('#refreshSettings').onclick=()=>refreshSharedState(true);$('#exportData').onclick=exportData;$('#importData').onchange=importData;
+  if(session.role==='owner')$('#passwordForm').onsubmit=async event=>{
+    event.preventDefault();const ownerPassword=$('#newOwnerPassword').value,staffPassword=$('#newStaffPassword').value;
+    if(stateMutationBusy||refreshBusy){toast('Дождитесь завершения текущего запроса.','error');return;}
+    if(!ownerPassword&&!staffPassword){$('#passwordError').textContent='Укажите хотя бы один новый пароль.';$('#passwordError').hidden=false;return;}
+    const payload={currentPassword:$('#currentPassword').value};if(ownerPassword)payload.ownerPassword=ownerPassword;if(staffPassword)payload.staffPassword=staffPassword;
+    const button=$('#savePasswords');button.disabled=true;$('#passwordError').hidden=true;stateMutationBusy=true;updateNetwork('syncing');
+    try{const authenticated=await api('/api/password',{method:'POST',body:JSON.stringify(payload)});authGeneration++;session=authenticated;formDirty=false;renderSettings();toast('Пароли изменены. На устройствах с изменённым доступом потребуется новый вход.');}
+    catch(error){if((error.status!==401||error.code==='invalid_credentials')&&$('#passwordError')){$('#passwordError').textContent=error.network?'Нет связи с сервером. Изменение паролей не подтверждено. Войдите с новым паролем или проверьте текущий перед повтором.':error.message;$('#passwordError').hidden=false;button.disabled=false;}}
+    finally{stateMutationBusy=false;updateNetwork();}
+  };
 }
-function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`tincture-lab-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-async function importData(e){const f=e.target.files[0];if(!f)return;try{const data=JSON.parse(await f.text());if(!data.recipes||!data.settings)throw Error('неверная структура');const restored=normalizeState(data);if(await commitStateChange(()=>{state=restored;},'Не удалось сохранить резервную копию. Текущая база не изменена.')){toast('Резервная копия загружена');render();}}catch(err){toast('Ошибка импорта: '+err.message,'error')}}
+function exportData(){
+  if(!session.authenticated||!stateReady)return;
+  const blob=new Blob([JSON.stringify(sharedStateCopy(state),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tincture-lab-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+async function importData(e){
+  const file=e.target.files[0];if(!file)return;
+  try{if(file.size>100*1024*1024)throw Error('Полная копия больше 100 МБ. Уменьшите размер фотографий.');const data=JSON.parse(await file.text());if(!Array.isArray(data.recipes)||!data.settings)throw Error('Выберите полную резервную копию базы.');const restored=normalizeState(data);
+    modal('<div class="section-head"><h2>Восстановить общую базу?</h2><button class="icon-btn" id="closeRestore">×</button></div><div class="notice warn">Копия заменит рабочие данные на сервере для всех устройств. Перед заменой можно скачать текущую базу.</div><p class="tiny muted">В копии: '+restored.recipes.length+' ТК, '+restored.stock.length+' позиций склада, '+restored.batches.length+' партий и '+restored.stats.length+' записей истории.</p><div class="actions"><button class="soft" id="exportBeforeRestore">Скачать текущую базу</button><button class="danger" id="confirmRestore">Восстановить из копии</button><button class="soft" id="cancelRestore">Отмена</button></div>');
+    $('#closeRestore').onclick=$('#cancelRestore').onclick=closeModal;$('#exportBeforeRestore').onclick=exportData;
+    $('#confirmRestore').onclick=async()=>{if(await commitStateChange(()=>{state=restored;},'Не удалось восстановить копию. Общая база не изменена.')){closeModal();toast('Общая база восстановлена');render();}};
+  }catch(error){toast('Ошибка импорта: '+error.message,'error');}
+}
+function updateNetwork(mode){
+  const dot=$('#syncDot'),label=$('#syncLabel');if(!dot||!label)return;dot.className='sync-dot';
+  if(mode==='syncing'||stateMutationBusy||refreshBusy){dot.classList.add('warn');label.textContent='Связь с сервером…';return;}
+  if(!session.authenticated){label.textContent='Вход в общую базу';return;}
+  if(uncertainSave){dot.classList.add('warn');label.textContent='Результат сохранения уточняется';return;}
+  if(!navigator.onLine||networkIssue){dot.classList.add('warn');label.textContent='Нет связи · запись недоступна';return;}
+  dot.classList.add('online');label.textContent=remotePending?'Есть новые общие данные':stateReady?'Общая база · сохранено':'Перенос общей базы';
+}
+window.addEventListener('online',()=>{if(logoutPending){completeLogout();return;}updateNetwork();checkSharedRevision();});
+window.addEventListener('offline',()=>updateNetwork());
+window.addEventListener('focus',checkSharedRevision);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSharedRevision();});
+// Visible tabs check once a minute; hidden tabs leave a sleeping database idle.
+setInterval(checkSharedRevision,60000);
 
-async function syncPush(manual=false){
-  const {supabaseUrl:url,supabaseKey:key,workspaceId:id}=state.settings;if(!url||!key||!id){if(manual)toast('Сначала заполните настройки Supabase','error');return false}if(!navigator.onLine){if(manual)toast('Нет интернета — изменения останутся в очереди','error');return false}
-  updateNetwork('syncing');
-  const payload=structuredClone(state);payload.meta={...payload.meta,dirty:false,lastSynced:nowISO()};
-  try{const r=await fetch(`${url}/rest/v1/tincture_workspaces`,{method:'POST',headers:{apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({id,data:payload,updated_at:nowISO()})});if(!r.ok)throw Error(`${r.status} ${await r.text()}`);state.meta.dirty=state.meta.lastModified!==payload.meta.lastModified;state.meta.lastSynced=nowISO();await dbSet('state',state);updateNetwork();if(state.meta.dirty){clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncPush().catch(()=>{}),900);}if(manual)toast('Синхронизация выполнена');return true;}catch(e){updateNetwork('error');if(manual)toast('Ошибка синхронизации: '+e.message,'error');return false;}
-}
-async function syncPull(manual=false){
-  const {supabaseUrl:url,supabaseKey:key,workspaceId:id}=state.settings;if(!url||!key||!id){if(manual)toast('Заполните настройки Supabase','error');return false}
-  if(syncPullBusy||stateMutationBusy){if(manual)toast('Дождитесь завершения текущего сохранения.','error');return false;}
-  syncPullBusy=true;const localWasDirty=state.meta.dirty,localModifiedAt=state.meta.lastModified;clearTimeout(syncTimer);
-  const resumePush=()=>{if(state.meta.dirty&&navigator.onLine&&state.settings.supabaseUrl&&state.settings.supabaseKey){clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncPush().catch(()=>{}),900);}};
-  let conflictOpen=false;
-  try{
-    const response=await fetch(`${url}/rest/v1/tincture_workspaces?id=eq.${encodeURIComponent(id)}&select=data,updated_at`,{headers:{apikey:key,Authorization:`Bearer ${key}`}});if(!response.ok)throw Error(`${response.status}`);const rows=await response.json();
-    if(!rows.length){if(manual)toast('Облачной копии пока нет');return false;}
-    const remote=normalizeState(rows[0].data);remote.settings={...remote.settings,...state.settings};remote.meta={...remote.meta,dirty:false,lastSynced:nowISO()};
-    const applyRemote=async()=>{const saved=await commitStateChange(()=>{state=structuredClone(remote);},'Не удалось сохранить облачную копию на устройстве. Текущая локальная база сохранена.',false);if(saved){if(conflictOpen)closeModal();toast('Облачные данные загружены');render();updateNetwork();}return saved;};
-    if(localWasDirty||state.meta.dirty||state.meta.lastModified!==localModifiedAt){
-      conflictOpen=true;
-      modal(`<div class="section-head"><h2>На устройстве есть свои изменения</h2><button class="icon-btn" id="closeCloudConflict" aria-label="Закрыть">×</button></div><div class="notice warn">Загрузка облачной копии заменит текущую базу на этом устройстве. Сначала можно выгрузить её резервную копию.</div><p class="tiny muted">Локально: ${state.recipes.length} ТК. В облаке: ${remote.recipes.length} ТК. Состав, заявки, склад, партии и история будут взяты из облачной копии.</p><div class="actions"><button class="soft" id="exportBeforeCloud">Выгрузить текущую копию</button><button class="danger" id="applyCloudCopy">Загрузить облачную копию и заменить локальную</button><button class="soft" id="cancelCloudCopy">Оставить текущую базу</button></div>`);
-      modalAfterClose=resumePush;$('#exportBeforeCloud').onclick=exportData;$('#closeCloudConflict').onclick=$('#cancelCloudCopy').onclick=closeModal;$('#applyCloudCopy').onclick=applyRemote;return false;
-    }
-    return await applyRemote();
-  }catch(error){if(manual)toast('Не удалось загрузить облачные данные. Текущая база сохранена.','error');return false;}
-  finally{syncPullBusy=false;if(!conflictOpen)resumePush();}
-}
-function updateNetwork(mode){const dot=$('#syncDot'),label=$('#syncLabel');dot.className='sync-dot';if(mode==='syncing'){dot.classList.add('warn');label.textContent='Синхронизация…';return}if(mode==='error'){dot.classList.add('warn');label.textContent='Ошибка синхронизации';return}if(navigator.onLine){dot.classList.add('online');label.textContent=state.settings.supabaseUrl?(state.meta.dirty?'Есть несинхр. изменения':'Синхронизировано'):'Онлайн · локально';}else{dot.classList.add('warn');label.textContent='Офлайн · данные сохранены';}}
-window.addEventListener('online',()=>{updateNetwork();if(state.meta.dirty)syncPush().catch(()=>{});checkExpiryNotifications()});window.addEventListener('offline',()=>updateNetwork());
-
-async function enableNotifications(){if(!('Notification'in window)){toast('Системные уведомления не поддерживаются','error');return}const p=await Notification.requestPermission();if(!await commitStateChange(()=>{state.settings.notifications=p==='granted';},'Не удалось сохранить настройку уведомлений.',false))return;if(p==='granted'){toast('Уведомления включены');try{const reg=await navigator.serviceWorker.ready;if('periodicSync'in reg)await reg.periodicSync.register('expiry-check',{minInterval:12*60*60*1000});}catch(e){}}else toast('Разрешение на уведомления не выдано','error');render();}
+async function enableNotifications(){if(!('Notification'in window)){toast('Системные уведомления не поддерживаются','error');return}const p=await Notification.requestPermission();if(!await commitStateChange(()=>{state.settings.notifications=p==='granted';},'Не удалось сохранить настройку уведомлений.',false))return;if(p==='granted'){toast('Уведомления включены');}else toast('Разрешение на уведомления не выдано','error');render();}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('#installBtn').hidden=false;});$('#installBtn').onclick=triggerInstall;
 async function triggerInstall(){if(deferredInstallPrompt){deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;$('#installBtn').hidden=true;}else toast('Если кнопка установки не появилась, используйте меню браузера → «Установить приложение»');}
 

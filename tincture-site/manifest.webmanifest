@@ -5,7 +5,7 @@
   "display":"standalone",
   "background_color":"#f1eadf",
   "theme_color":"#2d2a24",
-  "description":"Офлайн-система управления цехом настоек",
+  "description":"Общая база цеха настоек с доступом по паролю",
   "icons":[
     {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
   ]
