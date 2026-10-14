@@ -522,14 +522,19 @@ function renderRecipes(){
 function recipePhotoSource(photo){const src=typeof photo==='string'?photo:photo?.dataUrl||photo?.url||'';return /^(data:image\/(?:png|jpeg|webp|gif);base64,|https?:\/\/)/i.test(src)?src:'';}
 function recipeIngredientText(ingredients){return (ingredients||[]).map(i=>`${i.name} | ${i.amount??''} | ${i.unit||'шт'} | ${i.cost||0}`).join('\n');}
 function recipeCompositionHTML(ingredients){return ingredients?.length?`<ul class="recipe-ingredients">${ingredients.map(i=>`<li><span>${esc(i.name)}</span><strong>${Number.isFinite(Number(i.amount))?fmtNum(i.amount,4):'—'} ${esc(i.unit||'')}</strong></li>`).join('')}</ul>`:'<p class="tiny muted">Состав ещё не заполнен.</p>';}
+function recipeCardView(recipe){
+  const base=Number(recipe?.yield),ingredients=recipe?.ingredients||[];
+  if(!Number.isFinite(base)||base<=0||!ingredients.length||ingredients.some(i=>!i.name||!i.unit||!Number.isFinite(Number(i.amount))||Number(i.amount)<=0))return null;
+  return {...recipe,yield:1,ingredients:ingredients.map(i=>({...i,amount:Number(i.amount)/base})),process:scaleProcess(recipe.process||'',1/base)};
+}
 function recipeList(list,arch){
   if(!list.length)return '<div class="empty">Пусто</div>';
   return `<div class="recipe-grid">${[...list].sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru')).map(r=>{
-    const incomplete=!(r.ingredients||[]).length&&!String(r.process||'').trim();
+    const card=recipeCardView(r),incomplete=!card,view=card||r;
     const photos=(r.photos||[]).map(p=>({src:recipePhotoSource(p),name:typeof p==='string'?'Фото приготовления':p?.name||'Фото приготовления'})).filter(p=>p.src);
-    return `<article class="card recipe-card ${incomplete?'recipe-incomplete':''}"><details><summary><span class="recipe-card-title">${esc(r.name||'Без названия')}</span><span class="recipe-card-meta">${incomplete?'<span class="pill burg">Нужно заполнить</span>':''}${r.category==='Требует уточнения'?'<span class="pill burg">Выберите основной алкоголь</span>':''}<span>${Number(r.yield)>0?`Выход ${fmtNum(r.yield)} л`:'Выход не указан'}</span><span class="recipe-disclosure">Раскрыть карту</span></span><span class="recipe-composition-preview">${(r.ingredients||[]).length?esc(r.ingredients.map(i=>`${i.name} — ${fmtNum(i.amount,4)} ${i.unit||''}`).join(' · ')):'Состав ещё не заполнен'}</span></summary>
-      <div class="recipe-card-body"><h3>Состав</h3>${recipeCompositionHTML(r.ingredients)}<h3>Процесс приготовления</h3><div class="recipe-process">${esc(r.process||'Процесс ещё не добавлен.')}</div>${photos.length?`<div class="recipe-photos">${photos.map(p=>`<img src="${esc(p.src)}" alt="${esc(p.name)}" loading="lazy">`).join('')}</div>`:''}
-      ${r.unparsedText?`<div class="notice warn recipe-preserved"><b>Проверьте и дополните</b><div class="recipe-process">${esc(r.unparsedText)}</div></div>`:''}
+    return `<article class="card recipe-card ${incomplete?'recipe-incomplete':''}"><details><summary><span class="recipe-card-title">${esc(r.name||'Без названия')}</span><span class="recipe-card-meta">${incomplete?'<span class="pill burg">Черновик</span>':''}${r.category==='Требует уточнения'?'<span class="pill burg">Выберите основной алкоголь</span>':''}<span>${card?'ТК на 1 л':Number(r.yield)>0?'Проверьте состав':'Укажите выход'}</span><span class="recipe-disclosure">Раскрыть карту</span></span><span class="recipe-composition-preview">${(view.ingredients||[]).length?esc(view.ingredients.map(i=>`${i.name} — ${fmtNum(i.amount,4)} ${i.unit||''}`).join(' · ')):'Состав ещё не заполнен'}</span></summary>
+      <div class="recipe-card-body"><h3>${card?'Состав на 1 л':'Исходный состав'}</h3>${recipeCompositionHTML(view.ingredients)}${card?`<p class="tiny muted">Исходный выход: ${fmtNum(r.yield,4)} л. Введённый состав и выход сохранены в редакторе.</p>`:''}<h3>Процесс приготовления${card?' на 1 л':''}</h3><div class="recipe-process">${esc(view.process||'Процесс ещё не добавлен.')}</div>${photos.length?`<div class="recipe-photos">${photos.map(p=>`<img src="${esc(p.src)}" alt="${esc(p.name)}" loading="lazy">`).join('')}</div>`:''}
+      ${r.unparsedText?`<div class="notice warn recipe-preserved"><b>${card?'Дополнительный текст не пересчитан — проверьте':'Проверьте и дополните'}</b><div class="recipe-process">${esc(r.unparsedText)}</div></div>`:''}
       <p class="tiny muted">${r.shelfLifeDays!=null?`Срок годности: ${fmtNum(r.shelfLifeDays,0)} дн. · `:''}${r.categoryMode==='manual'?'Категория выбрана вручную':r.categoryMode==='confirmed'?'Основной алкоголь подтверждён':'Автоматическая категория'}</p>${r.rawText?`<details class="recipe-source"><summary>Исходный текст</summary><div class="recipe-process">${esc(r.rawText)}</div></details>`:''}</div></details>
       <div class="actions recipe-card-actions"><button class="soft" data-editrecipe="${esc(r.id)}">Редактировать</button><button class="primary" data-recipe-calc="${esc(r.id)}">Рассчитать</button><button class="ghost" data-archive="${esc(r.id)}">${arch?'Вернуть':'В архив'}</button>${r.isDemo?`<button class="icon-btn" data-delete-recipe="${esc(r.id)}" aria-label="Удалить демо-карту" title="Удалить демо">×</button>`:''}</div></article>`;
   }).join('')}</div>`;
@@ -544,7 +549,7 @@ function recipeModal(id){
     <div class="actions"><button class="soft" id="parseRecipeSource">Распознать текст</button><button class="ghost" id="replaceRecipeSource">Заменить поля из текста</button></div><p id="rParseStatus" class="tiny muted" role="status" aria-live="polite"></p>
     <div class="divider"></div><div class="form-grid">
       <div class="field full"><label for="rName">Название *</label><input id="rName" value="${esc(r.name)}" placeholder="Например, Облепиха / ваниль" autocomplete="off"></div>
-      <div class="field"><label for="rYield">Выход, л — необязательно</label><input id="rYield" type="number" min=".001" step="any" inputmode="decimal" value="${esc(r.yield??'')}" placeholder="Можно оставить пустым"></div>
+      <div class="field"><label for="rYield">Выход, л — необязательно</label><input id="rYield" type="number" min=".001" step="any" inputmode="decimal" value="${esc(r.yield??'')}" placeholder="Можно оставить пустым"><span id="rYieldHint" class="tiny muted"></span></div>
       <div class="field"><label for="rShelf">Срок годности, дней</label><input id="rShelf" type="number" min="0" step="1" inputmode="numeric" value="${esc(r.shelfLifeDays??'')}"></div>
       <div class="field full"><label for="rLines">Состав — в любом привычном формате</label><textarea id="rLines" class="recipe-lines-input" placeholder="Водка 1 л\n300 г клюквы\nСахар — 100 г">${esc(r.ingredientsText||recipeIngredientText(r.ingredients))}</textarea><span class="tiny muted">Например: «Водка 1 л», «300 г клюквы» или «Водка | 1 | л | 500». Нераспознанные строки сохранятся для исправления.</span></div>
       <div class="field full"><label for="rProcess">Процесс приготовления</label><textarea id="rProcess" class="recipe-lines-input" placeholder="Опишите все шаги приготовления">${esc(r.process||'')}</textarea></div>
@@ -563,6 +568,9 @@ function recipeModal(id){
   };
   const updateCategory=(force=false)=>{
     const classified=classifyRecipe(readDraft(),{force});categoryMode=classified.categoryMode;primaryAlcohol=classified.primaryAlcohol||'';
+    const ready=!!recipeCardView(classified);
+    $('#saveRecipe').textContent=ready?'Сохранить ТК':'Сохранить черновик';
+    $('#rYieldHint').textContent=ready?'После сохранения карта покажет состав на 1 л. Укажите фактический выход всего введённого состава.':'Состав можно сохранить в черновик. Когда укажете выход, карта автоматически пересчитается на 1 л.';
     $('#rCat').value=classified.category||'Без категории';
     $('#rCategoryStatus').textContent=categoryMode==='manual'?'Выбрана вручную. Автоматическая сортировка не изменит её до вашего запроса.':categoryMode==='confirmed'?'Основной алкоголь подтверждён. Состав будет проверен при изменении.':'Категория определяется по составу при сохранении.';
     const candidates=classified.alcoholCandidates||[];
@@ -587,6 +595,7 @@ function recipeModal(id){
   $('#parseRecipeSource').onclick=()=>{clearTimeout(parseTimer);parseSource(false);};
   $('#replaceRecipeSource').onclick=()=>{clearTimeout(parseTimer);parseSource(true);};
   $('#rLines').addEventListener('input',()=>updateCategory());
+  $('#rYield').addEventListener('input',()=>updateCategory());
   $('#rName').addEventListener('input',()=>updateCategory());
   $('#rCat').addEventListener('input',()=>{categoryMode='manual';primaryAlcohol='';updateCategory();});
   $('#rAutoCategory').onclick=()=>{updateCategory(true);toast('Автоматическая категория пересчитана. Сохраните карту, чтобы применить.');};
@@ -622,7 +631,7 @@ function recipeModal(id){
     next.importSignatures=[...new Set([...sourceSignatures,recipeFingerprint(next)])];
     $('#rSaveError').hidden=true;
     const saved=await commitStateChange(()=>{const idx=state.recipes.findIndex(x=>x.id===next.id);if(idx>=0)state.recipes[idx]=next;else state.recipes.push(next);},'Не удалось сохранить карту. Данные остались в форме; повторите попытку.');
-    if(saved){if(alive())leave();toast(next.category==='Требует уточнения'?'ТК сохранена. Подтвердите основной алкоголь в редакторе.':'Технологическая карта сохранена');render();}
+    if(saved){if(alive())leave();toast(next.category==='Требует уточнения'?'ТК сохранена. Подтвердите основной алкоголь в редакторе.':recipeCardView(next)?'ТК на 1 л сохранена':'Черновик сохранён. Выход и состав можно заполнить позже.');render();}
     else if(alive()){$('#rSaveError').hidden=false;$('#rSaveError').textContent='Карта не сохранена. Данные остались в форме. Проверьте свободное место и повторите сохранение.';}
   };
   renderPhotos();updateCategory();
@@ -650,7 +659,7 @@ async function deleteRecipe(id){
 function recipeCalculationModal(id){
   const recipe=state.recipes.find(r=>r.id===id);if(!recipe)return;
   modal(`<div class="section-head"><h2>Рассчитать: ${esc(recipe.name)}</h2><button class="icon-btn" id="closeM" aria-label="Закрыть">×</button></div><p class="tiny muted">Расчёт временный. Состав, процесс и выход исходной карточки сохраняются.</p>
-    <div class="form-grid"><div class="field"><label for="recipeCalcTarget">Нужный объём, л</label><input id="recipeCalcTarget" type="number" min=".001" step="any" inputmode="decimal" value="${esc(Number(recipe.yield)>0?recipe.yield:1)}"></div>${Number(recipe.yield)>0?`<div class="field"><label>Базовый выход карты</label><div class="recipe-base-value">${fmtNum(recipe.yield)} л</div></div>`:`<div class="field"><label for="recipeCalcBase">На какой объём рассчитан исходный состав, л</label><input id="recipeCalcBase" type="number" min=".001" step="any" inputmode="decimal" placeholder="Укажите для этого расчёта"></div>`}</div>
+    <div class="form-grid"><div class="field"><label for="recipeCalcTarget">Нужный объём, л</label><input id="recipeCalcTarget" type="number" min=".001" step="any" inputmode="decimal" value="1"></div>${Number(recipe.yield)>0?`<div class="field"><label>Исходный выход всего состава</label><div class="recipe-base-value">${fmtNum(recipe.yield)} л</div></div>`:`<div class="field"><label for="recipeCalcBase">На какой объём рассчитан исходный состав, л</label><input id="recipeCalcBase" type="number" min=".001" step="any" inputmode="decimal" placeholder="Укажите для этого расчёта"></div>`}</div>
     <div class="divider"></div><div id="recipeCalcResult" aria-live="polite"></div><div class="actions"><button class="soft" id="closeM2">Закрыть</button></div>`);
   const calculate=()=>{
     const target=Number($('#recipeCalcTarget').value),base=Number(recipe.yield)>0?Number(recipe.yield):Number($('#recipeCalcBase').value);

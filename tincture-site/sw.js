@@ -1,4 +1,4 @@
-const CACHE='tincture-lab-shared-20261014-v2';
+const CACHE='tincture-lab-shared-20261014-v3';
 const ASSETS=['./','./index.html','./styles.css','./app.js','./logic.mjs','./recipes.mjs','./imports.mjs','./vendor/xlsx.full.min.js','./manifest.webmanifest','./icon.svg'];
 const STATIC_URLS=new Set(ASSETS.map(path=>new URL(path,self.location.href).href));
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
