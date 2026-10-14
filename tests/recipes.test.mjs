@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseIngredientsText, parseRecipeText, classifyRecipe,
   normalizeRecipe, recipeFingerprint, scaleProcess,
+  ingredientStrengthInfo, recipeAlcoholStrength,
 } from '../tincture-site/recipes.mjs';
 
 test('a complete pasted recipe extracts title, decimal comma, yield, shelf life and process', () => {
@@ -225,4 +226,153 @@ test('an explicit TK title with a trailing volume has priority over ingredient r
     assert.equal(r.ingredients.length,1,title);
     assert.ok(r.name,title);
   }
+});
+
+test('alcohol strength balances all alcoholic bases against the actual batch yield', () => {
+  const recipe = { yield: 2, ingredients: [
+    { name: 'Водка 40%', amount: 1, unit: 'л' },
+    { name: 'Ром', amount: .5, unit: 'л', abv: 60 },
+    { name: 'Сахар', amount: 200, unit: 'г' },
+  ] };
+  const result = recipeAlcoholStrength(recipe);
+  assert.equal(result.status, 'ready');
+  assert.equal(result.value, 35);
+  assert.equal(result.ethanolLitres, .7);
+  assert.deepEqual(result.missing, []);
+  assert.match(result.message, /Расчётная/);
+  assert.match(result.message, /без учёта потерь/);
+  assert.deepEqual(recipe.ingredients[0], { name: 'Водка 40%', amount: 1, unit: 'л' });
+});
+
+test('strength recognizes decimal comma, compact names, percentages after quantities and volume aliases', () => {
+  for (const line of ['Водка40% 2 л', 'Водка 2л 40%', 'Водка 2 л (40%)']) {
+    const parsed = parseIngredientsText(line);
+    assert.equal(parsed.unparsedText, '', line);
+    assert.equal(parsed.ingredients.length, 1, line);
+    assert.equal(recipeAlcoholStrength({ yield: 4, ingredients: parsed.ingredients }).value, 20, line);
+  }
+  const result = recipeAlcoholStrength({ yield: '1,5', ingredients: [
+    { name: 'Водка (37,5%)', amount: '1/2', unit: 'litre' },
+    { name: 'Спирт 96%', amount: 125, unit: 'mls' },
+    { name: 'Джин', amount: '2,5', unit: 'cl', abv: '40' },
+    { name: 'Ром', amount: .5, unit: 'dl', abv: '40,5' },
+  ] });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.value, 22.51666667);
+  assert.equal(result.ethanolLitres, .33775);
+});
+
+test('explicit strength wins over labels and preserves an explicit zero', () => {
+  assert.equal(ingredientStrengthInfo({ name: 'Водка 40%', unit: 'л', abv: '37,5' }).abv, 37.5);
+  assert.equal(ingredientStrengthInfo({ name: 'Сливки с ромом 33%', unit: 'мл', abv: 17 }).abv, 17);
+  const result = recipeAlcoholStrength({ yield: 1, ingredients: [{ name: 'Водка 40%', amount: 1, unit: 'л', abv: 0 }] });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.value, 0);
+  assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [{ name: 'Brand X', amount: 250, unit: 'ml', abv: 50 }] }).value, 12.5);
+  assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [{ name: 'Brand X', amount: 250, unit: 'ml', abv: '0' }] }).value, 0);
+});
+
+test('missing or ambiguous strength never produces a partial result or a default alcohol strength', () => {
+  for (const name of ['Водка', 'Bacardi Carta Blanca', 'Основа', 'Алкогольная база', 'Ром 40–45%', 'Ром 40-45%', 'Ром 40 -45%', 'Ром от 40 до 45%', 'Rum 40 to 45%', 'Ром 40/45%', 'Ром 40%–45%', 'Водка и ром 40%', 'Brand X']) {
+    const result = recipeAlcoholStrength({ yield: 2, ingredients: [
+      { name: 'Водка 40%', amount: 1, unit: 'л' }, { name, amount: 500, unit: 'мл' },
+    ] });
+    assert.equal(result.status, 'missing', name);
+    assert.equal(result.value, null, name);
+    assert.ok(result.missing.some(x => x.includes(name)), name);
+    assert.equal(Object.hasOwn(result, 'ethanolLitres'), false, name);
+  }
+  assert.equal(ingredientStrengthInfo({ name: 'Водка', unit: 'л' }).abv, null);
+  assert.equal(ingredientStrengthInfo({ name: 'Brand X', unit: 'ml' }).requiresStrength, true);
+});
+
+test('fat and concentration percentages are not mistaken for alcoholic strength', () => {
+  for (const name of ['Сливки 33%', 'Молоко 3,2%', 'Milk 3.2%', 'Шоколад 70%']) {
+    const info = ingredientStrengthInfo({ name, unit: 'г' });
+    assert.equal(info.alcoholic, false, name);
+    assert.equal(info.abv, 0, name);
+  }
+  for (const name of ['Сливки с ромом 33%', 'Ликёр с молоком 3,2%', 'Ром концентрация 40%', 'Ликёр шоколад 70%', 'Gin cream 33%']) {
+    const info = ingredientStrengthInfo({ name, unit: 'л' });
+    assert.equal(info.abv, null, name);
+    assert.equal(info.requiresStrength, true, name);
+  }
+  const result = recipeAlcoholStrength({ yield: 1, ingredients: [
+    { name: 'Ликёр', amount: 250, unit: 'ml', abv: 20 },
+    { name: 'Сливки 33%', amount: 300, unit: 'ml' },
+    { name: 'Молоко 3,2%', amount: 450, unit: 'ml' },
+  ] });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.value, 5);
+});
+
+test('clear nonalcoholic ingredients return zero only when the recipe has an output', () => {
+  for (const name of ['Вода', 'Сок лимона', 'Сироп', 'Чай', 'Coffee', 'Безалкогольный джин', 'Gin alcohol-free', 'Джин 0,0%', 'Джин б/а.']) {
+    assert.equal(ingredientStrengthInfo({ name, unit: 'л' }).abv, 0, name);
+    assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [{ name, amount: 1, unit: 'л' }] }).value, 0, name);
+  }
+  assert.equal(recipeAlcoholStrength({ ingredients: [{ name: 'Вода', amount: 1, unit: 'л' }] }).status, 'missing');
+  assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [] }).status, 'missing');
+  for (const name of ['Безалкогольный джин и водка', 'Джин 0% + водка']) {
+    assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [{ name, amount: 1, unit: 'л' }] }).status, 'missing', name);
+  }
+});
+
+test('alcohol entered by mass requires a volume without guessing density', () => {
+  const info = ingredientStrengthInfo({ name: 'Спирт 96%', amount: .5, unit: 'кг' });
+  assert.equal(info.needsVolume, true);
+  const result = recipeAlcoholStrength({ yield: 2, ingredients: [{ name: 'Спирт 96%', amount: .5, unit: 'кг' }] });
+  assert.equal(result.status, 'missing');
+  assert.equal(result.value, null);
+  assert.match(result.missing.join('; '), /объём/);
+  assert.equal(recipeAlcoholStrength({ yield: 2, ingredients: [{ name: 'Сахар', amount: .5, unit: 'кг' }] }).value, 0);
+});
+
+test('invalid strength, amounts, output and impossible totals do not receive a percentage', () => {
+  for (const abv of [-1, 101, Infinity, NaN, 'неизвестно']) {
+    assert.equal(ingredientStrengthInfo({ name: 'Водка', unit: 'л', abv }).invalid, true, String(abv));
+    const result = recipeAlcoholStrength({ yield: 1, ingredients: [{ name: 'Водка', amount: 1, unit: 'л', abv }] });
+    assert.equal(result.status, 'invalid', String(abv));
+    assert.equal(result.value, null, String(abv));
+  }
+  for (const name of ['Спирт 101%', 'Водка -40%']) assert.equal(ingredientStrengthInfo({ name, unit: 'л' }).invalid, true, name);
+  for (const amount of [-1, Infinity, NaN, '1O0', '']) assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [{ name: 'Сахар', amount, unit: 'г' }] }).status, 'invalid', String(amount));
+  for (const output of [-1, Infinity, NaN, 'неизвестно']) assert.equal(recipeAlcoholStrength({ yield: output, ingredients: [{ name: 'Водка 40%', amount: 1, unit: 'л' }] }).status, 'invalid', String(output));
+  for (const output of [null, undefined, '', 0]) assert.equal(recipeAlcoholStrength({ yield: output, ingredients: [{ name: 'Водка 40%', amount: 1, unit: 'л' }] }).status, 'missing', String(output));
+  assert.equal(recipeAlcoholStrength({ yield: .1, ingredients: [{ name: 'Водка 40%', amount: 1, unit: 'л' }] }).status, 'invalid');
+  assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [{ name: 'Спирт 100%', amount: 1, unit: 'л' }] }).value, 100);
+});
+
+test('unresolved alcoholic lines block a confident or partial strength', () => {
+  for (const unparsedText of ['Джин по вкусу', 'Основа 100–200 мл', 'Brand X 100–200 ml']) {
+    const result = recipeAlcoholStrength({ yield: 2, ingredients: [{ name: 'Водка 40%', amount: 1, unit: 'л' }], unparsedText });
+    assert.equal(result.status, 'missing', unparsedText);
+    assert.equal(result.value, null, unparsedText);
+    assert.ok(result.missing.some(x => x.includes(unparsedText)), unparsedText);
+  }
+  assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: 'Вода 1 л\nВодка по вкусу' }).status, 'missing');
+  assert.equal(recipeAlcoholStrength({ yield: 1, ingredients: [{ name: 'Водка 40%', amount: 1, unit: 'л' }], unparsedText: 'Категория: Водка' }).status, 'ready');
+});
+
+test('strength is invariant when a recipe is scaled and remains explicitly theoretical after heating', () => {
+  const recipe = { yield: 2, ingredients: [{ name: 'Водка 40%', amount: 1, unit: 'л' }, { name: 'Ром', amount: .5, unit: 'л', abv: 60 }], process: 'Нагреть, затем отфильтровать.' };
+  for (const factor of [.25, .5, 2, 4]) {
+    const scaled = { ...recipe, yield: recipe.yield * factor, ingredients: recipe.ingredients.map(x => ({ ...x, amount: x.amount * factor })) };
+    assert.equal(recipeAlcoholStrength(scaled).value, 35, String(factor));
+    assert.match(recipeAlcoholStrength(scaled).message, /без учёта потерь/);
+  }
+});
+
+test('strength survives normalization and differentiates imported records without changing legacy fingerprints', () => {
+  const base = { name: 'Настойка', yield: 1, ingredients: [{ name: 'Водка', amount: 1, unit: 'л' }] };
+  const legacy = 'tk2:{"name":"настойка","ingredients":[["водка",1000,"мл"]],"yield":1,"process":"","unparsedText":""}';
+  assert.equal(recipeFingerprint(base), legacy);
+  assert.equal(recipeFingerprint({ ...base, ingredients: [{ ...base.ingredients[0], abv: '' }] }), legacy);
+  const withStrength = { ...base, ingredients: [{ ...base.ingredients[0], abv: '37,5' }] };
+  assert.equal(normalizeRecipe(withStrength).ingredients[0].abv, '37,5');
+  assert.equal(recipeAlcoholStrength(normalizeRecipe(withStrength)).value, 37.5);
+  assert.equal(recipeFingerprint(withStrength), recipeFingerprint({ ...base, ingredients: [{ ...base.ingredients[0], abv: 37.5 }] }));
+  assert.notEqual(recipeFingerprint(withStrength), recipeFingerprint(base));
+  assert.notEqual(recipeFingerprint(withStrength), recipeFingerprint({ ...base, ingredients: [{ ...base.ingredients[0], abv: 40 }] }));
+  assert.notEqual(recipeFingerprint({ ...base, ingredients: [{ ...base.ingredients[0], abv: 0 }] }), legacy);
 });
