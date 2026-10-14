@@ -17,6 +17,7 @@ const ALCOHOL_RULES = [
 ];
 
 export const ALCOHOL_CATEGORIES = ALCOHOL_RULES.map(([category]) => category);
+export const DEFAULT_ALCOHOL_STRENGTHS = Object.freeze({ 'Водка': 40, 'Виски': 40, 'Джин': 40, 'Ром': 40, 'Текила': 40 });
 const UNKNOWN_ALCOHOL = /(?:^|[^\p{L}])(?:алкогол[а-я]*|настойк[а-я]*|наливк[а-я]*|основа|основы|база|базы|liquor|alcohol|spirit)(?=$|[^\p{L}])/iu;
 const NON_ALCOHOLIC = /без\s*[-–—]?\s*алкогол[а-я]*|(?:^|[^\p{L}])безалк(?:ог)?\.?(?=$|[^\p{L}])|без\s+спирта|non\s*[-–—]?\s*alcoholic|alcohol\s*[-–—]?\s*free|\b0[.,]0\s*%|(?:^|\s)0\s*%|(?:^|[^\p{L}])б\s*\/\s*(?:алк|а)\.?(?=$|[^\p{L}])/iu;
 
@@ -246,12 +247,14 @@ function detectAlcohol(ingredients, unparsedText = '') {
 const VOLUME_LITRES = { 'л': 1, 'мл': .001, 'сл': .01, 'дл': .1 };
 const KNOWN_NON_ALCOHOLIC = /(?:^|[^\p{L}])(?:вод[аыуе]|водой|water|сок[а-я]*|juice|нектар[а-я]*|nectar|сироп[а-я]*|syrup|молок[а-я]*|milk|сливк[а-я]*|cream|ча[йяю]|tea|кофе|coffee|тоник[а-я]*|tonic|газировк[а-я]*|содов[а-я]*|soda|лимонад[а-я]*|lemonade|кефир[а-я]*|йогурт[а-я]*|yogurt|yoghurt)(?=$|[^\p{L}])/iu;
 const PERCENT_OTHER_MEANING = /жирн[а-я]*|концентр[а-я]*|раствор[а-я]*|сливк[а-я]*|молок[а-я]*|шоколад[а-я]*|\b(?:fat|concentration|cream|milk|chocolate)\b/iu;
+const MIXED_ALCOHOL_NAME = /(?:^|[^\p{L}])(?:смес[ьи]|смешан[а-я]*|коктейл[а-я]*|разбавлен[а-я]*|mix(?:ed|ture)?|cocktail|diluted)(?=$|[^\p{L}])/iu;
 const hasExplicitStrength = item => item?.abv !== null && item?.abv !== undefined && clean(item.abv) !== '';
 
 // A name can supply a strength only when it is a recognizable alcohol with one
-// unambiguous percentage. Brands have no implicit default strength. Unknown
-// liquid ingredients require an explicit percentage (including an explicit 0).
-export function ingredientStrengthInfo(item) {
+// unambiguous percentage. A caller can supply editable standards as a fallback;
+// they are read at calculation time and never copied into the recipe itself.
+// Unknown liquids still need an explicit percentage (including an explicit 0).
+export function ingredientStrengthInfo(item, alcoholStrengths) {
   const name = clean(item?.name);
   const volume = Object.hasOwn(VOLUME_LITRES, unit(item?.unit));
   const detection = detectAlcohol([{ name }]);
@@ -259,14 +262,15 @@ export function ingredientStrengthInfo(item) {
   if (hasExplicitStrength(item)) {
     const abv = number(item.abv);
     const invalid = abv === null || abv < 0 || abv > 100;
-    return { alcoholic: recognizedAlcohol || (!invalid && abv > 0), abv: invalid ? null : abv, invalid, requiresStrength: true, needsVolume: !volume && (invalid || abv !== 0) };
+    return { alcoholic: recognizedAlcohol || (!invalid && abv > 0), abv: invalid ? null : abv, invalid, requiresStrength: true, needsVolume: !volume && (invalid || abv !== 0), source: 'explicit' };
   }
   if (!recognizedAlcohol) {
     const requiresStrength = volume && !NON_ALCOHOLIC.test(name) && !KNOWN_NON_ALCOHOLIC.test(name);
-    return { alcoholic: false, abv: requiresStrength ? null : 0, invalid: false, requiresStrength, needsVolume: false };
+    return { alcoholic: false, abv: requiresStrength ? null : 0, invalid: false, requiresStrength, needsVolume: false, source: requiresStrength ? 'missing' : 'nonalcoholic' };
   }
   let abv = null;
   let invalid = false;
+  let source = 'missing';
   const percentages = [...name.matchAll(/(?<![\p{N}.,])([-+]?(?:\d+(?:[ \u00a0]\d{3})*(?:[.,]\d+)?|[.,]\d+))\s*%/giu)];
   if (percentages.length === 1 && (name.match(/%/g) || []).length === 1 && !PERCENT_OTHER_MEANING.test(name) && !NON_ALCOHOLIC.test(name) && detection.candidates.length <= 1) {
     const match = percentages[0];
@@ -277,15 +281,27 @@ export function ingredientStrengthInfo(item) {
       const parsed = number(match[1]);
       invalid = parsed === null || parsed < 0 || parsed > 100;
       if (!invalid) abv = parsed;
+      source = 'name';
     }
   }
-  return { alcoholic: true, abv, invalid, requiresStrength: true, needsVolume: !volume && abv !== 0 };
+  const kind = detection.candidates[0];
+  const canUseStandard = !name.includes('%') && !detection.uncertain && detection.candidates.length === 1 &&
+    Object.hasOwn(DEFAULT_ALCOHOL_STRENGTHS, kind) && !NON_ALCOHOLIC.test(name) &&
+    !KNOWN_NON_ALCOHOLIC.test(name) && !PERCENT_OTHER_MEANING.test(name) &&
+    !MIXED_ALCOHOL_NAME.test(name) && !UNKNOWN_ALCOHOL.test(name);
+  if (abv === null && !invalid && canUseStandard && alcoholStrengths && typeof alcoholStrengths === 'object' && Object.hasOwn(alcoholStrengths, kind)) {
+    const configured = number(alcoholStrengths[kind]);
+    invalid = configured === null || configured < 0 || configured > 100;
+    if (!invalid) abv = configured;
+    source = 'settings';
+  }
+  return { alcoholic: true, abv, invalid, requiresStrength: true, needsVolume: !volume && abv !== 0, source };
 }
 
 // This is a theoretical balance of the supplied ethanol and actual batch yield.
 // Heating, extraction, evaporation and filtration losses are not measurable from
 // a recipe, so this estimate never pretends to replace measuring the final drink.
-export function recipeAlcoholStrength(recipe) {
+export function recipeAlcoholStrength(recipe, alcoholStrengths) {
   const source = recipe && typeof recipe === 'object' ? recipe : {};
   const missing = [];
   const errors = [];
@@ -300,7 +316,7 @@ export function recipeAlcoholStrength(recipe) {
     const name = clean(item?.name) || 'Ингредиент без названия';
     const amount = number(item?.amount);
     if (amount === null || amount < 0) errors.push(`${name}: проверьте количество.`);
-    const info = ingredientStrengthInfo(item);
+    const info = ingredientStrengthInfo(item, alcoholStrengths);
     if (info.invalid) errors.push(`${name}: крепость должна быть от 0 до 100%.`);
     else if (info.requiresStrength && info.abv === null) missing.push(`${name}: крепость`);
     if (info.needsVolume) missing.push(`${name}: объём в л или мл`);
@@ -311,7 +327,7 @@ export function recipeAlcoholStrength(recipe) {
   for (const line of appendText(source.unparsedText, parsed?.unparsedText).split('\n').map(clean).filter(Boolean)) {
     if (/^(?:категория|раздел)\s*[:：]/iu.test(line)) continue;
     const quantity = line.match(quantityRegex('iu'));
-    const info = ingredientStrengthInfo({ name: line, unit: quantity?.[2] });
+    const info = ingredientStrengthInfo({ name: line, unit: quantity?.[2] }, alcoholStrengths);
     if (info.alcoholic || info.requiresStrength) missing.push(`Проверьте строку: ${line}`);
   }
   if (errors.length) return { status: 'invalid', value: null, missing: [...new Set(missing)], message: [...new Set(errors)].join(' ') };
