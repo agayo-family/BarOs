@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+const base=process.env.BAROS_AUDIT_URL;
+const dom=new JSDOM('<div id="app"></div><div id="modal-root"></div><div id="toast-root"></div>',{url:base+'/app',pretendToBeVisual:true});
+for(const key of ['window','document','location','history','localStorage','sessionStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
+Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
+globalThis.confirm=()=>true;dom.window.scrollTo=()=>{};dom.window.HTMLElement.prototype.scrollIntoView=function(){};
+const nativeFetch=globalThis.fetch;
+globalThis.fetch=async(path,options={})=>{const headers=new Headers(options.headers||{}),cookie=dom.cookieJar.getCookieStringSync(base);if(cookie)headers.set('cookie',cookie);const r=await nativeFetch(new URL(path,base),{...options,headers});for(const value of r.headers.getSetCookie())dom.cookieJar.setCookieSync(value,base);return r};
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function until(test,message){for(let i=0;i<250;i++){if(test())return;await pause(20)}throw new Error(message+' '+document.body.textContent.slice(-500))}
+async function auth(path,body){const r=await fetch('/api/auth/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.text())}
+await auth('setup',{token:'baros-ui-audit-only',name:'Return owner',login:'return.owner',password:'return-owner-password'});
+await import('./ui/app.js');const core=await import('./ui/core.js?v=2.6.2');
+await until(()=>document.querySelector('[data-new-venue]'),'Owner ready');
+const venue=await core.api('/venues','POST',{name:'Return section test'});core.setOrg(venue.id);
+const pkg={format:'baros-package',version:1,kind:'assessment',assessment:{title:'Возврат в пропущенный раздел',positions:['bartender'],sections:[{id:'first',title:'Теория'},{id:'second',title:'Практика'}],tasks:[{id:'q1',section_id:'first',kind:'written',prompt:'Опишите первый ответ по теории.',points:1,rubric:[{id:'r1',label:'Точность',points:1}]},{id:'q2',section_id:'second',kind:'written',prompt:'Опишите второй ответ по практике.',points:1,rubric:[{id:'r2',label:'Точность',points:1}]}]}};
+const imported=await core.api('/packages/import','POST',{package:pkg});await core.api('/assessments/'+imported.id+'/publish','POST',{reviewed:true});
+await core.api('/auth/logout','POST',{});core.state.me=null;core.setOrg('');
+await auth('join',{code:venue.join_code,name:'Return learner',login:'return.worker',password:'return-worker-password',positions:['bartender']});await core.reloadMe();
+let attempt=await core.api('/assessments/'+imported.id+'/start','POST',{});
+attempt=await core.api('/assessment-attempts/'+attempt.id,'PUT',{version:attempt.version,answers:{q1:'Сохранённый первый ответ'}});
+attempt=await core.api('/assessment-attempts/'+attempt.id+'/advance','POST',{version:attempt.version});
+attempt=await core.api('/assessment-attempts/'+attempt.id,'PUT',{version:attempt.version,answers:{q2:'Сохранённый второй ответ'}});
+await core.api('/auth/logout','POST',{});core.state.me=null;
+await auth('login',{login:'return.owner',password:'return-owner-password'});await core.reloadMe();core.setOrg(venue.id);
+core.go('/app/assessment-attempts/'+attempt.id);await until(()=>document.querySelector('#return-test-section'),'Manager return control mounted');
+const form=document.querySelector('#return-test-section');assert.equal(form.querySelector('[name=section_index]').options.length,2);
+form.querySelector('[name=extra_minutes]').value='5';form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+await until(()=>!document.querySelector('#return-test-section'),'Return completes and first section is current');
+const returned=await core.api('/assessment-attempts/'+attempt.id);assert.equal(returned.section_index,0);assert.equal(returned.version,attempt.version+1);assert.deepEqual(returned.answers,attempt.answers);assert.equal(new Date(returned.expires_at)-new Date(attempt.expires_at),300000);
+await core.api('/auth/logout','POST',{});core.state.me=null;core.setOrg('');await auth('login',{login:'return.worker',password:'return-worker-password'});await core.reloadMe();
+core.go('/app/assessment-attempts/'+attempt.id);await until(()=>document.querySelector('[data-answer=q1]:not([readonly])')&&!document.querySelector('#return-test-section'),'Learner reopens returned section');assert.equal(document.querySelector('[data-answer=q1]').readOnly,false);assert.equal(document.querySelector('[data-answer=q1]').value,'Сохранённый первый ответ');assert(!document.querySelector('[data-answer=q2]'),'Later section stays locked until advancing');assert(!document.querySelector('#return-test-section'));
+const updated=await core.api('/assessment-attempts/'+attempt.id,'PUT',{version:returned.version,answers:{q1:'Дополненный первый ответ'}});
+const advanced=await core.api('/assessment-attempts/'+attempt.id+'/advance','POST',{version:updated.version});assert.equal(advanced.answers.q2,'Сохранённый второй ответ');
+console.log('RETURN SECTION REAL API + DOM PASS: manager returns learner, preserves all answers, adds time, keeps later section locked, learner edits returned answer and continues with saved later answer');
+core.state.cleanup?.();dom.window.close();process.exit(0);

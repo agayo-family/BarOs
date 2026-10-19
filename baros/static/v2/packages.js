@@ -1,4 +1,4 @@
-import {$,$$,state,api,go,esc,icon,btn,modal,on,toast,notice,empty,pageHead,bindForm,pageCleanup} from './core.js?v=2.6.1';
+import {$,$$,state,api,go,esc,icon,btn,modal,on,toast,notice,empty,pageHead,bindForm,pageCleanup} from './core.js?v=2.6.2';
 const labels={in_progress:'В процессе',submitted:'Ожидает проверки',graded:'Проверено'};
 const canEditAssessment=()=>state.me.account.role==='owner'||(state.me.account.role==='manager'&&state.me.venue?.status!=='read_only'&&state.me.venue?.permissions?.courses_manage!==false&&state.me.account.permissions?.courses_manage!==false);
 const capInfo=t=>t.score_cap?notice('Ограничение результата: '+t.score_cap.points+' / '+t.points+'. '+t.score_cap.guidance,'warning'):'';
@@ -31,6 +31,10 @@ export async function assessmentAttemptPage(root,id){
  };
  function draw(){
   root.innerHTML=`<a href="/app/assessments/${data.assessment_id}" class="btn text">${icon('back')}К тесту</a>`+pageHead(data.title,(manager?data.account_name+' · ':'')+labels[data.status])+`<p data-test-clock role="timer"></p>`;
+  if(manager&&data.sequential_sections&&data.status!=='graded'&&(data.section_index>0||data.status==='submitted')){
+   root.insertAdjacentHTML('beforeend',`<form id="return-test-section" class="card section-space"><h2>Вернуть участника в раздел</h2><p>Для случайно пропущенного раздела. Введённые ответы сохранятся; участник пройдёт разделы дальше по порядку.</p><label class="field"><span>Открыть раздел повторно</span><select name="section_index">${data.sections.slice(0,data.section_index+1).map((s,index)=>`<option value="${index}" ${index===Math.max(0,data.section_index-1)?'selected':''}>${index+1}. ${esc(s.title)}</option>`).join('')}</select></label><label class="field"><span>Добавить времени, минут</span><input name="extra_minutes" type="number" min="0" max="720" step="1" value="0" required></label><p class="muted tiny">Если время закончилось, укажите дополнительные минуты. После возврата участнику нужно обновить страницу теста.</p>${btn('Вернуть в раздел','back','primary','type="submit"')}</form>`);
+   bindForm('#return-test-section',async(d)=>{const sectionIndex=Number(d.get('section_index')),extraMinutes=Number(d.get('extra_minutes'));if(!confirm('Вернуть участника в раздел «'+data.sections[sectionIndex].title+'»'+(extraMinutes?' и добавить '+extraMinutes+' мин':'')+'? Введённые ответы сохранятся.'))return;data=await api('/assessment-attempts/'+id+'/return-section','POST',{version:data.version,section_index:sectionIndex,extra_minutes:extraMinutes});toast('Раздел открыт повторно. Участнику нужно обновить страницу теста.');draw()},root);
+  }
   if(!manager&&data.status!=='in_progress'){
    root.insertAdjacentHTML('beforeend',notice(data.status==='submitted'?'Работа сдана. Письменные ответы ожидают проверки управляющего.':'Проверка завершена.'));
    if(data.result)root.insertAdjacentHTML('beforeend',`<section class="card"><h2>${data.result.points} / ${data.result.maximum} · ${data.result.percent}%</h2><p>${data.result.passed==null?'Диагностический результат':data.result.passed?'Тест сдан':'Тест не сдан'}</p>${data.result.review.map(q=>`<h3>${esc(q.prompt)}</h3><p>${q.points} / ${q.maximum}</p><div class="package-text">${esc(q.feedback)}</div>`).join('')}</section>`);return;

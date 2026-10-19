@@ -117,6 +117,10 @@ class ConfirmIn(Strict):
 class VersionIn(Strict):
     version: int = Field(ge=1)
 
+class ReturnSectionIn(VersionIn):
+    section_index: StrictInt = Field(ge=0,le=29)
+    extra_minutes: StrictInt = Field(default=0,ge=0,le=720)
+
 
 def fingerprint(p):
     raw=json.dumps(p.model_dump(mode='json'),ensure_ascii=False,sort_keys=True,separators=(',',':'))
@@ -324,6 +328,30 @@ def advance(rid:str,data:VersionIn,request:Request,a=Depends(actor),db=Depends(g
     row=attempt_access(request,db,a,rid);require(row.status=='in_progress' and row.version==data.version,'Обновите попытку',409);p=parse(row.snapshot)
     require(p['sequential_sections'] and row.section_index<len(p['sections'])-1,'Следующего раздела нет',409)
     row.section_index+=1;row.version+=1;db.commit();return attempt_data(row)
+
+@router.post('/api/assessment-attempts/{rid}/return-section')
+def return_section(rid:str,data:ReturnSectionIn,request:Request,a=Depends(actor),db=Depends(get_db)):
+    require(a.role in {'owner','manager'},'Возврат доступен управляющему',403)
+    meta=db.execute(select(WrittenAttempt.assessment_id,WrittenAttempt.account_id).where(WrittenAttempt.id==rid)).first()
+    require(meta,'Попытка не найдена',404)
+    # Match start: assessment -> account -> attempt, including the one-active-test guard.
+    test,_=accessible(request,db,a,meta.assessment_id,True,lock=True)
+    require(test.published and not test.archived,'Сначала восстановите и опубликуйте тест',409)
+    db.execute(select(Account).where(Account.id==meta.account_id).with_for_update()).first()
+    row=db.scalar(select(WrittenAttempt).where(WrittenAttempt.id==rid).with_for_update().execution_options(populate_existing=True))
+    require(row and row.assessment_id==meta.assessment_id and row.account_id==meta.account_id,'Попытка не найдена',404)
+    require(row.version==data.version,'Работа изменилась. Обновите страницу и повторите возврат.',409)
+    require(row.status in {'in_progress','submitted'},'Работа уже оценена. Возврат недоступен.',409)
+    p=parse(row.snapshot)
+    require(p['sequential_sections'],'В этом тесте все разделы уже доступны')
+    require(data.section_index<len(p['sections']) and data.section_index<=row.section_index,'Можно вернуть только в уже открытый раздел')
+    require(not db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==row.account_id,WrittenAttempt.id!=rid,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now())),'Участник уже проходит другой письменный тест',409)
+    require(not db.scalar(select(Exam.id).where(Exam.account_id==row.account_id,Exam.finished_at.is_(None),Exam.expires_at>now())),'Участник уже проходит другой итоговый тест',409)
+    expires=max(row.expires_at,now())+timedelta(minutes=data.extra_minutes)
+    require(expires>now(),'Время закончилось. Добавьте участнику дополнительные минуты.')
+    row.section_index=data.section_index;row.status='in_progress';row.submitted_at=None;row.expires_at=expires;row.version+=1
+    log(db,a,row.organization_id,'Участник возвращён в раздел теста',attempt_id=rid,section_id=p['sections'][data.section_index]['id'],extra_minutes=data.extra_minutes)
+    db.commit();result=attempt_data(row,keys=True);result['account_name']=db.get(Account,row.account_id).name;return result
 
 @router.post('/api/assessment-attempts/{rid}/submit')
 def submit(rid:str,data:VersionIn,request:Request,a=Depends(actor),db=Depends(get_db)):

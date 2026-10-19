@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix='baros-ui-audit-') as tmp:
     workspace = Path(tmp)
     shutil.copytree(repo/'baros'/'static'/'v2', workspace/'ui')
     (workspace/'ui'/'package.json').write_text('{"type":"module"}')
-    audit_scripts = ['audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs', 'assessment-editor.mjs']
+    audit_scripts = ['audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs', 'assessment-editor.mjs', 'return-section.mjs']
     for name in audit_scripts:
         shutil.copyfile(folder/name, workspace/name)
     try:

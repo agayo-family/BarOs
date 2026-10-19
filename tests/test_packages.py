@@ -223,4 +223,61 @@ class PackageTests(unittest.TestCase):
   self.login('manager');self.assertEqual(self.post(f'/api/assessments/{aid}/archive',{}).status_code,200)
   self.login('worker');self.assertEqual(self.client.get('/api/assessments').json(),[]);self.assertEqual(self.client.get(f'/api/assessments/{aid}').status_code,403);self.assertEqual(self.client.get('/api/assessment-attempts/'+rid).status_code,403)
 
+ def test_return_section_preserves_work_and_reopens_submitted_attempt(self):
+  aid,data=self.start();rid=data['id']
+  data=self.post('/api/assessment-attempts/'+rid+'/advance',{'version':data['version']}).json()
+  data=self.client.put('/api/assessment-attempts/'+rid,json={'version':data['version'],'answers':{'q2':'Уже сохранённый письменный ответ'}},headers=self.headers).json()
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);snapshot=row.snapshot;answers=row.answers;grades=row.grades;expiry=row.expires_at
+  self.login('manager');returned=self.post('/api/assessment-attempts/'+rid+'/return-section',{'version':data['version'],'section_index':0,'extra_minutes':0})
+  self.assertEqual(returned.status_code,200,returned.text);returned=returned.json();self.assertEqual(returned['status'],'in_progress');self.assertEqual(returned['section_index'],0);self.assertEqual(returned['version'],data['version']+1)
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);self.assertEqual((row.snapshot,row.answers,row.grades,row.expires_at),(snapshot,answers,grades,expiry));self.assertIsNone(row.submitted_at)
+  self.login('worker');fresh=self.client.get('/api/assessment-attempts/'+rid).json();self.assertEqual([task['id'] for task in fresh['tasks']],['q1']);self.assertEqual(fresh['answers']['q2'],'Уже сохранённый письменный ответ');self.assertNotIn('SECRET',dump(fresh))
+  stale=self.client.put('/api/assessment-attempts/'+rid,json={'version':data['version'],'answers':{'q1':0}},headers=self.headers);self.assertEqual(stale.status_code,409,stale.text)
+  saved=self.client.put('/api/assessment-attempts/'+rid,json={'version':fresh['version'],'answers':{'q1':0}},headers=self.headers);self.assertEqual(saved.status_code,200,saved.text)
+  advanced=self.post('/api/assessment-attempts/'+rid+'/advance',{'version':saved.json()['version']});self.assertEqual(advanced.status_code,200,advanced.text);self.assertEqual(advanced.json()['answers']['q2'],'Уже сохранённый письменный ответ')
+  submitted=self.post('/api/assessment-attempts/'+rid+'/submit',{'version':advanced.json()['version']});self.assertEqual(submitted.status_code,200,submitted.text);submitted=submitted.json();self.assertEqual(submitted['status'],'submitted')
+  self.login('manager');reopened=self.post('/api/assessment-attempts/'+rid+'/return-section',{'version':submitted['version'],'section_index':0,'extra_minutes':12})
+  self.assertEqual(reopened.status_code,200,reopened.text);self.assertEqual(reopened.json()['version'],submitted['version']+1);self.assertEqual(reopened.json()['status'],'in_progress');self.assertEqual(reopened.json()['section_index'],0)
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);self.assertIsNone(row.submitted_at);self.assertEqual(row.snapshot,snapshot);self.assertEqual(row.grades,grades);self.assertEqual(parse(row.answers),{'q1':0,'q2':'Уже сохранённый письменный ответ'});self.assertEqual(row.expires_at,expiry+timedelta(minutes=12))
+
+ def test_return_section_guards_scope_conflicts_and_expired_time(self):
+  from baros.v2.models import CourseRevision,Exam
+  aid,data=self.start();rid=data['id'];data=self.post('/api/assessment-attempts/'+rid+'/advance',{'version':data['version']}).json();data=self.post('/api/assessment-attempts/'+rid+'/submit',{'version':data['version']}).json();version=data['version']
+  path='/api/assessment-attempts/'+rid+'/return-section';body={'version':version,'section_index':0,'extra_minutes':0}
+  self.assertEqual(self.post(path,body).status_code,403);self.login('foreign');self.assertEqual(self.post(path,body).status_code,404);self.login('manager');self.assertEqual(self.client.post(path,json=body).status_code,403)
+  self.assertEqual(self.post(path,{**body,'version':version+1}).status_code,409)
+  for field,value in [('extra_minutes',-1),('extra_minutes',721),('section_index',-1)]:
+   with self.subTest(field=field,value=value):self.assertEqual(self.post(path,{**body,field:value}).status_code,422)
+  self.assertEqual(self.post(path,{**body,'section_index':2}).status_code,400)
+  self.assertEqual(self.post(f'/api/assessments/{aid}/archive',{}).status_code,200);self.assertEqual(self.post(path,body).status_code,409);self.assertEqual(self.post(f'/api/assessments/{aid}/archive',{}).status_code,200)
+  with SessionLocal() as db:db.get(ImportedAssessment,aid).published=False;db.commit()
+  self.assertEqual(self.post(path,body).status_code,409)
+  with SessionLocal() as db:db.get(ImportedAssessment,aid).published=True;db.get(Account,self.ids['manager']).permissions_json=dump({'courses_manage':False});db.commit()
+  self.assertEqual(self.post(path,body).status_code,403)
+  with SessionLocal() as db:db.get(Account,self.ids['manager']).permissions_json='{}';db.commit()
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);snapshot=row.snapshot;answers=row.answers;expiry=row.expires_at;nonsequential=parse(snapshot);nonsequential['sequential_sections']=False;row.snapshot=dump(nonsequential);db.commit()
+  self.assertEqual(self.post(path,body).status_code,400)
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);row.snapshot=snapshot;row.status='graded';row.graded_at=now();db.commit()
+  self.assertEqual(self.post(path,body).status_code,409)
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);row.status='submitted';row.graded_at=None
+   db.add(WrittenAttempt(id='other-live-written',organization_id=self.oid,assessment_id=aid,account_id=self.ids['worker'],snapshot=snapshot,expires_at=now()+timedelta(minutes=10)));db.commit()
+  self.assertEqual(self.post(path,body).status_code,409)
+  with SessionLocal() as db:
+   db.get(WrittenAttempt,'other-live-written').expires_at=now()-timedelta(seconds=1)
+   course=Course(organization_id=self.oid,title='Конфликтующий обычный экзамен',published=True);db.add(course);db.flush();revision=CourseRevision(course_id=course.id,version=1,payload='{}');db.add(revision);db.flush()
+   db.add(Exam(id='other-live-exam',account_id=self.ids['worker'],revision_id=revision.id,questions_json='[]',expires_at=now()+timedelta(minutes=10)));db.commit()
+  self.assertEqual(self.post(path,body).status_code,409)
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);self.assertEqual((row.version,row.status,row.section_index,row.snapshot,row.answers,row.expires_at),(version,'submitted',1,snapshot,answers,expiry));db.get(Exam,'other-live-exam').expires_at=now()-timedelta(seconds=1);row.expires_at=now()-timedelta(minutes=2);db.commit()
+  self.assertEqual(self.post(path,body).status_code,400)
+  reopened=self.post(path,{**body,'extra_minutes':15});self.assertEqual(reopened.status_code,200,reopened.text);self.assertEqual(reopened.json()['version'],version+1)
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,rid);self.assertEqual((row.status,row.section_index,row.snapshot,row.answers),('in_progress',0,snapshot,answers));self.assertIsNone(row.submitted_at);self.assertGreater(row.expires_at,now()+timedelta(minutes=14));self.assertLess(row.expires_at,now()+timedelta(minutes=16))
+
 if __name__=='__main__':unittest.main()
