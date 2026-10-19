@@ -373,3 +373,43 @@ class CourseProgram(Base):
     __tablename__ = 'v2_course_programs'
     course_id: Mapped[int] = mapped_column(ForeignKey('courses.id'), primary_key=True)
     payload: Mapped[str] = mapped_column(Text)
+
+
+class ImportedAssessment(Base):
+    __tablename__ = 'v2_imported_assessments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    payload: Mapped[str] = mapped_column(Text)
+    published: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class PackageReceipt(Base):
+    __tablename__ = 'v2_package_receipts'
+    __table_args__ = (UniqueConstraint('organization_id','fingerprint'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    course_id: Mapped[int | None] = mapped_column(ForeignKey('courses.id'))
+    assessment_id: Mapped[int | None] = mapped_column(ForeignKey('v2_imported_assessments.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class WrittenAttempt(Base):
+    __tablename__ = 'v2_written_attempts'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    assessment_id: Mapped[int] = mapped_column(ForeignKey('v2_imported_assessments.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    snapshot: Mapped[str] = mapped_column(Text)
+    answers: Mapped[str] = mapped_column(Text, default='{}')
+    grades: Mapped[str] = mapped_column(Text, default='{}')
+    status: Mapped[str] = mapped_column(String(24), default='in_progress')
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    section_index: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime)

@@ -1,5 +1,5 @@
-import {renderLesson} from './learning-ui.js?v=2.5.1';
-import {$,$$,state,api,go,esc,icon,btn,field,textarea,select,check,positions,selected,wirePositions,on,bindForm,modal,toast,notice,empty,pageHead,badge,positionTags,dateValue} from './core.js?v=2.5.1';
+import {renderLesson} from './learning-ui.js?v=2.6.0';
+import {$,$$,state,api,go,esc,icon,btn,field,textarea,select,check,positions,selected,wirePositions,on,bindForm,modal,toast,notice,empty,pageHead,badge,positionTags,dateValue} from './core.js?v=2.6.0';
 export async function editorPage(root,cid){let c=await api('/courses/'+cid),tab='theory',lesson=0,query='',page=0,changeVersion=0,saveFlight=null;const ticket=state.renderTicket;
  const setDirty=()=>{changeVersion++;state.dirty=true;const s=$('#save-state',root);if(s)s.textContent='Есть несохранённые изменения'};
  const save=async()=>{

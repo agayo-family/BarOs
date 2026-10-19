@@ -59,6 +59,8 @@ def scope(request, db, a, ctx, write=False):
     if a.role == 'employee':
         require(not ctx.preview_pet_id, 'Предпросмотр доступен управляющему', 403)
         active = db.scalar(select(Exam.id).where(Exam.account_id == a.id, Exam.finished_at.is_(None), Exam.expires_at > now()))
+        from .models import WrittenAttempt
+        active = active or db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==a.id,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now()))
         require(not active, 'Во время итогового теста наставник отдыхает. После завершения разберём ответы вместе.', 409)
     p = db.get(LearningProfile, a.id)
     pid = p.pet_id if p else None

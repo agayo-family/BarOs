@@ -11,4 +11,6 @@ Run only the shift audit with `python tests/ui/run.py shifts.mjs`, or the game a
 
 The game audit checks all six formats, explanations, mistake review, pause/resume, retry after a lost response, account progress, and separation from exam attempts and theory completion.
 
+The package audit (`python tests/ui/run.py packages.mjs`) checks file preview/import, publication, role assignment, written answers, hidden keys, escaped answer HTML, manual rubrics and an explicit score cap. It also holds the first autosave response while new text, Save and Submit overlap, proving that saves remain serial and the newest answer is submitted.
+
 The runner copies the current frontend into a temporary directory and removes all test data afterward. No production credentials or database are used.

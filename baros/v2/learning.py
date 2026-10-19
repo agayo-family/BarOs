@@ -103,7 +103,9 @@ def visible_exam(exam,data):
 
 @router.post('/api/learning/{cid}/exam')
 def start_exam(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
+    from .models import WrittenAttempt
     db.execute(select(Account).where(Account.id==a.id).with_for_update()).first()
+    require(not db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==a.id,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now())),'Сначала завершите письменный тест',409)
     c,s,rev,data,e=learning_course(request,db,a,cid)
     for exam in exams_for(db,a,rev.id):
         if not exam.finished_at:
