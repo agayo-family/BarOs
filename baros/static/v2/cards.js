@@ -1,6 +1,6 @@
-import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.6.2';
+import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.6.3';
 
-import {rewardNotice} from './growth.js?v=2.6.2';
+import {rewardNotice} from './growth.js?v=2.6.3';
 
 export async function cardsPage(root,cid=null){const ticket=state.renderTicket;
  const preview=state.me.account.role!=='employee';

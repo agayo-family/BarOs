@@ -1,4 +1,4 @@
-import {$,$$,state,api,esc,icon,btn,pageHead,badge,progress,modal,on,toast,fmtDate} from './core.js?v=2.6.2';
+import {$,$$,state,api,esc,icon,btn,pageHead,badge,progress,modal,on,toast,fmtDate} from './core.js?v=2.6.3';
 let lastReaction=null;
 let catalogue=null,flight=null,phraseTimer=null,accountId=null;
 const stages=level=>level>=8?3:level>=4?2:1;
