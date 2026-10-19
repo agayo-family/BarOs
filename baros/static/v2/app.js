@@ -1,9 +1,9 @@
-import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute,pageHead,dismissModal} from './core.js?v=2.6.0';
-import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.6.0';
-import {mountShell} from './shell.js?v=2.6.0';
+import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute,pageHead,dismissModal} from './core.js?v=2.6.1';
+import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.6.1';
+import {mountShell} from './shell.js?v=2.6.1';
 
 let shellCleanup=null;
-const loadPage=name=>import('./'+name+'.js?v=2.6.0');
+const loadPage=name=>import('./'+name+'.js?v=2.6.1');
 async function renderAuth(path,ticket){const module=await loadPage('auth');if(ticket!==state.renderTicket)return;return module.authPage(path,ticket)}
 function loading(active){let bar=$('#route-progress');if(!bar){bar=document.createElement('div');bar.id='route-progress';bar.className='route-progress';bar.setAttribute('aria-hidden','true');document.body.append(bar)}bar.hidden=!active;$app()?.setAttribute('aria-busy',String(active));const content=$('#page-content');if(content)content.inert=active;}
 
@@ -35,6 +35,7 @@ async function renderAuthed(ticket){if(state.cleanup){state.cleanup();state.clea
   else if(a.role==='owner'&&!state.org&&p==='/app/settings')rendered=await page('owner','ownerSettingsPage');
   else if(a.role==='owner'&&!state.org&&p!=='/app/notices')rendered=await page('owner','ownerHome',{returnTo:p+location.search});
   else if(p==='/app/assessments')rendered=await page('packages','assessmentsPage');
+  else if(/^\/app\/assessments\/\d+\/edit$/.test(p))rendered=await page('assessment-editor','assessmentEditPage',Number(p.split('/').at(-2)));
   else if(/^\/app\/assessments\/\d+$/.test(p))rendered=await page('packages','assessmentPage',Number(p.split('/').at(-1)));
   else if(/^\/app\/assessment-attempts\/[a-zA-Z0-9_-]+$/.test(p))rendered=await page('packages','assessmentAttemptPage',p.split('/').at(-1));
   else if(p==='/app/mentor')rendered=await page('mentor','mentorPage');

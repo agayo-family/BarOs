@@ -96,6 +96,11 @@ class PackageIn(Strict):
 class ImportIn(Strict):
     package: PackageIn
 
+class AssessmentEditIn(Strict):
+    revision: str = Field(pattern=r'^[a-f0-9]{64}$')
+    assessment: AssessmentIn
+    reviewed: StrictBool = False
+
 class AnswersIn(Strict):
     version: int = Field(ge=1)
     answers: dict[str, StrictInt | StrictStr]
@@ -151,49 +156,86 @@ def import_package(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get
         raise
     return import_info(receipt)
 
-def accessible(request,db,a,aid,write=False):
+def assessment_revision(payload):
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+def accessible(request,db,a,aid,write=False,lock=False,snapshot=None,check_assignment=True):
+    if write:require(a.role in {'owner','manager'},'Изменения доступны управляющему',403)
     oid=tenant(request,db,a,learning=True) if a.role=='employee' else manager(request,db,a,'courses_manage' if write else None,write)
-    test=db.get(ImportedAssessment,aid);require(test and test.organization_id==oid,'Тест не найден',404)
+    if lock:
+        test=db.scalar(select(ImportedAssessment).where(ImportedAssessment.id==aid,ImportedAssessment.organization_id==oid).with_for_update().execution_options(populate_existing=True))
+    else:test=db.get(ImportedAssessment,aid)
+    require(test and test.organization_id==oid,'Тест не найден',404)
     p=parse(test.payload)
-    if a.role=='employee':require(test.published and not test.archived and applies(a,p),'Тест недоступен',403)
+    if a.role=='employee':require(test.published and not test.archived and (not check_assignment or applies(a,parse(snapshot) if snapshot is not None else p)),'Тест недоступен',403)
     return test,p
 
 def card(test,p):
-    return {'id':test.id,'title':test.title,'description':p['description'],'published':test.published,'archived':test.archived,
+    return {'id':test.id,'title':p['title'],'description':p['description'],'published':test.published,'archived':test.archived,
             'tasks':len(p['tasks']),'written':sum(t['kind']=='written' for t in p['tasks']),'minutes':p['time_limit_minutes']}
 
 @router.get('/api/assessments')
 def assessments(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=tenant(request,db,a,learning=True) if a.role=='employee' else manager(request,db,a)
+    tests=[(test,parse(test.payload)) for test in db.scalars(select(ImportedAssessment).where(ImportedAssessment.organization_id==oid).order_by(ImportedAssessment.id.desc())).all()]
+    previous={}
+    if a.role=='employee':
+        unassigned=[test.id for test,p in tests if test.published and not test.archived and not applies(a,p)]
+        if unassigned:
+            for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.organization_id==oid,WrittenAttempt.account_id==a.id,WrittenAttempt.assessment_id.in_(unassigned)).order_by(WrittenAttempt.started_at.desc())).all():
+                if attempt.assessment_id in previous:continue
+                snapshot=parse(attempt.snapshot)
+                if applies(a,snapshot):previous[attempt.assessment_id]=snapshot
     result=[]
-    for test in db.scalars(select(ImportedAssessment).where(ImportedAssessment.organization_id==oid).order_by(ImportedAssessment.id.desc())).all():
-        p=parse(test.payload)
-        if a.role=='employee' and (not test.published or test.archived or not applies(a,p)):continue
-        result.append(card(test,p))
+    for test,p in tests:
+        can_start=True
+        if a.role=='employee':
+            if not test.published or test.archived:continue
+            if not applies(a,p):
+                p=previous.get(test.id);can_start=False
+                if p is None:continue
+        result.append({**card(test,p),**({'can_start':can_start} if a.role=='employee' else {})})
     return result
 
 @router.get('/api/assessments/{aid}')
 def assessment(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
-    test,p=accessible(request,db,a,aid)
+    test,p=accessible(request,db,a,aid,check_assignment=False)
     if a.role!='employee':
         attempts=db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid).order_by(WrittenAttempt.started_at.desc())).all()
         names={x.id:x.name for x in db.scalars(select(Account).where(Account.id.in_({r.account_id for r in attempts}))).all()} if attempts else {}
-        return {**card(test,p),'package':p,'attempts':[{**attempt_data(x,False),'account_name':names.get(x.account_id,'Участник')} for x in attempts]}
-    attempts=db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.account_id==a.id).order_by(WrittenAttempt.started_at.desc())).all()
-    return {**card(test,p),'instructions':p['instructions'],'max_attempts':p['max_attempts'],'attempts':[attempt_data(x,False) for x in attempts]}
+        return {**card(test,p),'package':p,'revision':assessment_revision(test.payload),'attempts':[{**attempt_data(x,False),'account_name':names.get(x.account_id,'Участник')} for x in attempts]}
+    attempts=[attempt for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.account_id==a.id).order_by(WrittenAttempt.started_at.desc())).all() if applies(a,parse(attempt.snapshot))]
+    can_start=applies(a,p)
+    if not can_start:
+        require(attempts,'Тест недоступен',403);p=parse(attempts[0].snapshot)
+    return {**card(test,p),'instructions':p['instructions'],'max_attempts':p['max_attempts'],'can_start':can_start,'attempts':[attempt_data(x,False) for x in attempts]}
+
+@router.put('/api/assessments/{aid}')
+def edit_assessment(aid:int,data:AssessmentEditIn,request:Request,a=Depends(actor),db=Depends(get_db)):
+    test,p=accessible(request,db,a,aid,True,lock=True)
+    require(data.revision==assessment_revision(test.payload),'Тест изменён в другом окне. Обновите редактор.',409)
+    require(not test.published or data.reviewed,'Подтвердите проверку изменений опубликованного теста')
+    payload=dump(data.assessment.model_dump(mode='json'))
+    require(len(payload.encode('utf-8'))<=2*1024*1024,'Пакет превышает 2 МБ',413)
+    test.title=data.assessment.title;test.payload=payload
+    log(db,a,test.organization_id,'Изменён импортированный тест',assessment_id=aid)
+    db.commit();return {'ok':True,'id':aid,'revision':assessment_revision(payload)}
 
 @router.post('/api/assessments/{aid}/publish')
 def publish(aid:int,data:ConfirmIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     require(data.reviewed,'Подтвердите проверку файла и рубрик')
-    test,p=accessible(request,db,a,aid,True);test.published=True;test.archived=False
-    for employee in db.scalars(select(Account).where(Account.organization_id==test.organization_id,Account.role=='employee',Account.active==True)).all():
-        if applies(employee,p) and not db.scalar(select(Notice.id).where(Notice.account_id==employee.id,Notice.url=='/app/assessments/'+str(aid))):
-            db.add(Notice(account_id=employee.id,event_key='assessment:'+str(aid),title='Назначен тест',body=test.title,url='/app/assessments/'+str(aid)))
+    test,p=accessible(request,db,a,aid,True,lock=True);test.published=True;test.archived=False
+    employees=[employee for employee in db.scalars(select(Account).where(Account.organization_id==test.organization_id,Account.role=='employee',Account.active==True)).all() if applies(employee,p)]
+    key='assessment:'+str(aid)
+    notified=set(db.scalars(select(Notice.account_id).where(Notice.account_id.in_([employee.id for employee in employees]),Notice.event_key==key)).all()) if employees else set()
+    for employee in employees:
+        if employee.id not in notified:
+            db.add(Notice(account_id=employee.id,event_key=key,title='Назначен тест',body=test.title,url='/app/assessments/'+str(aid)))
     log(db,a,test.organization_id,'Опубликован импортированный тест',assessment_id=aid);db.commit();return {'ok':True}
 
 @router.post('/api/assessments/{aid}/archive')
 def archive(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
-    test,p=accessible(request,db,a,aid,True);test.archived=not test.archived;db.commit();return {'archived':test.archived}
+    test,p=accessible(request,db,a,aid,True,lock=True);test.archived=not test.archived;db.commit();return {'archived':test.archived}
 
 def submit_attempt(attempt):
     if attempt.status!='in_progress':return
@@ -203,7 +245,7 @@ def submit_attempt(attempt):
 def attempt_access(request,db,a,rid,write=False):
     attempt=db.scalar(select(WrittenAttempt).where(WrittenAttempt.id==rid).with_for_update())
     require(attempt,'Попытка не найдена',404)
-    accessible(request,db,a,attempt.assessment_id,write)
+    accessible(request,db,a,attempt.assessment_id,write,snapshot=attempt.snapshot)
     if a.role=='employee':require(attempt.account_id==a.id,'Попытка не найдена',404)
     # Keep FOR UPDATE until the endpoint commits, including an expiry followed by review.
     if attempt.status=='in_progress' and attempt.expires_at<=now():submit_attempt(attempt);db.flush()
@@ -238,13 +280,15 @@ def attempt_data(attempt,questions=True,keys=False):
 @router.post('/api/assessments/{aid}/start')
 def start(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     require(a.role=='employee','Откройте кабинет сотрудника',403)
-    test,p=accessible(request,db,a,aid)
+    # Assessment before Account matches publication's assessment -> Notice account FK order.
+    test,p=accessible(request,db,a,aid,lock=True,check_assignment=False)
     db.execute(select(Account).where(Account.id==a.id).with_for_update()).first()
-    previous=db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.account_id==a.id).order_by(WrittenAttempt.started_at.desc())).all()
+    previous=db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.account_id==a.id).order_by(WrittenAttempt.started_at.desc()).with_for_update().execution_options(populate_existing=True)).all()
     for attempt in previous:
         if attempt.status=='in_progress':
             if attempt.expires_at<=now():submit_attempt(attempt)
-            else:db.commit();return attempt_data(attempt)
+            elif applies(a,parse(attempt.snapshot)):db.commit();return attempt_data(attempt)
+    require(applies(a,p),'Тест недоступен',403)
     require(len(previous)<p['max_attempts'],'Лимит попыток исчерпан',409)
     require(not db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==a.id,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now())),'Завершите другой письменный тест',409)
     require(not db.scalar(select(Exam.id).where(Exam.account_id==a.id,Exam.finished_at.is_(None),Exam.expires_at>now())),'Завершите текущий итоговый тест',409)

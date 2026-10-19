@@ -18,12 +18,18 @@ with tempfile.TemporaryDirectory(prefix='baros-ui-audit-') as tmp:
     workspace = Path(tmp)
     shutil.copytree(repo/'baros'/'static'/'v2', workspace/'ui')
     (workspace/'ui'/'package.json').write_text('{"type":"module"}')
-    for name in ['audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs']:
+    audit_scripts = ['audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs', 'assessment-editor.mjs']
+    for name in audit_scripts:
         shutil.copyfile(folder/name, workspace/name)
-    (workspace/'node_modules').symlink_to(folder/'node_modules', target_is_directory=True)
-    scripts = sys.argv[1:] or ['audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs']
+    try:
+        (workspace/'node_modules').symlink_to(folder/'node_modules', target_is_directory=True)
+    except OSError:
+        # Windows can run the audit without granting the user symlink privileges.
+        shutil.copytree(folder/'node_modules', workspace/'node_modules',
+                        ignore=shutil.ignore_patterns('.pnpm-store'))
+    scripts = sys.argv[1:] or audit_scripts
     for index, script in enumerate(scripts):
-        if script not in {'audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs'}: raise SystemExit('Unknown audit script')
+        if script not in audit_scripts: raise SystemExit('Unknown audit script')
         env = dict(os.environ, DATABASE_URL='sqlite:///'+str(workspace/f'audit-{index}.db'),
                    FIRST_RUN_TOKEN='baros-ui-audit-only', SESSION_SECRET='baros-ui-audit-test-only',
                    COOKIE_SECURE='0', BAROS_WORKER='0', BAROS_AUDIT_URL='http://127.0.0.1:8147')

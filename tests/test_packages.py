@@ -1,4 +1,4 @@
-import importlib,os,tempfile,unittest
+import copy,hashlib,importlib,os,tempfile,unittest
 from datetime import timedelta
 from unittest.mock import patch
 os.environ.setdefault('DATABASE_URL','sqlite:///'+tempfile.mktemp(prefix='baros-packages-',suffix='.db'))
@@ -30,6 +30,8 @@ class PackageTests(unittest.TestCase):
  def login(self,name):
   self.client.cookies.clear();self.assertEqual(self.client.post('/api/auth/login',json={'login':name,'password':'test-import-password'}).status_code,200);self.headers={'x-csrf-token':self.client.get('/api/me').json()['csrf']}
  def post(self,path,data):return self.client.post(path,json=data,headers=self.headers)
+ def edit(self,aid,revision,assessment,reviewed=False):
+  return self.client.put(f'/api/assessments/{aid}',json={'revision':revision,'assessment':assessment,'reviewed':reviewed},headers=self.headers)
  def import_(self,p=PACKAGE):
   r=self.post('/api/packages/import',{'package':p});self.assertEqual(r.status_code,200,r.text);return r.json()['id']
  def publish(self):
@@ -130,5 +132,95 @@ class PackageTests(unittest.TestCase):
   invalid={**review,'applied_caps':{'unknown':True}};self.assertEqual(self.post('/api/assessment-attempts/'+rid+'/review',invalid).status_code,400)
   review['feedback']={'q2':'Gin 30 мл вместо требуемых 40 мл.'};result=self.post('/api/assessment-attempts/'+rid+'/review',review);self.assertEqual(result.status_code,200,result.text);self.assertEqual(result.json()['result']['points'],12);self.assertTrue(result.json()['result']['review'][0]['cap_applied']);self.assertEqual(result.json()['grades']['q2']['scores'],{'plan':50,'cost':30})
   self.login('worker');result=self.client.get('/api/assessment-attempts/'+rid).json();self.assertEqual(result['result']['points'],12);self.assertIn('30 мл',result['result']['review'][0]['feedback'])
+
+ def test_edit_draft_replaces_content_and_removes_sections_and_tasks(self):
+  aid=self.import_();original=self.client.get(f'/api/assessments/{aid}').json()
+  with SessionLocal() as db:
+   payload=db.get(ImportedAssessment,aid).payload
+   self.assertEqual(original['revision'],hashlib.sha256(payload.encode('utf-8')).hexdigest())
+  changed=copy.deepcopy(original['package']);changed.update(title='Новая диагностика',description='Обновлённое описание',instructions='Новая инструкция',positions=['waiter'],time_limit_minutes=45,max_attempts=3,passing_score=70,sequential_sections=False)
+  changed['sections']=changed['sections'][1:];changed['sections'][0]['title']='Изменённый раздел'
+  changed['tasks']=changed['tasks'][1:];task=changed['tasks'][0];task.update(prompt='Новая письменная формулировка',points=10,max_length=300,score_cap={'points':8,'guidance':'Предел при грубом нарушении задания'})
+  task['rubric']=[{'id':'new','label':'Новый критерий','points':5,'guidance':'Проверить новый критерий'}]
+  response=self.edit(aid,original['revision'],changed);self.assertEqual(response.status_code,200,response.text)
+  current=self.client.get(f'/api/assessments/{aid}').json()
+  self.assertEqual(current['title'],'Новая диагностика');self.assertEqual(current['package'],changed);self.assertEqual(current['tasks'],1)
+  self.assertFalse(current['published']);self.assertFalse(current['archived']);self.assertNotEqual(current['revision'],original['revision']);self.assertEqual(response.json()['revision'],current['revision'])
+  stale=self.edit(aid,original['revision'],original['package']);self.assertEqual(stale.status_code,409,stale.text)
+  self.assertEqual(self.client.get(f'/api/assessments/{aid}').json()['package'],changed)
+
+ def test_edit_validation_is_atomic_and_enforces_total_size(self):
+  aid=self.import_();original=self.client.get(f'/api/assessments/{aid}').json();base=original['package']
+  invalid=[]
+  item=copy.deepcopy(base);item['tasks'][0]['correct_index']=99;invalid.append(item)
+  item=copy.deepcopy(base);item['tasks'][1]['rubric']=[];invalid.append(item)
+  item=copy.deepcopy(base);item['sections']=item['sections'][:1];invalid.append(item)
+  item=copy.deepcopy(base);item['tasks'][1]['id']=item['tasks'][0]['id'];invalid.append(item)
+  item=copy.deepcopy(base);item['unexpected']='ignored?';invalid.append(item)
+  for item in invalid:
+   with self.subTest(payload=item):self.assertEqual(self.edit(aid,original['revision'],item).status_code,422)
+  large=copy.deepcopy(base);large['sections']=large['sections'][1:]
+  large['tasks']=[{**copy.deepcopy(base['tasks'][1]),'id':'large_'+str(i),'prompt':'Я'*10000} for i in range(110)]
+  response=self.edit(aid,original['revision'],large);self.assertEqual(response.status_code,413,response.text)
+  current=self.client.get(f'/api/assessments/{aid}').json();self.assertEqual(current['package'],base);self.assertEqual(current['revision'],original['revision'])
+
+ def test_edit_permissions_isolation_csrf_and_subscription(self):
+  aid=self.publish();original=self.client.get(f'/api/assessments/{aid}').json();data=original['package'];revision=original['revision']
+  self.login('worker');self.assertEqual(self.edit(aid,revision,data,True).status_code,403)
+  self.assertEqual(self.post(f'/api/assessments/{aid}/publish',{'reviewed':True}).status_code,403);self.assertEqual(self.post(f'/api/assessments/{aid}/archive',{}).status_code,403)
+  self.login('foreign');self.assertEqual(self.edit(aid,revision,data,True).status_code,404)
+  self.login('manager');self.assertEqual(self.client.put(f'/api/assessments/{aid}',json={'revision':revision,'assessment':data}).status_code,403)
+  with SessionLocal() as db:db.get(Account,self.ids['manager']).permissions_json=dump({'courses_manage':False});db.commit()
+  self.assertEqual(self.edit(aid,revision,data).status_code,403)
+  with SessionLocal() as db:db.get(Account,self.ids['manager']).permissions_json='{}';db.get(VenueSettings,self.oid).status='read_only';db.commit()
+  self.assertEqual(self.edit(aid,revision,data).status_code,403)
+  with SessionLocal() as db:db.get(VenueSettings,self.oid).status='active';db.get(VenueSettings,self.oid).subscription_status='past_due';db.commit()
+  self.assertEqual(self.edit(aid,revision,data).status_code,402)
+  with SessionLocal() as db:self.assertEqual(hashlib.sha256(db.get(ImportedAssessment,aid).payload.encode('utf-8')).hexdigest(),revision)
+
+ def test_published_edit_requires_confirmation_and_preserves_archive(self):
+  aid=self.publish();self.post(f'/api/assessments/{aid}/archive',{});original=self.client.get(f'/api/assessments/{aid}').json();changed=copy.deepcopy(original['package']);changed['title']='Изменённый архивный тест'
+  response=self.edit(aid,original['revision'],changed);self.assertEqual(response.status_code,400,response.text)
+  self.assertEqual(self.client.get(f'/api/assessments/{aid}').json()['revision'],original['revision'])
+  response=self.edit(aid,original['revision'],changed,True);self.assertEqual(response.status_code,200,response.text)
+  current=self.client.get(f'/api/assessments/{aid}').json();self.assertTrue(current['published']);self.assertTrue(current['archived']);self.assertEqual(current['title'],changed['title'])
+  self.post(f'/api/assessments/{aid}/publish',{'reviewed':True});current=self.client.get(f'/api/assessments/{aid}').json();self.assertFalse(current['archived']);self.assertEqual(current['revision'],response.json()['revision'])
+
+ def test_edit_preserves_running_and_submitted_snapshots_and_old_rubric(self):
+  aid,attempt=self.start();rid=attempt['id']
+  with SessionLocal() as db:old_snapshot=db.get(WrittenAttempt,rid).snapshot;correct=parse(old_snapshot)['tasks'][0]['correct_index']
+  self.login('manager');original=self.client.get(f'/api/assessments/{aid}').json()
+  changed=copy.deepcopy(original['package']);changed.update(title='Тест после редактирования',max_attempts=2,time_limit_minutes=7,passing_score=80)
+  changed['sections']=[{'id':'fresh','title':'Новый раздел','instructions':'Новые условия'}]
+  changed['tasks']=[{'id':'fresh_task','section_id':'fresh','kind':'written','prompt':'Совершенно новое письменное задание','points':10,'rubric':[{'id':'fresh_criterion','label':'Новый критерий','points':5,'guidance':'Новая рубрика'}]}]
+  response=self.edit(aid,original['revision'],changed,True);self.assertEqual(response.status_code,200,response.text)
+  self.login('worker');running=self.client.get('/api/assessment-attempts/'+rid).json();self.assertEqual(running['title'],original['title']);self.assertEqual(running['tasks'][0]['id'],'q1')
+  running=self.client.put('/api/assessment-attempts/'+rid,json={'version':running['version'],'answers':{'q1':correct}},headers=self.headers).json()
+  running=self.post('/api/assessment-attempts/'+rid+'/advance',{'version':running['version']}).json()
+  running=self.client.put('/api/assessment-attempts/'+rid,json={'version':running['version'],'answers':{'q2':'Ответ на прежнее задание'}},headers=self.headers).json()
+  submitted=self.post('/api/assessment-attempts/'+rid+'/submit',{'version':running['version']}).json();self.assertEqual(submitted['status'],'submitted')
+  self.login('manager');latest=self.client.get(f'/api/assessments/{aid}').json();changed['title']='Ещё одна редакция после сдачи'
+  response=self.edit(aid,latest['revision'],changed,True);self.assertEqual(response.status_code,200,response.text)
+  reviewed=self.post('/api/assessment-attempts/'+rid+'/review',{'version':submitted['version'],'grades':{'q2':{'plan':50,'cost':30}}})
+  self.assertEqual(reviewed.status_code,200,reviewed.text);self.assertEqual(reviewed.json()['result']['points'],100);self.assertIsNone(reviewed.json()['result']['passed'])
+  with SessionLocal() as db:self.assertEqual(db.get(WrittenAttempt,rid).snapshot,old_snapshot)
+  self.login('worker');new=self.post(f'/api/assessments/{aid}/start',{});self.assertEqual(new.status_code,200,new.text);self.assertNotEqual(new.json()['id'],rid);self.assertEqual(new.json()['title'],changed['title']);self.assertEqual(new.json()['tasks'][0]['id'],'fresh_task')
+  with SessionLocal() as db:
+   row=db.get(WrittenAttempt,new.json()['id']);self.assertEqual(parse(row.snapshot)['tasks'][0]['rubric'][0]['id'],'fresh_criterion');self.assertAlmostEqual((row.expires_at-row.started_at).total_seconds(),420,delta=2)
+
+ def test_edit_positions_keeps_existing_attempt_assignment_snapshot(self):
+  aid,attempt=self.start();rid=attempt['id'];self.login('manager');original=self.client.get(f'/api/assessments/{aid}').json();changed=copy.deepcopy(original['package']);changed.update(positions=['waiter'],title='CURRENT_WAITER_TITLE',description='CURRENT_WAITER_DESCRIPTION',instructions='CURRENT_WAITER_INSTRUCTIONS')
+  self.assertEqual(self.edit(aid,original['revision'],changed,True).status_code,200)
+  self.login('worker');detail=self.client.get(f'/api/assessments/{aid}');self.assertEqual(detail.status_code,200,detail.text);self.assertFalse(detail.json()['can_start']);self.assertEqual(detail.json()['title'],original['title']);self.assertEqual(detail.json()['instructions'],original['package']['instructions']);self.assertNotIn('CURRENT_WAITER',detail.text);self.assertNotIn('SECRET',detail.text);self.assertEqual(detail.json()['attempts'][0]['id'],rid)
+  listed=self.client.get('/api/assessments');self.assertEqual(len(listed.json()),1);self.assertFalse(listed.json()[0]['can_start']);self.assertEqual(listed.json()[0]['title'],original['title']);self.assertNotIn('CURRENT_WAITER',listed.text)
+  resumed=self.post(f'/api/assessments/{aid}/start',{});self.assertEqual(resumed.status_code,200,resumed.text);self.assertEqual(resumed.json()['id'],rid);self.assertEqual(resumed.json()['title'],original['title'])
+  response=self.client.put('/api/assessment-attempts/'+rid,json={'version':attempt['version'],'answers':{'q1':0}},headers=self.headers);self.assertEqual(response.status_code,200,response.text)
+  advanced=self.post('/api/assessment-attempts/'+rid+'/advance',{'version':response.json()['version']});self.assertEqual(advanced.status_code,200,advanced.text)
+  submitted=self.post('/api/assessment-attempts/'+rid+'/submit',{'version':advanced.json()['version']});self.assertEqual(submitted.status_code,200,submitted.text)
+  self.assertEqual(self.post(f'/api/assessments/{aid}/start',{}).status_code,403);self.assertEqual(self.client.get(f'/api/assessments/{aid}').json()['attempts'][0]['status'],'submitted');self.assertEqual(self.client.get('/api/assessment-attempts/'+rid).status_code,200)
+  self.login('peer');self.assertEqual(self.post(f'/api/assessments/{aid}/start',{}).status_code,403);self.assertEqual(self.client.get(f'/api/assessments/{aid}').status_code,403);self.assertEqual(self.client.get('/api/assessments').json(),[])
+  self.login('waiter');self.assertTrue(self.client.get(f'/api/assessments/{aid}').json()['can_start']);response=self.post(f'/api/assessments/{aid}/start',{});self.assertEqual(response.status_code,200,response.text);self.assertEqual(response.json()['title'],changed['title'])
+  self.login('manager');self.assertEqual(self.post(f'/api/assessments/{aid}/archive',{}).status_code,200)
+  self.login('worker');self.assertEqual(self.client.get('/api/assessments').json(),[]);self.assertEqual(self.client.get(f'/api/assessments/{aid}').status_code,403);self.assertEqual(self.client.get('/api/assessment-attempts/'+rid).status_code,403)
 
 if __name__=='__main__':unittest.main()
