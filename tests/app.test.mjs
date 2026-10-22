@@ -43,9 +43,10 @@ function application() {
     updateNetwork = () => {};
     setRoute = next => { route = next; __routes.push(next); };
     globalThis.__app = {
-      freshState, normalizeState, canCalculate, calculationRecipe, calcRows,
+      freshState, normalizeState, canCalculate, calculationRecipe, calcRows, renderCalculator,
       findRecipeDuplicate, useStatVersion, confirmRequest, commitStateChange,
       recipeIngredientText, renderProductionExplanation, stockAdjustModal,
+      recipeCalculationModal, addToRequest, savePlan, openFinishBatch,
       get state() { return state; }, set state(value) { state = value; },
       get ui() { return ui; }, set ui(value) { ui = value; },
       get mode() { return calcMode; }, get busy() { return stateMutationBusy; },
@@ -275,4 +276,127 @@ test('manual stock adjustment finds a historic alias without replacing its store
   document.querySelector('#sCost').value='';
   await document.querySelector('#saveStock').onclick();
   assert.deepEqual(structuredClone(app.state.stock),[{name:'Сахар',amount:4,unit:'kg',cost:100,batch:'historic'}]);
+});
+
+const nectarineRecipe = () => recipes.normalizeRecipe({
+  id: 'nectarine', name: 'Нектариновая', yield: 2.5, shelfLifeDays: 30,
+  ingredients: [{ name: 'Водка', amount: 2, unit: 'л', cost: 500 }, { name: 'Нектарин', amount: .5, unit: 'кг', cost: 200 }, { name: 'Сахар', amount: .25, unit: 'кг', cost: 100 }],
+  process: 'Влить 2 л водки. Добавить 500 г нектарина. Настаивать 7 дней при 20 °C.',
+});
+const ingredientUI = (extra = {}) => ({ recipeId: 'nectarine', target: 99, baseYield: null, basis: 'ingredient', ingredientIndex: 1, ingredientAmount: '1,100', ingredientUnit: 'кг', ...extra });
+
+test('ingredient calculation adds exact scaled quantities to a request without altering its card', async () => {
+  const h = application();h.app.state = workingState({ recipes: [nectarineRecipe()] });h.app.ui = ingredientUI();
+  const before = structuredClone(h.app.state.recipes);
+  assert.equal(h.app.canCalculate(), true);
+  assert.deepEqual(structuredClone(h.app.calcRows()).map(i => i.amount), [4.4, 1.1, .55]);
+  await h.app.addToRequest();
+  assert.equal(h.writes.length, 1);
+  assert.deepEqual(h.app.state.recipes, before);
+  const items = h.app.state.requisitions[0].items;
+  assert.equal(items.find(i => i.name === 'Нектарин').amount, 1.1);
+  assert.equal(items.find(i => i.name === 'Водка').amount, 4.4);
+});
+
+test('ingredient plans and production use the computed yield instead of the previous yield input', async () => {
+  const h = application();const recipe = nectarineRecipe();h.app.state = workingState({ recipes: [recipe] });h.app.ui = ingredientUI();
+  await h.app.savePlan();
+  assert.equal(h.app.state.plans[0].targetYield, 5.5);
+  assert.deepEqual(structuredClone(h.app.state.plans[0].ingredients).map(i => i.amount), [4.4, 1.1, .55]);
+  h.app.openFinishBatch(recipe, h.app.calcRows());
+  assert.match(h.document.querySelector('#modal').innerHTML, /id="batchTarget"[^>]*value="5.5"/);
+  h.document.querySelector('#batchDate').value = '2026-10-22T12:00';
+  h.document.querySelector('#batchActual').value = '5.5';h.document.querySelector('#batchShelf').value = '30';
+  h.document.querySelector('#batchLines').value = 'Водка | 4.4 | л | 500\nНектарин | 1.1 | кг | 200\nСахар | .55 | кг | 100';
+  h.document.querySelector('#batchNote').value = '';
+  await h.document.querySelector('#batchSave').onclick();
+  assert.equal(h.app.state.batches[0].targetYield, 5.5);
+  assert.equal(h.app.state.stats[0].recipeSnapshot.yield, 5.5);
+  assert.equal(h.app.state.stock.find(i => i.name === 'Нектарин').amount, -1.1);
+  assert.equal(h.app.state.recipes[0].yield, 2.5);
+});
+
+test('unknown yield still allows ingredient procurement but cannot create a misleading plan or batch', async () => {
+  const h = application();const recipe = { ...nectarineRecipe(), yield: null };
+  h.app.state = workingState({ recipes: [recipe] });h.app.ui = ingredientUI();
+  assert.equal(h.app.canCalculate(), true);await h.app.addToRequest();
+  const writes = h.writes.length;
+  await h.app.savePlan();h.app.openFinishBatch(recipe, h.app.calcRows());
+  assert.equal(h.writes.length, writes);assert.equal(h.app.state.plans.length, 0);assert.equal(h.app.state.batches.length, 0);
+  h.app.ui.baseYield = 2.5;await h.app.savePlan();assert.equal(h.app.state.plans[0].targetYield, 5.5);
+  assert.equal(h.app.state.recipes[0].yield, null);
+});
+
+test('invalid ingredient amounts cannot save stale ingredients or produce a batch', async () => {
+  const h = application();const recipe = nectarineRecipe();h.app.state = workingState({ recipes: [recipe] });h.app.ui = ingredientUI();
+  for (const amount of ['', '0', '-1', 'Infinity', 'abc']) {
+    h.app.ui.ingredientAmount = amount;
+    assert.equal(h.app.canCalculate(), false);assert.deepEqual(structuredClone(h.app.calcRows()), []);
+    await h.app.addToRequest();await h.app.savePlan();h.app.openFinishBatch(recipe, h.app.calcRows());
+  }
+  assert.equal(h.writes.length, 0);
+});
+
+test('card calculator scales ingredient quantities and process with comma input and convertible units', () => {
+  const h = application();const recipe = nectarineRecipe();h.app.state = workingState({ recipes: [recipe] });
+  const before = structuredClone(h.app.state);h.app.recipeCalculationModal(recipe.id);
+  h.document.querySelector('#recipeCalcBasis').onchange({ target: { value: 'ingredient' } });
+  h.document.querySelector('#recipeCalcIngredient').onchange({ target: { value: '1' } });
+  h.document.querySelector('#recipeCalcAmount').oninput({ target: { value: '1,100' } });
+  let html = h.document.querySelector('#recipeCalcResult').innerHTML;
+  assert.match(html, /Состав на 5,5 л/);assert.match(html, /<strong>1,1 кг<\/strong>/);
+  assert.match(html, /1100 г нектарина/);assert.match(html, /7 дней при 20 °C/);
+  h.document.querySelector('#recipeCalcUnit').onchange({ target: { value: 'г' } });
+  assert.equal(h.document.querySelector('#recipeCalcAmount').value, '1100');
+  assert.match(h.document.querySelector('#recipeCalcResult').innerHTML, /Состав на 5,5 л/);
+  h.document.querySelector('#recipeCalcAmount').oninput({ target: { value: '' } });
+  html = h.document.querySelector('#recipeCalcResult').innerHTML;
+  assert.doesNotMatch(html, /<strong>1,1 кг<\/strong>/);assert.match(html, /Укажите количество/);
+  assert.deepEqual(h.app.state, before);assert.equal(h.writes.length, 0);
+});
+
+test('card calculator offers ingredient scaling without a known yield or a fabricated volume', () => {
+  const h = application();const recipe = { ...nectarineRecipe(), yield: null };
+  h.app.state = workingState({ recipes: [recipe] });h.app.recipeCalculationModal(recipe.id);
+  h.document.querySelector('#recipeCalcBasis').onchange({ target: { value: 'ingredient' } });
+  h.document.querySelector('#recipeCalcIngredient').onchange({ target: { value: '1' } });
+  h.document.querySelector('#recipeCalcAmount').oninput({ target: { value: '1.100' } });
+  const html = h.document.querySelector('#recipeCalcResult').innerHTML;
+  assert.match(html, /<strong>1,1 кг<\/strong>/);assert.match(html, /Выход в ТК не указан/);
+  assert.doesNotMatch(html, /Состав на [\d,]+ л/);assert.equal(h.app.state.recipes[0].yield, null);
+});
+
+test('main calculator switches bases without reusing a stale target and converts quantity units consistently', () => {
+  const h = application();h.app.state = workingState({ recipes: [nectarineRecipe()] });h.app.ui = ingredientUI();
+  h.app.renderCalculator();
+  assert.equal(h.document.querySelector('#addRequest').disabled, false);
+  assert.match(h.document.querySelector('#calcSummary').innerHTML, /Ожидаемый выход: 5,5 л/);
+  h.document.querySelector('#calcUnit').onchange({ target: { value: 'г' } });
+  assert.equal(h.app.ui.ingredientAmount, '1100');assert.equal(h.app.ui.ingredientUnit, 'г');
+  h.document.querySelector('#calcBasis').onchange({ target: { value: 'yield' } });
+  assert.equal(h.app.ui.target, 5.5);assert.deepEqual(structuredClone(h.app.calcRows()).map(i => i.amount), [4.4, 1.1, .55]);
+  h.document.querySelector('#calcBasis').onchange({ target: { value: 'ingredient' } });
+  assert.equal(h.app.ui.ingredientAmount, '1.1');assert.equal(h.app.ui.ingredientUnit, 'кг');
+  h.document.querySelector('#calcAmount').oninput({ target: { value: '' } });
+  assert.equal(h.document.querySelector('#addRequest').disabled, true);assert.equal(h.document.querySelector('.calc-result').innerHTML, '');
+});
+
+test('production actions require a known output while ingredient composition remains available without it', () => {
+  const h = application();h.app.state = workingState({ recipes: [{ ...nectarineRecipe(), yield: null }] });h.app.ui = ingredientUI();
+  h.app.renderCalculator();h.document.querySelector('#modeProduction').onclick();
+  assert.equal(h.document.querySelector('#savePlan').disabled, true);assert.equal(h.document.querySelector('#finishBatch').disabled, true);
+  assert.match(h.document.querySelector('.calc-result').innerHTML, /1,1 кг/);
+  h.document.querySelector('#calcBase').oninput({ target: { value: '2.5' } });
+  assert.equal(h.document.querySelector('#savePlan').disabled, false);assert.equal(h.document.querySelector('#finishBatch').disabled, false);
+  h.document.querySelector('#calcAmount').oninput({ target: { value: 'invalid' } });
+  assert.equal(h.document.querySelector('#savePlan').disabled, true);assert.equal(h.document.querySelector('#finishBatch').disabled, true);
+  assert.doesNotMatch(h.document.querySelector('.soft-card').innerHTML, /Склад покрывает расчёт/);
+});
+
+test('changing the recipe resets its ingredient anchor and never applies another recipe quantity', () => {
+  const h = application();const other = { ...nectarineRecipe(), id: 'other', name: 'Другая карта', ingredients: [{ name: 'Лимон', amount: 2, unit: 'шт' }] };
+  h.app.state = workingState({ recipes: [nectarineRecipe(), other] });h.app.ui = ingredientUI();h.app.renderCalculator();
+  h.document.querySelector('#calcRecipe').onchange({ target: { value: 'other' } });
+  assert.equal(h.app.ui.ingredientIndex, 0);assert.equal(h.app.ui.ingredientAmount, '2');assert.equal(h.app.ui.ingredientUnit, 'шт');
+  assert.deepEqual(structuredClone(h.app.calcRows()).map(i => i.amount), [2]);
 });

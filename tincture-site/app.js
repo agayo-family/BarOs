@@ -1,7 +1,7 @@
 import {
-  scaleRecipe, aggregateIngredients, totalCost, isoWeekKey,
+  aggregateIngredients, totalCost, isoWeekKey,
   consumeStock, reconcileConfirmedRequisition, expiryDate,
-  expiryStatus, daysUntil, batchVelocity, round, inventoryItemKey
+  expiryStatus, daysUntil, batchVelocity, round, inventoryItemKey, calculateRecipe, ingredientUnits, convertIngredientAmount, parseCalculationAmount
 } from './logic.mjs';
 import {parseRecipeText, parseIngredientsText, classifyRecipe, normalizeRecipe, recipeFingerprint, scaleProcess, ALCOHOL_CATEGORIES} from './recipes.mjs';
 import {readRecipeFile} from './imports.mjs';
@@ -43,7 +43,7 @@ const freshState = () => ({
 let state = freshState();
 let route = 'calculator';
 let calcMode = 'request';
-let ui = {recipeId:'',target:10,baseYield:null};
+let ui = {recipeId:'',target:10,baseYield:null,basis:'yield',ingredientIndex:0,ingredientAmount:'',ingredientUnit:''};
 let deferredInstallPrompt = null;
 let syncTimer = null;
 let stateMutationBusy = false;
@@ -152,8 +152,48 @@ function ensureCurrentRequisition(){
 }
 function selectedRecipe(){const list=activeRecipes();return state.recipes.find(r=>r.id===ui.recipeId&&!r.archived)||list[0]||null;}
 function calculationRecipe(){const r=selectedRecipe();return r?{...r,yield:Number(r.yield)>0?r.yield:ui.baseYield}:null;}
-function canCalculate(){const r=calculationRecipe();return Number(r?.yield)>0&&Number.isFinite(Number(r?.yield))&&Number(ui.target)>0&&Number.isFinite(Number(ui.target))&&(r?.ingredients||[]).length>0&&(r?.ingredients||[]).every(i=>i.name&&Number(i.amount)>0&&Number.isFinite(Number(i.amount))&&i.unit);}
-function calcRows(){const r=calculationRecipe();return r&&canCalculate()?scaleRecipe(r,ui.target):[];}
+function calculationResult(){return calculateRecipe(calculationRecipe(),{...ui,targetYield:ui.target});}
+function canCalculate(){return calculationResult().valid;}
+function calcRows(){return calculationResult().rows;}
+function calculationFor(recipe,values){return calculateRecipe({...recipe,yield:Number(recipe?.yield)>0?recipe.yield:values.baseYield},{...values,targetYield:values.target});}
+function calculationControls(recipe,values,prefix){
+  const byIngredient=values.basis==='ingredient',item=recipe.ingredients?.[Number(values.ingredientIndex??0)];
+  const units=ingredientUnits(item?.unit),unit=inventoryItemKey({unit:values.ingredientUnit||item?.unit});
+  return `<div class="form-grid">
+    <div class="field full"><label for="${prefix}Basis">Рассчитать</label><select id="${prefix}Basis"><option value="yield" ${byIngredient?'':'selected'}>По выходу готового продукта</option><option value="ingredient" ${byIngredient?'selected':''}>По количеству ингредиента</option></select></div>
+    <div class="field full" ${byIngredient?'':'hidden'}><label for="${prefix}Ingredient">Ингредиент для расчёта</label><select id="${prefix}Ingredient">${(recipe.ingredients||[]).map((i,index)=>`<option value="${index}" ${index===Number(values.ingredientIndex??0)?'selected':''}>${esc(i.name)} · ${fmtNum(i.amount,4)} ${esc(i.unit)} в ТК</option>`).join('')}</select></div>
+    <div class="field" ${byIngredient?'':'hidden'}><label for="${prefix}Amount">Сколько ингредиента есть</label><input id="${prefix}Amount" type="text" inputmode="decimal" autocomplete="off" value="${esc(values.ingredientAmount??'')}" placeholder="Например, 1,100" aria-describedby="${prefix}AmountHint"><span id="${prefix}AmountHint" class="tiny muted">Точка и запятая — десятичный разделитель.</span></div>
+    <div class="field" ${byIngredient?'':'hidden'}><label for="${prefix}Unit">Единица ингредиента</label><select id="${prefix}Unit">${units.map(u=>`<option value="${esc(u)}" ${inventoryItemKey({unit:u})===unit?'selected':''}>${esc(u)}</option>`).join('')}</select></div>
+    <div class="field" ${byIngredient?'hidden':''}><label for="${prefix}Target">Нужный объём, л</label><input id="${prefix}Target" type="number" min=".001" step="any" inputmode="decimal" value="${esc(values.target)}"></div>
+    ${Number(recipe.yield)>0?`<div class="field" ${byIngredient?'hidden':''}><label>Исходный выход всего состава</label><div class="recipe-base-value">${fmtNum(recipe.yield)} л</div></div>`:`<div class="field full"><label for="${prefix}Base">Исходный объём для этого расчёта, л</label><input id="${prefix}Base" type="number" min=".001" step="any" inputmode="decimal" value="${esc(values.baseYield??'')}" placeholder="Сколько готового продукта даёт указанный состав"><span class="tiny muted">Для расчёта состава по ингредиенту необязателен. Нужен для ожидаемого выхода, плана и партии. Не изменяет ТК.</span></div>`}
+  </div>`;
+}
+function bindCalculationControls(recipe,values,prefix,refresh,redraw){
+  const resetIngredient=(index,result)=>{
+    values.ingredientIndex=index;const item=recipe.ingredients?.[index];
+    values.ingredientAmount=String(result?.rows?.[index]?.amount??item?.amount??'');values.ingredientUnit=item?.unit||'';
+  };
+  $('#'+prefix+'Basis').onchange=e=>{
+    const result=calculationFor(recipe,values);values.basis=e.target.value;
+    if(values.basis==='ingredient')resetIngredient(Number(values.ingredientIndex??0),result);
+    else if(result.targetYield>0)values.target=result.targetYield;
+    redraw();$('#'+prefix+'Basis').focus();
+  };
+  $('#'+prefix+'Ingredient').onchange=e=>{const result=calculationFor(recipe,values);resetIngredient(Number(e.target.value),result);redraw();$('#'+prefix+'Ingredient').focus();};
+  $('#'+prefix+'Amount').oninput=e=>{values.ingredientAmount=e.target.value;refresh();};
+  $('#'+prefix+'Unit').onchange=e=>{
+    const item=recipe.ingredients?.[Number(values.ingredientIndex??0)],converted=convertIngredientAmount(parseCalculationAmount(values.ingredientAmount),values.ingredientUnit||item?.unit,e.target.value);
+    if(Number.isFinite(converted)){values.ingredientAmount=String(Number(converted.toPrecision(12)));$('#'+prefix+'Amount').value=values.ingredientAmount;}
+    values.ingredientUnit=e.target.value;refresh();
+  };
+  $('#'+prefix+'Target').oninput=e=>{values.target=Number(e?.target?.value??$('#'+prefix+'Target').value);refresh();};
+  if(!Number(recipe.yield))$('#'+prefix+'Base').oninput=e=>{values.baseYield=Number(e?.target?.value??$('#'+prefix+'Base').value);refresh();};
+}
+function calculationSummary(recipe,values,result){
+  if(values.basis!=='ingredient'||!result.valid)return '';
+  const item=recipe.ingredients?.[Number(values.ingredientIndex??0)];
+  return `Расчёт от ${fmtNum(parseCalculationAmount(values.ingredientAmount),4)} ${esc(values.ingredientUnit||item?.unit)} «${esc(item?.name)}». ${result.targetYield>0?`Ожидаемый выход: ${fmtNum(result.targetYield,4)} л.`:'Выход в ТК не указан. Состав рассчитан; для плана и партии укажите исходный объём.'}`;
+}
 function recipeOptions(selected){return activeRecipes().map(r=>`<option value="${esc(r.id)}" ${r.id===selected?'selected':''}>${esc(r.name)}</option>`).join('');}
 
 function renderCalculator(){
@@ -171,12 +211,9 @@ function renderCalculator(){
     <div class="grid two">
       <section class="card">
         <h2>${calcMode==='request'?'Расчёт закупки':'Расчёт постановки'}</h2>
-        ${recipes.length?`<div class="form-grid">
-          <div class="field full"><label for="calcRecipe">Технология</label><select id="calcRecipe">${recipeOptions(r?.id)}</select></div>
-          <div class="field"><label for="calcTarget">Нужно готового продукта</label><input id="calcTarget" type="number" inputmode="decimal" min="0.001" step="any" value="${esc(ui.target)}"></div>
-          <div class="field"><label>Единица выхода</label><input value="л" disabled></div>
-          ${!Number(r?.yield)?`<div class="field full"><label for="calcBase">Исходный объём для этого расчёта, л</label><input id="calcBase" type="number" inputmode="decimal" min="0.001" step="any" value="${esc(ui.baseYield??'')}" placeholder="Сколько готового продукта даёт указанный состав"><span class="tiny muted">Не изменяет выход в технологической карте.</span></div>`:''}
-        </div>
+        ${recipes.length?`<div class="form-grid"><div class="field full"><label for="calcRecipe">Технология</label><select id="calcRecipe">${recipeOptions(r?.id)}</select></div></div>
+        ${calculationControls(r,ui,'calc')}
+        <p id="calcSummary" class="tiny muted" aria-live="polite"></p>
         <div class="divider"></div>
         <div class="notice">База техкарты: ${Number(r?.yield)?fmtNum(r.yield)+' л':'выход не указан'} · срок годности: ${fmtNum(r?.shelfLifeDays,0)} дн. ${latestVersionHint(r)}</div>
         <div id="calcWarning" class="notice warn" ${canCalculate()?'hidden':''}>Укажите исходный и нужный объём; в составе должны быть ингредиенты с положительным количеством и единицей.</div>
@@ -191,15 +228,14 @@ function renderCalculator(){
     </div>`;
   $('#modeRequest').onclick=()=>{calcMode='request';renderCalculator()}; $('#modeProduction').onclick=()=>{calcMode='production';renderCalculator()};
   if(!recipes.length)return;
-  $('#calcRecipe').onchange=e=>{ui.recipeId=e.target.value;ui.baseYield=null;renderCalculator()};
+  $('#calcRecipe').onchange=e=>{ui.recipeId=e.target.value;ui.baseYield=null;ui.ingredientIndex=0;const item=selectedRecipe()?.ingredients?.[0];ui.ingredientAmount=String(item?.amount??'');ui.ingredientUnit=item?.unit||'';renderCalculator()};
   const refreshCalculation=()=>{
     const updated=calcRows();$('.calc-result').innerHTML=updated.map(x=>`<div class="calc-row"><span class="name">${esc(x.name)}</span><span class="qty">${fmtNum(x.amount,4)} ${esc(x.unit)}</span><span class="cost">${x.cost?fmtMoney(x.amount*x.cost):'цена не задана'}</span></div>`).join('');
-    $('#calcCost').textContent=fmtMoney(totalCost(updated));$('#calcWarning').hidden=canCalculate();
-    for(const id of ['addRequest','savePlan','finishBatch'])if($('#'+id))$('#'+id).disabled=!canCalculate();
-    if(calcMode==='production')$('.soft-card').innerHTML=`<h2>Что произойдёт после приготовления</h2>${renderProductionExplanation(r,updated)}`;
+    const result=calculationResult();$('#calcCost').textContent=fmtMoney(totalCost(updated));$('#calcWarning').hidden=result.valid;$('#calcWarning').textContent=result.error;$('#calcSummary').innerHTML=calculationSummary(r,ui,result);
+    for(const id of ['addRequest','savePlan','finishBatch'])if($('#'+id))$('#'+id).disabled=!result.valid||(id!=='addRequest'&&!(result.targetYield>0));
+    if(calcMode==='production')$('.soft-card').innerHTML=`<h2>Что произойдёт после приготовления</h2>${result.valid?renderProductionExplanation(r,updated):'<div class="notice">Заполните данные для расчёта состава и проверки склада.</div>'}`;
   };
-  $('#calcTarget').oninput=e=>{ui.target=Number(e.target.value);refreshCalculation();};
-  if($('#calcBase'))$('#calcBase').oninput=e=>{ui.baseYield=Number(e.target.value);refreshCalculation();};
+  bindCalculationControls(r,ui,'calc',refreshCalculation,renderCalculator);
   $$('[data-latest-version]').forEach(b=>b.onclick=()=>useStatVersion(b.dataset.latestVersion));
   if(calcMode==='request')$('#addRequest').onclick=addToRequest;
   else {$('#savePlan').onclick=savePlan;$('#finishBatch').onclick=()=>{if(canCalculate())openFinishBatch(calculationRecipe(),calcRows());};}
@@ -223,9 +259,10 @@ async function addToRequest(){
   const saved=await commitStateChange(()=>{const req=ensureCurrentRequisition(),old=structuredClone(req.items);req.items=aggregateIngredients([...req.items,...added]);req.updatedAt=nowISO();if(req.status==='confirmed'){state.stock=reconcileConfirmedRequisition(state.stock,req.appliedItems||old,req.items);req.appliedItems=structuredClone(req.items);}});
   if(saved){toast('Добавлено в недельную заявку');if(route==='calculator')renderCalculator();}
 }
-async function savePlan(){if(!canCalculate()){toast('Заполните состав и исходный объём для расчёта','error');return;}const r=calculationRecipe(),plan={id:uid(),recipeId:r.id,name:r.name,targetYield:ui.target,baseYield:r.yield,ingredients:calcRows(),createdAt:nowISO(),status:'planned'};if(await commitStateChange(()=>state.plans.unshift(plan)))toast('План постановки сохранён');}
+async function savePlan(){const result=calculationResult();if(!result.valid||!(result.targetYield>0)){toast('Проверьте состав и укажите исходный выход для плана','error');return;}const r=calculationRecipe(),plan={id:uid(),recipeId:r.id,name:r.name,targetYield:result.targetYield,baseYield:r.yield,ingredients:result.rows,createdAt:nowISO(),status:'planned'};if(await commitStateChange(()=>state.plans.unshift(plan)))toast('План постановки сохранён');}
 function openFinishBatch(recipe,ingredients){
-  const target=Number(ui.target);
+  const target=calculationResult().targetYield;
+  if(!(target>0)){toast('Укажите исходный выход для создания партии','error');return;}
   modal(`<div class="section-head"><h2>Зафиксировать приготовление</h2><button class="icon-btn" id="closeM">×</button></div><p class="muted tiny">Проверьте фактически использованную раскладку. Именно она сохранится как последняя версия технологии и спишется со склада.</p><div class="form-grid"><div class="field"><label>Плановый объём, л</label><input id="batchTarget" type="number" value="${esc(target)}" disabled></div><div class="field"><label>Фактический выход, л</label><input id="batchActual" type="number" min="0.001" step="any" value="${esc(target)}"></div><div class="field"><label>Срок годности, дней</label><input id="batchShelf" type="number" min="0" step="1" value="${esc(recipe.shelfLifeDays??'')}"></div><div class="field"><label>Дата приготовления</label><input id="batchDate" type="datetime-local" value="${localDateTime()}"></div><div class="field full"><label>Фактическая раскладка — название | количество | единица | цена</label><textarea id="batchLines" style="min-height:180px">${esc(ingredients.map(i=>`${i.name} | ${i.amount} | ${i.unit} | ${i.cost||0}`).join('\n'))}</textarea></div><div class="field full"><label>Комментарий / изменение технологии</label><textarea id="batchNote" placeholder="Например: сахар уменьшен на 5%"></textarea></div></div><div class="divider"></div><div class="actions"><button class="primary" id="batchSave">Сохранить партию</button><button class="soft" id="closeM2">Отмена</button></div>`);
   $('#closeM').onclick=$('#closeM2').onclick=closeModal;
   $('#batchSave').onclick=async()=>{
@@ -276,7 +313,7 @@ function renderPlans(){
   $('#content').innerHTML=`<div class="grid two"><section class="card"><div class="section-head"><h2>Стоп-лист сейчас</h2><span class="pill burg">${stops.length}</span></div>${stops.length?`<div class="list">${stops.map(s=>`<div class="list-item"><div class="list-main"><div class="list-title">${esc(s.name)}</div><div class="list-sub">в стопе с ${fmtDate(s.since)}</div></div><button class="soft" data-unstop="${esc(s.id)}">Снять со стопа</button></div>`).join('')}</div>`:`<div class="empty">Сейчас стопов нет.</div>`}</section><section class="card"><div class="section-head"><h2>Временные планы постановок</h2><span class="pill olive">${plans.length}</span></div>${plans.length?`<div class="list">${plans.map(p=>`<div class="list-item"><div class="list-main"><div class="list-title">${esc(p.name)}</div><div class="list-sub">${fmtNum(p.targetYield)} л · ${fmtDate(p.createdAt)}</div></div><div class="list-side"><button class="soft" data-openplan="${esc(p.id)}">Открыть</button><button class="icon-btn" data-delplan="${esc(p.id)}">×</button></div></div>`).join('')}</div>`:`<div class="empty">Сохранённые расчёты постановок появятся здесь.</div>`}</section></div>`;
   $$('[data-unstop]').forEach(b=>b.onclick=async()=>{if(await commitStateChange(()=>{state.stopList=state.stopList.filter(s=>s.id!==b.dataset.unstop);}))render();});
   $$('[data-delplan]').forEach(b=>b.onclick=async()=>{if(await commitStateChange(()=>{state.plans=state.plans.filter(p=>p.id!==b.dataset.delplan);}))render();});
-  $$('[data-openplan]').forEach(b=>b.onclick=()=>{const p=state.plans.find(x=>x.id===b.dataset.openplan),recipe=state.recipes.find(r=>r.id===p?.recipeId);if(!p||!recipe||recipe.archived){toast(recipe?.archived?'ТК этого плана в архиве. Верните её в актуальные карты перед открытием плана.':'ТК этого плана не найдена. План сохранён; выберите или восстановите нужную карту.','error');return;}ui.recipeId=recipe.id;ui.target=p.targetYield;ui.baseYield=p.baseYield??null;calcMode='production';setRoute('calculator');});
+  $$('[data-openplan]').forEach(b=>b.onclick=()=>{const p=state.plans.find(x=>x.id===b.dataset.openplan),recipe=state.recipes.find(r=>r.id===p?.recipeId);if(!p||!recipe||recipe.archived){toast(recipe?.archived?'ТК этого плана в архиве. Верните её в актуальные карты перед открытием плана.':'ТК этого плана не найдена. План сохранён; выберите или восстановите нужную карту.','error');return;}ui.recipeId=recipe.id;ui.target=p.targetYield;ui.baseYield=p.baseYield??null;ui.basis='yield';calcMode='production';setRoute('calculator');});
 }
 
 function renderRecipes(){
@@ -422,18 +459,17 @@ async function deleteRecipe(id){
 }
 function recipeCalculationModal(id){
   const recipe=state.recipes.find(r=>r.id===id);if(!recipe)return;
+  const values={basis:'yield',target:Number(recipe.yield)>0?Number(recipe.yield):1,baseYield:null,ingredientIndex:0,ingredientAmount:'',ingredientUnit:''};
   modal(`<div class="section-head"><h2>Рассчитать: ${esc(recipe.name)}</h2><button class="icon-btn" id="closeM" aria-label="Закрыть">×</button></div><p class="tiny muted">Расчёт временный. Состав, процесс и выход исходной карточки сохраняются.</p>
-    <div class="form-grid"><div class="field"><label for="recipeCalcTarget">Нужный объём, л</label><input id="recipeCalcTarget" type="number" min=".001" step="any" inputmode="decimal" value="${esc(Number(recipe.yield)>0?recipe.yield:1)}"></div>${Number(recipe.yield)>0?`<div class="field"><label>Базовый выход карты</label><div class="recipe-base-value">${fmtNum(recipe.yield)} л</div></div>`:`<div class="field"><label for="recipeCalcBase">На какой объём рассчитан исходный состав, л</label><input id="recipeCalcBase" type="number" min=".001" step="any" inputmode="decimal" placeholder="Укажите для этого расчёта"></div>`}</div>
-    <div class="divider"></div><div id="recipeCalcResult" aria-live="polite"></div><div class="actions"><button class="soft" id="closeM2">Закрыть</button></div>`);
+    <div id="recipeCalcControls">${calculationControls(recipe,values,'recipeCalc')}</div><div class="divider"></div><div id="recipeCalcResult" aria-live="polite"></div><div class="actions"><button class="soft" id="closeM2">Закрыть</button></div>`);
   const calculate=()=>{
-    const target=Number($('#recipeCalcTarget').value),base=Number(recipe.yield)>0?Number(recipe.yield):Number($('#recipeCalcBase').value);
-    if(!recipe.ingredients?.length){$('#recipeCalcResult').innerHTML='<div class="notice warn">В карточке пока нет состава. Добавьте ингредиенты, чтобы рассчитать количество.</div>';return;}
-    if(!(target>0)||!(base>0)||!Number.isFinite(target)||!Number.isFinite(base)){$('#recipeCalcResult').innerHTML='<div class="notice">Укажите нужный объём и исходный выход, чтобы получить расчёт.</div>';return;}
-    const factor=target/base;const rows=recipe.ingredients.map(i=>({...i,amount:Number(i.amount)*factor}));
-    if(rows.some(i=>!i.name||!i.unit||!Number.isFinite(i.amount)||i.amount<=0)){$('#recipeCalcResult').innerHTML='<div class="notice warn">Проверьте состав: каждому ингредиенту нужно положительное количество и единица измерения.</div>';return;}
-    $('#recipeCalcResult').innerHTML=`<h3>Состав на ${fmtNum(target,4)} л</h3>${recipeCompositionHTML(rows)}<h3>Процесс приготовления</h3><div class="recipe-process">${esc(scaleProcess(recipe.process||'',factor)||'Процесс ещё не добавлен.')}</div>${recipe.unparsedText?`<div class="notice warn"><b>Дополнительный текст не пересчитан — проверьте вручную</b><div class="recipe-process">${esc(recipe.unparsedText)}</div></div>`:''}<p class="tiny muted">Количество масштабировано в ${fmtNum(factor,4)} раза. Время, температура и проценты остаются прежними.</p>`;
+    const result=calculationFor(recipe,values);
+    if(!result.valid){$('#recipeCalcResult').innerHTML=`<div class="notice warn">${esc(result.error)}</div>`;return;}
+    const {rows,factor,targetYield:target}=result;
+    $('#recipeCalcResult').innerHTML=`<p class="tiny muted">${calculationSummary(recipe,values,result)}</p><h3>${target>0?`Состав на ${fmtNum(target,4)} л`:'Состав по количеству ингредиента'}</h3>${recipeCompositionHTML(rows)}<h3>Процесс приготовления</h3><div class="recipe-process">${esc(scaleProcess(recipe.process||'',factor)||'Процесс ещё не добавлен.')}</div>${recipe.unparsedText?`<div class="notice warn"><b>Дополнительный текст не пересчитан — проверьте вручную</b><div class="recipe-process">${esc(recipe.unparsedText)}</div></div>`:''}<p class="tiny muted">Количество масштабировано в ${fmtNum(factor,4)} раза. Время, температура и проценты остаются прежними.</p>`;
   };
-  $('#recipeCalcTarget').oninput=calculate;if($('#recipeCalcBase'))$('#recipeCalcBase').oninput=calculate;$('#closeM').onclick=$('#closeM2').onclick=closeModal;calculate();
+  const renderControls=()=>{$('#recipeCalcControls').innerHTML=calculationControls(recipe,values,'recipeCalc');bindCalculationControls(recipe,values,'recipeCalc',calculate,renderControls);calculate();};
+  $('#closeM').onclick=$('#closeM2').onclick=closeModal;renderControls();
 }
 function exportRecipes(){
   const blob=new Blob([JSON.stringify({format:'tincture-lab-recipes',version:2,exportedAt:nowISO(),recipes:state.recipes},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`tincture-lab-recipes-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(`Выгружено ТК: ${state.recipes.length}, включая архив и незаполненные карты`);
@@ -495,7 +531,7 @@ function renderStats(){
   $('#content').innerHTML=`<div class="grid four"><div class="card metric"><span class="label">Постановок</span><div class="value">${prod.length}</div></div><div class="card metric"><span class="label">Произведено</span><div class="value">${fmtNum(prod.reduce((s,x)=>s+Number(x.actualYield||0),0))} л</div></div><div class="card metric"><span class="label">Стопов</span><div class="value">${stops.length}</div></div><div class="card metric"><span class="label">Технологий</span><div class="value">${state.recipes.length}</div></div></div><div style="height:18px"></div><div class="grid two"><section class="card"><h2>Последние объёмы</h2>${recent.length?`<div class="chart-bars">${recent.map(x=>`<div class="chart-bar" style="height:${Math.max(4,Number(x.actualYield||0)/max*100)}%" title="${esc(x.name)} — ${fmtNum(x.actualYield)} л"><span>${fmtDate(x.createdAt).slice(0,6)}</span></div>`).join('')}</div>`:`<div class="empty">Нет данных</div>`}</section><section class="card"><h2>Как быстро заканчивается</h2>${speed.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Настойка</th><th>Стопов</th><th>Среднее</th><th>Темп</th></tr></thead><tbody>${speed.map(x=>`<tr><td class="row-title">${esc(x.name)}</td><td>${x.count}</td><td>${fmtNum(x.avgDays,1)} дн.</td><td>${fmtNum(x.avgPerDay,2)} л/день</td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">Темп появится после первых стопов.</div>`}</section></div><div style="height:18px"></div><section class="card"><h2>История производства</h2>${prod.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Дата</th><th>Продукт</th><th>План</th><th>Факт</th><th>Версия</th></tr></thead><tbody>${prod.map(x=>`<tr><td>${fmtDate(x.createdAt)}</td><td class="row-title">${esc(x.name)}</td><td>${fmtNum(x.targetYield)} л</td><td>${fmtNum(x.actualYield)} л</td><td><button class="soft" data-use-version="${esc(x.id)}">Использовать</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">История заполнится после первого приготовления.</div>`}</section>`;
   $$('[data-use-version]').forEach(b=>b.onclick=()=>useStatVersion(b.dataset.useVersion));
 }
-async function useStatVersion(id){const s=state.stats.find(x=>x.id===id);if(!s?.recipeSnapshot)return;const r=state.recipes.find(x=>x.id===s.recipeId);if(!r||r.archived){toast('Сначала верните технологическую карту из архива.','error');return;}if(await commitStateChange(()=>{const recipe=state.recipes.find(x=>x.id===s.recipeId);recipe.ingredients=structuredClone(s.recipeSnapshot.ingredients||[]);recipe.ingredientsText=recipeIngredientText(recipe.ingredients);recipe.yield=s.recipeSnapshot.yield??recipe.yield;recipe.shelfLifeDays=s.recipeSnapshot.shelfLifeDays??recipe.shelfLifeDays;Object.assign(recipe,classifyRecipe(recipe));recipe.updatedAt=nowISO();},'Не удалось подставить фактическую версию. Карта не изменена.')){ui.recipeId=r.id;ui.baseYield=null;calcMode='production';toast('Последняя фактическая версия подставлена');setRoute('calculator');}}
+async function useStatVersion(id){const s=state.stats.find(x=>x.id===id);if(!s?.recipeSnapshot)return;const r=state.recipes.find(x=>x.id===s.recipeId);if(!r||r.archived){toast('Сначала верните технологическую карту из архива.','error');return;}if(await commitStateChange(()=>{const recipe=state.recipes.find(x=>x.id===s.recipeId);recipe.ingredients=structuredClone(s.recipeSnapshot.ingredients||[]);recipe.ingredientsText=recipeIngredientText(recipe.ingredients);recipe.yield=s.recipeSnapshot.yield??recipe.yield;recipe.shelfLifeDays=s.recipeSnapshot.shelfLifeDays??recipe.shelfLifeDays;Object.assign(recipe,classifyRecipe(recipe));recipe.updatedAt=nowISO();},'Не удалось подставить фактическую версию. Карта не изменена.')){ui.recipeId=r.id;ui.baseYield=null;ui.basis='yield';calcMode='production';toast('Последняя фактическая версия подставлена');setRoute('calculator');}}
 
 function noticeRows(){
   const rows=[];for(const b of state.batches.filter(x=>!x.stoppedAt)){const st=expiryStatus(b.expiresAt);if(st.key!=='ok')rows.push({id:`expiry-${b.id}`,type:st.key,title:b.name,sub:st.key==='expired'?`Срок истёк ${fmtDate(b.expiresAt)}`:`До окончания ${Math.max(0,st.days)} дн. · ${fmtDate(b.expiresAt)}`,date:b.expiresAt});}
