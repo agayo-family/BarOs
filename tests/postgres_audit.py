@@ -2,8 +2,12 @@
 from concurrent.futures import ThreadPoolExecutor
 import importlib
 import os
+from pathlib import Path
+import sys
 import unittest
 from urllib.parse import urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 url = os.environ.get('BAROS_POSTGRES_TEST_DATABASE_URL', '')
 parsed = urlparse(url)
