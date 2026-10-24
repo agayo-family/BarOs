@@ -33,7 +33,7 @@ async def lifespan(app):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         migrate(db)
-        for key in ['ai_quota_lock','maintenance_lock']:
+        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock']:
             if not db.get(Setting,key): db.add(Setting(key=key,value=''))
         db.commit()
         from .notifications import ensure_vapid
@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.6.3', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.6.4', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -92,24 +92,22 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.6.3'}
+    return {'status':'ok','service':'baros','version':'2.6.4'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.6.3'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.6.4'}
 
 
 @app.post('/api/auth/setup')
-def setup(data:dict,request:Request,db=Depends(get_db)):
-    require(not db.scalar(select(Account.id).limit(1)),'Владелец уже создан',409)
+def setup(data:SetupIn,request:Request,db=Depends(get_db)):
     rate(db,'setup:'+ip(request),5)
-    require(FIRST_RUN_TOKEN and secrets.compare_digest(str(data.get('token','')),FIRST_RUN_TOKEN),'Неверный ключ первоначальной настройки',403)
-    require(len(str(data.get('password','')))>=12,'Пароль владельца: минимум 12 символов')
-    require(2 <= len(str(data.get('name',''))) <= 160,'Укажите имя')
-    require(3 <= len(str(data.get('login',''))) <= 255,'Укажите логин')
-    a=Account(name=data['name'],login=data['login'].lower(),role='owner',password_hash=hash_password(data['password']))
+    require(FIRST_RUN_TOKEN and secrets.compare_digest(digest(data.token),digest(FIRST_RUN_TOKEN)),'Неверный ключ первоначальной настройки',403)
+    db.execute(select(Setting).where(Setting.key=='auth_setup_lock').with_for_update()).first()
+    require(not db.scalar(select(Account.id).limit(1)),'Владелец уже создан',409)
+    a=Account(name=data.name,login=data.login.lower(),role='owner',password_hash=hash_password(data.password))
     db.add(a); db.flush()
     response=JSONResponse({'ok':True}); make_session(db,response,a); return response
 
@@ -170,7 +168,12 @@ def join(data:JoinIn,request:Request,db=Depends(get_db)):
     db.add(e);db.flush()
     a=Account(organization_id=s.organization_id,employee_id=e.id,login=data.login.lower(),name=data.name,
               role='employee',password_hash=hash_password(data.password),positions_json=dump(pos))
-    db.add(a);db.flush();ensure_enrollments(db,a)
+    db.add(a)
+    try: db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,'Этот логин уже занят') from None
+    ensure_enrollments(db,a)
     log(db,a,s.organization_id,'Сотрудник зарегистрировался')
     response=JSONResponse({'ok':True});make_session(db,response,a);return response
 
@@ -414,6 +417,8 @@ from .games import router as games_router
 from .growth import router as growth_router
 from .mentor import router as mentor_router
 from .packages import router as packages_router
+from .reports import router as reports_router
+app.include_router(reports_router)
 app.include_router(packages_router)
 app.include_router(mentor_router)
 app.include_router(growth_router)

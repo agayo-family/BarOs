@@ -1,5 +1,8 @@
 /* Accessibility and layout corrections; keep the existing BarOS palette. */
 :root{--muted:#696579}
+[hidden]:not([hidden="until-found"]){display:none!important}
+h1[tabindex="-1"]:focus{outline:none}
+.knowledge-gap{padding:14px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}.knowledge-gap summary{cursor:pointer;line-height:1.6}.knowledge-gap summary .badge{margin-inline-start:8px}.knowledge-gap p{font-size:.83rem}
 .sidebar{height:100dvh;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-gutter:stable}
 .sidebar>*{flex-shrink:0}
 .sidebar .workspace strong,.account-strip strong{overflow-wrap:anywhere}
@@ -20,7 +23,7 @@ fieldset.field>.check-group{font-weight:400}
 .route-progress[hidden]{display:none}
 .page-hidden *{animation-play-state:paused!important}
 @keyframes route-loading{from{transform:translateX(-100%)}to{transform:translateX(390%)}}
-@media(max-width:760px){
+@media(max-width:1024px){
  .side-help{display:block}
  .sidebar{max-width:calc(100vw - 40px)}
  .btn,.btn.sm,.btn.text{min-height:44px}
@@ -38,6 +41,8 @@ fieldset.field>.check-group{font-weight:400}
  .modal-head .btn{flex-shrink:0}
 }
 @media(max-width:430px){
+ .page-head .actions .btn{flex:1 1 150px;overflow-wrap:normal;word-break:normal}
+ .tabs button{flex:1 0 auto;overflow-wrap:normal;white-space:nowrap}
  .mobile-brand .brand small{display:none}
  .top-actions>a[aria-label="Профиль"]{display:none}
  .topbar{padding-inline:12px}

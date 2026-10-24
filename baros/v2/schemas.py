@@ -12,6 +12,8 @@ class OwnerRecoveryIn(StrictModel):
     token: str = Field(min_length=1, max_length=512)
     login: str = Field(min_length=3, max_length=255, pattern=r'^[a-zA-Z0-9_.@+\-]+$')
     password: str = Field(min_length=12, max_length=200)
+class SetupIn(OwnerRecoveryIn):
+    name: str = Field(min_length=2, max_length=160)
 class JoinIn(StrictModel):
     code: str = Field(min_length=6, max_length=32)
     name: str = Field(min_length=2, max_length=160)
@@ -90,6 +92,7 @@ class GenerateIn(StrictModel):
     source_ids: list[int] = Field(default_factory=list, max_length=20)
     positions: list[str] = Field(default=['all'], min_length=1, max_length=8)
     interview: bool = False
+    question_target: int | None = Field(default=None, ge=1, le=400)
 class InterviewIn(StrictModel):
     venue_type: str = Field(min_length=2, max_length=200)
     concept: str = Field(min_length=10, max_length=5000)

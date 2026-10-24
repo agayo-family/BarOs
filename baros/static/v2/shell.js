@@ -3,8 +3,8 @@ export function mountShell(){
  const sidebar=document.querySelector('#sidebar'),menu=document.querySelector('#mobile-menu'),overlay=document.querySelector('#mobile-overlay');
  const main=document.querySelector('.shell-main'),bottom=document.querySelector('.bottom-nav');
  if(!sidebar)return ()=>{};
- const media=window.matchMedia?.('(max-width: 760px)');
- const mobile=()=>media?.matches??window.innerWidth<=760;
+ const media=window.matchMedia?.('(max-width: 1024px)');
+ const mobile=()=>media?.matches??window.innerWidth<=1024;
  let opened=false,previous=null,oldOverflow='';
  const inert=(node,value)=>{if(node){node.inert=value;node.toggleAttribute('inert',value)}};
  function close(restore=false){

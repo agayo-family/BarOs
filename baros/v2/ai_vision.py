@@ -110,6 +110,8 @@ async def augment(job_id, token, cp, context, save):
             if source and source.content and hashlib.sha256(source.content).hexdigest() == snapshot and source.text == old_text:
                 source.text = text; source.extraction_status = 'ready'
                 source.warning = 'Распознано AI. Проверьте названия, числа и единицы.'+(' Неясности: '+'; '.join(warnings)[:350] if warnings else '')
+                from .source_review import fingerprint
+                cp.setdefault('source_fingerprints',{})[str(sid)]=fingerprint(source)
             job = db.get(Job, job_id)
             if job.lease_token != token: raise ValueError('Задача передана другому процессу')
             job.context = context

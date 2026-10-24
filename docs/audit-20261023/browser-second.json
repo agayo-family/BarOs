@@ -1,0 +1,2144 @@
+{
+  "screens": 267,
+  "errors": [],
+  "server_failures": [],
+  "layout_issues": [],
+  "details": [
+    {
+      "name": "employee-home-360-light",
+      "path": "/app",
+      "width": 360,
+      "scroll": 360,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-360-light",
+      "path": "/app/learning",
+      "width": 360,
+      "scroll": 360,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-360-light",
+      "path": "/app/learn/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-360-light",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 360,
+      "scroll": 360,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-360-light",
+      "path": "/app/cards/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-360-light",
+      "path": "/app/games/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-360-light",
+      "path": "/app/mentor",
+      "width": 360,
+      "scroll": 360,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-360-light",
+      "path": "/app/shifts",
+      "width": 360,
+      "scroll": 360,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-360-light",
+      "path": "/app/history",
+      "width": 360,
+      "scroll": 360,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-360-light",
+      "path": "/app/notices",
+      "width": 360,
+      "scroll": 360,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-360-light",
+      "path": "/app/profile",
+      "width": 360,
+      "scroll": 360,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-360-light",
+      "path": "/app/settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-360-light",
+      "path": "/app/assessments",
+      "width": 360,
+      "scroll": 360,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-home-360-dark",
+      "path": "/app",
+      "width": 360,
+      "scroll": 360,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-360-dark",
+      "path": "/app/learning",
+      "width": 360,
+      "scroll": 360,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-360-dark",
+      "path": "/app/learn/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-360-dark",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 360,
+      "scroll": 360,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-360-dark",
+      "path": "/app/cards/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-360-dark",
+      "path": "/app/games/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-360-dark",
+      "path": "/app/mentor",
+      "width": 360,
+      "scroll": 360,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-360-dark",
+      "path": "/app/shifts",
+      "width": 360,
+      "scroll": 360,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-360-dark",
+      "path": "/app/history",
+      "width": 360,
+      "scroll": 360,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-360-dark",
+      "path": "/app/notices",
+      "width": 360,
+      "scroll": 360,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-360-dark",
+      "path": "/app/profile",
+      "width": 360,
+      "scroll": 360,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-360-dark",
+      "path": "/app/settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-360-dark",
+      "path": "/app/assessments",
+      "width": 360,
+      "scroll": 360,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-home-390-light",
+      "path": "/app",
+      "width": 390,
+      "scroll": 390,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-390-light",
+      "path": "/app/learning",
+      "width": 390,
+      "scroll": 390,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-390-light",
+      "path": "/app/learn/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-390-light",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 390,
+      "scroll": 390,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-390-light",
+      "path": "/app/cards/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-390-light",
+      "path": "/app/games/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-390-light",
+      "path": "/app/mentor",
+      "width": 390,
+      "scroll": 390,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-390-light",
+      "path": "/app/shifts",
+      "width": 390,
+      "scroll": 390,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-390-light",
+      "path": "/app/history",
+      "width": 390,
+      "scroll": 390,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-390-light",
+      "path": "/app/notices",
+      "width": 390,
+      "scroll": 390,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-390-light",
+      "path": "/app/profile",
+      "width": 390,
+      "scroll": 390,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-390-light",
+      "path": "/app/settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-390-light",
+      "path": "/app/assessments",
+      "width": 390,
+      "scroll": 390,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-home-390-dark",
+      "path": "/app",
+      "width": 390,
+      "scroll": 390,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-390-dark",
+      "path": "/app/learning",
+      "width": 390,
+      "scroll": 390,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-390-dark",
+      "path": "/app/learn/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-390-dark",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 390,
+      "scroll": 390,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-390-dark",
+      "path": "/app/cards/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-390-dark",
+      "path": "/app/games/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-390-dark",
+      "path": "/app/mentor",
+      "width": 390,
+      "scroll": 390,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-390-dark",
+      "path": "/app/shifts",
+      "width": 390,
+      "scroll": 390,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-390-dark",
+      "path": "/app/history",
+      "width": 390,
+      "scroll": 390,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-390-dark",
+      "path": "/app/notices",
+      "width": 390,
+      "scroll": 390,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-390-dark",
+      "path": "/app/profile",
+      "width": 390,
+      "scroll": 390,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-390-dark",
+      "path": "/app/settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-390-dark",
+      "path": "/app/assessments",
+      "width": 390,
+      "scroll": 390,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-home-768-light",
+      "path": "/app",
+      "width": 768,
+      "scroll": 768,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-768-light",
+      "path": "/app/learning",
+      "width": 768,
+      "scroll": 768,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-768-light",
+      "path": "/app/learn/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-768-light",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 768,
+      "scroll": 768,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-768-light",
+      "path": "/app/cards/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-768-light",
+      "path": "/app/games/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-768-light",
+      "path": "/app/mentor",
+      "width": 768,
+      "scroll": 768,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-768-light",
+      "path": "/app/shifts",
+      "width": 768,
+      "scroll": 768,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-768-light",
+      "path": "/app/history",
+      "width": 768,
+      "scroll": 768,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-768-light",
+      "path": "/app/notices",
+      "width": 768,
+      "scroll": 768,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-768-light",
+      "path": "/app/profile",
+      "width": 768,
+      "scroll": 768,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-768-light",
+      "path": "/app/settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-768-light",
+      "path": "/app/assessments",
+      "width": 768,
+      "scroll": 768,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-home-768-dark",
+      "path": "/app",
+      "width": 768,
+      "scroll": 768,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-768-dark",
+      "path": "/app/learning",
+      "width": 768,
+      "scroll": 768,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-768-dark",
+      "path": "/app/learn/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-768-dark",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 768,
+      "scroll": 768,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-768-dark",
+      "path": "/app/cards/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-768-dark",
+      "path": "/app/games/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-768-dark",
+      "path": "/app/mentor",
+      "width": 768,
+      "scroll": 768,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-768-dark",
+      "path": "/app/shifts",
+      "width": 768,
+      "scroll": 768,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-768-dark",
+      "path": "/app/history",
+      "width": 768,
+      "scroll": 768,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-768-dark",
+      "path": "/app/notices",
+      "width": 768,
+      "scroll": 768,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-768-dark",
+      "path": "/app/profile",
+      "width": 768,
+      "scroll": 768,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-768-dark",
+      "path": "/app/settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-768-dark",
+      "path": "/app/assessments",
+      "width": 768,
+      "scroll": 768,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-home-1440-light",
+      "path": "/app",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-1440-light",
+      "path": "/app/learning",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-1440-light",
+      "path": "/app/learn/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-1440-light",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-1440-light",
+      "path": "/app/cards/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-1440-light",
+      "path": "/app/games/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-1440-light",
+      "path": "/app/mentor",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-1440-light",
+      "path": "/app/shifts",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-1440-light",
+      "path": "/app/history",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-1440-light",
+      "path": "/app/notices",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-1440-light",
+      "path": "/app/profile",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-1440-light",
+      "path": "/app/settings",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-1440-light",
+      "path": "/app/assessments",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-home-1440-dark",
+      "path": "/app",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Привет, Сотрудник!",
+      "overflow": []
+    },
+    {
+      "name": "employee-learning-1440-dark",
+      "path": "/app/learning",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Моё обучение",
+      "overflow": []
+    },
+    {
+      "name": "employee-lesson-1440-dark",
+      "path": "/app/learn/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-exam-1440-dark",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Проверка знаний",
+      "overflow": []
+    },
+    {
+      "name": "employee-cards-1440-dark",
+      "path": "/app/cards/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-games-1440-dark",
+      "path": "/app/games/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "employee-mentor-1440-dark",
+      "path": "/app/mentor",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Питомец-наставник",
+      "overflow": []
+    },
+    {
+      "name": "employee-shifts-1440-dark",
+      "path": "/app/shifts",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Смены и заработок",
+      "overflow": []
+    },
+    {
+      "name": "employee-history-1440-dark",
+      "path": "/app/history",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Мои результаты",
+      "overflow": []
+    },
+    {
+      "name": "employee-notices-1440-dark",
+      "path": "/app/notices",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Уведомления",
+      "overflow": []
+    },
+    {
+      "name": "employee-profile-1440-dark",
+      "path": "/app/profile",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Мой профиль",
+      "overflow": []
+    },
+    {
+      "name": "employee-settings-1440-dark",
+      "path": "/app/settings",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "employee-assessments-1440-dark",
+      "path": "/app/assessments",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Тесты из файла",
+      "overflow": []
+    },
+    {
+      "name": "employee-written-390-light",
+      "path": "/app/assessment-attempts/[synthetic-attempt]",
+      "width": 390,
+      "scroll": 390,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "employee-result-1440-light",
+      "path": "/app/exam/[synthetic-attempt]",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Есть что повторить",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-360-light",
+      "path": "/app",
+      "width": 360,
+      "scroll": 360,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-360-light",
+      "path": "/app/courses",
+      "width": 360,
+      "scroll": 360,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-360-light",
+      "path": "/app/courses/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-360-light",
+      "path": "/app/assessments/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-360-light",
+      "path": "/app/assessments/1/edit",
+      "width": 360,
+      "scroll": 360,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-360-light",
+      "path": "/app/staff",
+      "width": 360,
+      "scroll": 360,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-360-light",
+      "path": "/app/sources",
+      "width": 360,
+      "scroll": 360,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-360-light",
+      "path": "/app/reports",
+      "width": 360,
+      "scroll": 360,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-360-light",
+      "path": "/app/ai",
+      "width": 360,
+      "scroll": 360,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-360-light",
+      "path": "/app/interview",
+      "width": 360,
+      "scroll": 360,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-360-light",
+      "path": "/app/venues",
+      "width": 360,
+      "scroll": 360,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-360-light",
+      "path": "/app/settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-360-dark",
+      "path": "/app",
+      "width": 360,
+      "scroll": 360,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-360-dark",
+      "path": "/app/courses",
+      "width": 360,
+      "scroll": 360,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-360-dark",
+      "path": "/app/courses/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-360-dark",
+      "path": "/app/assessments/1",
+      "width": 360,
+      "scroll": 360,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-360-dark",
+      "path": "/app/assessments/1/edit",
+      "width": 360,
+      "scroll": 360,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-360-dark",
+      "path": "/app/staff",
+      "width": 360,
+      "scroll": 360,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-360-dark",
+      "path": "/app/sources",
+      "width": 360,
+      "scroll": 360,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-360-dark",
+      "path": "/app/reports",
+      "width": 360,
+      "scroll": 360,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-360-dark",
+      "path": "/app/ai",
+      "width": 360,
+      "scroll": 360,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-360-dark",
+      "path": "/app/interview",
+      "width": 360,
+      "scroll": 360,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-360-dark",
+      "path": "/app/venues",
+      "width": 360,
+      "scroll": 360,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-360-dark",
+      "path": "/app/settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-390-light",
+      "path": "/app",
+      "width": 390,
+      "scroll": 390,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-390-light",
+      "path": "/app/courses",
+      "width": 390,
+      "scroll": 390,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-390-light",
+      "path": "/app/courses/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-390-light",
+      "path": "/app/assessments/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-390-light",
+      "path": "/app/assessments/1/edit",
+      "width": 390,
+      "scroll": 390,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-390-light",
+      "path": "/app/staff",
+      "width": 390,
+      "scroll": 390,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-390-light",
+      "path": "/app/sources",
+      "width": 390,
+      "scroll": 390,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-390-light",
+      "path": "/app/reports",
+      "width": 390,
+      "scroll": 390,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-390-light",
+      "path": "/app/ai",
+      "width": 390,
+      "scroll": 390,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-390-light",
+      "path": "/app/interview",
+      "width": 390,
+      "scroll": 390,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-390-light",
+      "path": "/app/venues",
+      "width": 390,
+      "scroll": 390,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-390-light",
+      "path": "/app/settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-390-dark",
+      "path": "/app",
+      "width": 390,
+      "scroll": 390,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-390-dark",
+      "path": "/app/courses",
+      "width": 390,
+      "scroll": 390,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-390-dark",
+      "path": "/app/courses/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-390-dark",
+      "path": "/app/assessments/1",
+      "width": 390,
+      "scroll": 390,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-390-dark",
+      "path": "/app/assessments/1/edit",
+      "width": 390,
+      "scroll": 390,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-390-dark",
+      "path": "/app/staff",
+      "width": 390,
+      "scroll": 390,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-390-dark",
+      "path": "/app/sources",
+      "width": 390,
+      "scroll": 390,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-390-dark",
+      "path": "/app/reports",
+      "width": 390,
+      "scroll": 390,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-390-dark",
+      "path": "/app/ai",
+      "width": 390,
+      "scroll": 390,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-390-dark",
+      "path": "/app/interview",
+      "width": 390,
+      "scroll": 390,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-390-dark",
+      "path": "/app/venues",
+      "width": 390,
+      "scroll": 390,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-390-dark",
+      "path": "/app/settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-768-light",
+      "path": "/app",
+      "width": 768,
+      "scroll": 768,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-768-light",
+      "path": "/app/courses",
+      "width": 768,
+      "scroll": 768,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-768-light",
+      "path": "/app/courses/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-768-light",
+      "path": "/app/assessments/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-768-light",
+      "path": "/app/assessments/1/edit",
+      "width": 768,
+      "scroll": 768,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-768-light",
+      "path": "/app/staff",
+      "width": 768,
+      "scroll": 768,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-768-light",
+      "path": "/app/sources",
+      "width": 768,
+      "scroll": 768,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-768-light",
+      "path": "/app/reports",
+      "width": 768,
+      "scroll": 768,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-768-light",
+      "path": "/app/ai",
+      "width": 768,
+      "scroll": 768,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-768-light",
+      "path": "/app/interview",
+      "width": 768,
+      "scroll": 768,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-768-light",
+      "path": "/app/venues",
+      "width": 768,
+      "scroll": 768,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-768-light",
+      "path": "/app/settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-768-dark",
+      "path": "/app",
+      "width": 768,
+      "scroll": 768,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-768-dark",
+      "path": "/app/courses",
+      "width": 768,
+      "scroll": 768,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-768-dark",
+      "path": "/app/courses/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-768-dark",
+      "path": "/app/assessments/1",
+      "width": 768,
+      "scroll": 768,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-768-dark",
+      "path": "/app/assessments/1/edit",
+      "width": 768,
+      "scroll": 768,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-768-dark",
+      "path": "/app/staff",
+      "width": 768,
+      "scroll": 768,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-768-dark",
+      "path": "/app/sources",
+      "width": 768,
+      "scroll": 768,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-768-dark",
+      "path": "/app/reports",
+      "width": 768,
+      "scroll": 768,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-768-dark",
+      "path": "/app/ai",
+      "width": 768,
+      "scroll": 768,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-768-dark",
+      "path": "/app/interview",
+      "width": 768,
+      "scroll": 768,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-768-dark",
+      "path": "/app/venues",
+      "width": 768,
+      "scroll": 768,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-768-dark",
+      "path": "/app/settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-1440-light",
+      "path": "/app",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-1440-light",
+      "path": "/app/courses",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-1440-light",
+      "path": "/app/courses/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-1440-light",
+      "path": "/app/assessments/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-1440-light",
+      "path": "/app/assessments/1/edit",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-1440-light",
+      "path": "/app/staff",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-1440-light",
+      "path": "/app/sources",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-1440-light",
+      "path": "/app/reports",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-1440-light",
+      "path": "/app/ai",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-1440-light",
+      "path": "/app/interview",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-1440-light",
+      "path": "/app/venues",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-1440-light",
+      "path": "/app/settings",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "manager-overview-1440-dark",
+      "path": "/app",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "manager-courses-1440-dark",
+      "path": "/app/courses",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Академия заведения",
+      "overflow": []
+    },
+    {
+      "name": "manager-editor-1440-dark",
+      "path": "/app/courses/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Барная карта: стандарты подачи и коммуникация с гостем",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-1440-dark",
+      "path": "/app/assessments/1",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Письменная аттестация: знания и проект R&D",
+      "overflow": []
+    },
+    {
+      "name": "manager-assessment-editor-1440-dark",
+      "path": "/app/assessments/1/edit",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Редактирование теста",
+      "overflow": []
+    },
+    {
+      "name": "manager-staff-1440-dark",
+      "path": "/app/staff",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Ваша команда",
+      "overflow": []
+    },
+    {
+      "name": "manager-sources-1440-dark",
+      "path": "/app/sources",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "База знаний",
+      "overflow": []
+    },
+    {
+      "name": "manager-reports-1440-dark",
+      "path": "/app/reports",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Аналитика обучения",
+      "overflow": []
+    },
+    {
+      "name": "manager-ai-1440-dark",
+      "path": "/app/ai",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "AI-методист",
+      "overflow": []
+    },
+    {
+      "name": "manager-interview-1440-dark",
+      "path": "/app/interview",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Знакомство с заведением",
+      "overflow": []
+    },
+    {
+      "name": "manager-venue-settings-1440-dark",
+      "path": "/app/venues",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Академия бара: проверка длинных названий и стандартов сервиса",
+      "overflow": []
+    },
+    {
+      "name": "manager-settings-1440-dark",
+      "path": "/app/settings",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-360-light",
+      "path": "/app",
+      "width": 360,
+      "scroll": 360,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-360-light",
+      "path": "/app/venues",
+      "width": 360,
+      "scroll": 360,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-360-light",
+      "path": "/app/audit",
+      "width": 360,
+      "scroll": 360,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-360-light",
+      "path": "/app/settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-360-dark",
+      "path": "/app",
+      "width": 360,
+      "scroll": 360,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-360-dark",
+      "path": "/app/venues",
+      "width": 360,
+      "scroll": 360,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-360-dark",
+      "path": "/app/audit",
+      "width": 360,
+      "scroll": 360,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-360-dark",
+      "path": "/app/settings",
+      "width": 360,
+      "scroll": 360,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-390-light",
+      "path": "/app",
+      "width": 390,
+      "scroll": 390,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-390-light",
+      "path": "/app/venues",
+      "width": 390,
+      "scroll": 390,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-390-light",
+      "path": "/app/audit",
+      "width": 390,
+      "scroll": 390,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-390-light",
+      "path": "/app/settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-390-dark",
+      "path": "/app",
+      "width": 390,
+      "scroll": 390,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-390-dark",
+      "path": "/app/venues",
+      "width": 390,
+      "scroll": 390,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-390-dark",
+      "path": "/app/audit",
+      "width": 390,
+      "scroll": 390,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-390-dark",
+      "path": "/app/settings",
+      "width": 390,
+      "scroll": 390,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-768-light",
+      "path": "/app",
+      "width": 768,
+      "scroll": 768,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-768-light",
+      "path": "/app/venues",
+      "width": 768,
+      "scroll": 768,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-768-light",
+      "path": "/app/audit",
+      "width": 768,
+      "scroll": 768,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-768-light",
+      "path": "/app/settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-768-dark",
+      "path": "/app",
+      "width": 768,
+      "scroll": 768,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-768-dark",
+      "path": "/app/venues",
+      "width": 768,
+      "scroll": 768,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-768-dark",
+      "path": "/app/audit",
+      "width": 768,
+      "scroll": 768,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-768-dark",
+      "path": "/app/settings",
+      "width": 768,
+      "scroll": 768,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-1440-light",
+      "path": "/app",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-1440-light",
+      "path": "/app/venues",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-1440-light",
+      "path": "/app/audit",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-1440-light",
+      "path": "/app/settings",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "owner-platform-1440-dark",
+      "path": "/app",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-venues-1440-dark",
+      "path": "/app/venues",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Ваша платформа",
+      "overflow": []
+    },
+    {
+      "name": "owner-audit-1440-dark",
+      "path": "/app/audit",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Журнал действий",
+      "overflow": []
+    },
+    {
+      "name": "owner-settings-1440-dark",
+      "path": "/app/settings",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Настройки аккаунта",
+      "overflow": []
+    },
+    {
+      "name": "remote-overview-390-light",
+      "path": "/app",
+      "width": 390,
+      "scroll": 390,
+      "title": "Всё начинается с команды",
+      "overflow": []
+    },
+    {
+      "name": "public-login-360-light",
+      "path": "/",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-360-light",
+      "path": "/join",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-360-light",
+      "path": "/owner-recovery",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-360-light",
+      "path": "/missing-page",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-login-360-dark",
+      "path": "/",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-360-dark",
+      "path": "/join",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-360-dark",
+      "path": "/owner-recovery",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-360-dark",
+      "path": "/missing-page",
+      "width": 360,
+      "scroll": 360,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-login-390-light",
+      "path": "/",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-390-light",
+      "path": "/join",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-390-light",
+      "path": "/owner-recovery",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-390-light",
+      "path": "/missing-page",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-login-390-dark",
+      "path": "/",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-390-dark",
+      "path": "/join",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-390-dark",
+      "path": "/owner-recovery",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-390-dark",
+      "path": "/missing-page",
+      "width": 390,
+      "scroll": 390,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-login-768-light",
+      "path": "/",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-768-light",
+      "path": "/join",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-768-light",
+      "path": "/owner-recovery",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-768-light",
+      "path": "/missing-page",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-login-768-dark",
+      "path": "/",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-768-dark",
+      "path": "/join",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-768-dark",
+      "path": "/owner-recovery",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-768-dark",
+      "path": "/missing-page",
+      "width": 768,
+      "scroll": 768,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-login-1440-light",
+      "path": "/",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-1440-light",
+      "path": "/join",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-1440-light",
+      "path": "/owner-recovery",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-1440-light",
+      "path": "/missing-page",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-login-1440-dark",
+      "path": "/",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-join-1440-dark",
+      "path": "/join",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-recovery-1440-dark",
+      "path": "/owner-recovery",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    },
+    {
+      "name": "public-missing-1440-dark",
+      "path": "/missing-page",
+      "width": 1440,
+      "scroll": 1440,
+      "title": "Сильная команда.С первой смены.",
+      "overflow": []
+    }
+  ]
+}
