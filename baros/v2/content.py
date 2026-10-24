@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from fastapi.responses import Response
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import defer
+from pydantic import ValidationError
 from ..db import get_db
 from ..models import Organization, Course, Lesson, Question
 from .models import *
@@ -15,6 +16,7 @@ from .auth import actor, manager
 from .schemas import *
 from .extraction import extract, validate_file, MIMES
 from . import ai
+from . import source_review
 
 router=APIRouter()
 
@@ -23,13 +25,14 @@ def get_course(db,oid,cid):
     c=db.get(Course,cid);require(c and c.organization_id==oid,'Курс не найден',404);return c
 
 
-def course_card(db,c,s=None,counts=None):
+def course_card(db,c,s=None,counts=None,program=None):
     s=s or course_settings(db,c)
     lesson_count,question_count=counts if counts is not None else (len(c.lessons),len(c.questions))
     return {'id':c.id,'title':c.title,'description':c.description,'published':c.published,'archived':s.archived,'version':s.version,
             'edit_version':s.edit_version,'positions':parse(s.positions_json,['all']),'lessons':lesson_count,'questions':question_count,
             'quiz_size':s.quiz_size,'is_intro':s.is_intro,'ai_generated':s.ai_generated,'bank_target':s.bank_target,'required':c.required,
-            'passing_score':c.passing_score,'due_at':iso(s.due_at),'updated_at':iso(s.updated_at)}
+            'passing_score':c.passing_score,'due_at':iso(s.due_at),'updated_at':iso(s.updated_at),
+            'source_review_required':bool((program if program is not None else parse(getattr(db.get(CourseProgram,c.id),'payload',None))).get('source_review',{}).get('required'))}
 
 
 @router.get('/api/courses')
@@ -41,7 +44,8 @@ def courses(request:Request,a=Depends(actor),db=Depends(get_db)):
     configs={s.course_id:s for s in db.scalars(select(CourseSettings).where(CourseSettings.course_id.in_(ids))).all()}
     lessons=dict(db.execute(select(Lesson.course_id,func.count(Lesson.id)).where(Lesson.course_id.in_(ids)).group_by(Lesson.course_id)).all())
     questions=dict(db.execute(select(Question.course_id,func.count(Question.id)).where(Question.course_id.in_(ids)).group_by(Question.course_id)).all())
-    return [course_card(db,c,configs.get(c.id),(lessons.get(c.id,0),questions.get(c.id,0))) for c in rows]
+    programs={p.course_id:parse(p.payload) for p in db.scalars(select(CourseProgram).where(CourseProgram.course_id.in_(ids))).all()}
+    return [course_card(db,c,configs.get(c.id),(lessons.get(c.id,0),questions.get(c.id,0)),programs.get(c.id,{})) for c in rows]
 
 
 @router.get('/api/courses/{cid}')
@@ -90,15 +94,21 @@ def publish(cid:int,data:PublishIn,request:Request,a=Depends(actor),db=Depends(g
     require(s.edit_version==data.edit_version,'Сначала сохраните актуальный черновик',409)
     require(data.reviewed,'Подтвердите проверку фактов, теории и ответов')
     require(c.lessons,'Добавьте хотя бы один теоретический урок')
-    needed=max(s.bank_target,s.quiz_size) if s.ai_generated else s.quiz_size
+    needed=s.quiz_size
     require(len(c.questions)>=needed,f'Нужно минимум {needed} вопросов. Сейчас {len(c.questions)}.')
     normalized={ai.norm(q.prompt) for q in c.questions}
     require(len(normalized)==len(c.questions),'В банке есть одинаковые вопросы. Удалите повторы.')
-    for q in c.questions:QuestionIn(prompt=q.prompt,choices=parse(q.choices_json,[]),correct_index=q.correct_index,explanation=q.explanation,type=q.question_type)
+    try:
+        for lesson in c.lessons: LessonIn(title=lesson.title,body=lesson.body)
+        for q in c.questions: QuestionIn(prompt=q.prompt,choices=parse(q.choices_json,[]),correct_index=q.correct_index,explanation=q.explanation,type=q.question_type)
+    except ValidationError:
+        require(False,'В черновике есть некорректный урок или вопрос. Проверьте текст, четыре разных ответа и объяснение.',409)
     require(not s.due_at or s.due_at>now(),'Срок прохождения уже истёк. Укажите новую дату.')
+    source_review.acknowledge(db,cid)
     data_payload=payload(db,c)
     previous=revision(db,c)
     if c.published and previous and parse(previous.payload)==data_payload:
+        db.commit()
         return {'ok':True,'version':s.version,'assigned':0,'unchanged':True}
     s.version+=1;s.archived=False;c.published=True
     rev=CourseRevision(course_id=cid,version=s.version,payload=dump(data_payload));db.add(rev);db.flush()
@@ -233,14 +243,20 @@ def download(sid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
 @router.put('/api/sources/{sid}')
 def update_source(sid:int,data:SourceUpdate,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'uploads_manage',True);s=get_source(db,oid,sid)
-    s.text=data.text;s.positions_json=dump(positions(data.positions));s.extraction_status='ready' if len(data.text)>=20 else 'needs_text';s.warning='Текст проверен и отредактирован вручную'
-    log(db,a,oid,'Исправлен текст материала',source_id=sid);db.commit();return source_card(s)
+    roles=dump(positions(data.positions))
+    changed=s.text!=data.text or parse(s.positions_json,[])!=parse(roles,[])
+    affected=source_review.mark_changed(db,oid,sid,'updated') if changed else 0
+    s.text=data.text;s.positions_json=roles;s.extraction_status='ready' if len(data.text)>=20 else 'needs_text';s.warning='Текст проверен и отредактирован вручную'
+    log(db,a,oid,'Исправлен текст материала',source_id=sid,courses_to_review=affected);db.commit();return {**source_card(s),'courses_to_review':affected}
 
 
 @router.delete('/api/sources/{sid}')
 def delete_source(sid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'uploads_manage',True);s=get_source(db,oid,sid)
-    db.delete(s);log(db,a,oid,'Удалён исходный файл',source_id=sid);db.commit();return {'ok':True}
+    pending=db.scalars(select(Job).where(Job.organization_id==oid,Job.status.in_(['queued','running']))).all()
+    require(not any(sid in parse(j.source_ids_json,[]) for j in pending),'Материал используется в текущей генерации. Дождитесь её завершения.',409)
+    affected=source_review.mark_changed(db,oid,sid,'deleted')
+    db.delete(s);log(db,a,oid,'Удалён исходный файл',source_id=sid,courses_to_review=affected);db.commit();return {'ok':True,'courses_to_review':affected}
 
 
 def job_card(j):
@@ -281,17 +297,18 @@ def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)
         context+='ИНТЕРВЬЮ:\n'+dump(interview)+'\n'
     require(data.source_ids or data.interview,'Выберите файлы или интервью')
     from .ai_vision import needs_vision, available
-    vision_ids=[]
+    vision_ids=[];source_fingerprints={}
     for sid in dict.fromkeys(data.source_ids):
         source=get_source(db,oid,sid)
+        source_fingerprints[str(sid)]=source_review.fingerprint(source)
         if source.content and needs_vision(source) and available():
             vision_ids.append(sid);continue
         require(source.extraction_status=='ready' and len(source.text)>=20,f'Проверьте текст файла «{source.name}»')
         context+=f'\nМАТЕРИАЛ: {source.name}\n{source.text}\n'
     require(len(context)<=90000,'Выбрано более 90 000 символов. Разделите материалы на несколько курсов.')
-    target=min(400,max(100,math.ceil(len(context)/10000)*40))
+    target=data.question_target or ai.question_target(context)
     j=Job(id=secrets.token_urlsafe(24),organization_id=oid,account_id=a.id,context=context,positions_json=dump(pos),
-          target=target,source_ids_json=dump(data.source_ids),checkpoint=dump({'is_intro':data.interview and not data.source_ids,'vision_ids':vision_ids}))
+          target=target,source_ids_json=dump(data.source_ids),checkpoint=dump({'is_intro':data.interview and not data.source_ids,'vision_ids':vision_ids,'explicit_target':data.question_target is not None,'source_fingerprints':source_fingerprints}))
     db.add(j);log(db,a,oid,'Запущен AI-методист',job_id=j.id,target=target);db.commit();return job_card(j)
 
 

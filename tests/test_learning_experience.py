@@ -155,7 +155,7 @@ class LearningExperienceTests(unittest.TestCase):
         self.assertEqual(fixed.status_code,200);self.assertEqual(fixed.json()['status'],'ready')
         with patch.object(ai,'provider',return_value={'free':True}):
             generated=self.client.post('/api/jobs',json={'title':'Tea training','source_ids':[sid],'positions':['bartender'],'interview':False},headers=headers)
-        self.assertEqual(generated.status_code,200,generated.text);self.assertEqual(generated.json()['target'],100)
+        self.assertEqual(generated.status_code,200,generated.text);self.assertLess(generated.json()['target'],100)
         self.assertEqual(generated.json()['progress'],0)
 
 

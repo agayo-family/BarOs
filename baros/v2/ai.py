@@ -68,6 +68,11 @@ def status():
 def norm(s): return re.sub(r'\s+', ' ', s).strip().casefold()
 
 
+def question_target(context):
+    """A bounded planning estimate, never a claim about the number of facts."""
+    return min(400, max(8, math.ceil(len(context) / 250)))
+
+
 def grounded_questions(raw, context, lessons, existing):
     seen = {norm(q['prompt']) for q in existing}
     result, rejected = [], 0
@@ -191,7 +196,7 @@ def persist_course(db, job, cp):
         c = Course(organization_id=job.organization_id, title=cp.get('title','Обучение')[:200], description=cp.get('description',''),
                target_role=parse(job.positions_json,['all'])[0], passing_score=80, required=True, published=False)
         db.add(c); db.flush()
-        db.add(CourseSettings(course_id=c.id, positions_json=job.positions_json, quiz_size=30, ai_generated=True,
+        db.add(CourseSettings(course_id=c.id, positions_json=job.positions_json, quiz_size=min(30,max(1,len(cp.get('questions',[])))), ai_generated=True,
                               bank_target=job.target, source_ids_json=job.source_ids_json, is_intro=cp.get('is_intro',False)))
     for i,l in enumerate(cp['lessons']): db.add(Lesson(course_id=c.id,title=l['title'],body=l['body'],sort_order=i))
     for q in cp.get('questions',[]):
@@ -200,6 +205,13 @@ def persist_course(db, job, cp):
     from .models import CourseProgram
     program={'steps':[{'lesson_index':i,'title':l['title'],'minutes':reading_minutes(l['body'])} for i,l in enumerate(cp['lessons'])],
              'practice':['cards','games','exam'],'bank_size':len(cp.get('questions',[])),'review':review_material(cp['lessons'],cp.get('questions',[]))}
+    from .models import SourceFile
+    from .source_review import fingerprint
+    changed=[]
+    for sid,previous in cp.get('source_fingerprints',{}).items():
+        source=db.get(SourceFile,int(sid))
+        if not source or fingerprint(source)!=previous:changed.append(int(sid))
+    if changed:program['source_review']={'required':True,'source_ids':changed,'reason':'updated'}
     row=db.get(CourseProgram,c.id)
     if row:row.payload=dump(program)
     else:db.add(CourseProgram(course_id=c.id,payload=dump(program)))
@@ -214,8 +226,8 @@ async def run_job(job_id, token):
     try:
         from .ai_vision import augment
         context=await augment(job_id,token,cp,context,save_checkpoint)
-        if cp.get('vision_ids'):
-            target=min(400,max(100,math.ceil(len(context)/10000)*40))
+        if cp.get('vision_ids') and not cp.get('explicit_target'):
+            target=question_target(context)
             with SessionLocal() as db:
                 current=db.get(Job,job_id)
                 if current.lease_token!=token:raise ValueError('Задача передана другому процессу')
@@ -244,6 +256,7 @@ async def run_job(job_id, token):
             cp['limitations'] = list(dict.fromkeys(cp.get('limitations',[])+[str(x) for x in read_limitations(result)]))[:20]
             empty_batches = empty_batches+1 if not accepted else 0
             save_checkpoint(job_id,token,cp,f"Проверено {len(cp['questions'])} из {target} вопросов",15+int(80*len(cp['questions'])/target))
+            if len(accepted)<remaining and read_limitations(result): break
             if empty_batches >= 2: break
         with SessionLocal() as db:
             job = db.get(Job,job_id)
@@ -253,7 +266,7 @@ async def run_job(job_id, token):
             job.status = 'succeeded' if enough else 'needs_review'
             job.phase = 'Черновик готов к проверке' if enough else 'Нужны дополнительные материалы или вопросы'
             job.progress = 100 if enough else 15+int(80*len(cp.get('questions',[]))/max(1,target)); job.lease_until = None; job.lease_token = None
-            job.error = '' if enough else f"Подтверждено {len(cp.get('questions',[]))} из {target} вопросов. Публикация доступна после пополнения банка."
+            job.error = '' if enough else f"Подтверждено {len(cp.get('questions',[]))} из {target} целевых вопросов. Проверьте банк: уменьшите размер теста до имеющегося числа вопросов или дополните материалы."
             job.checkpoint = dump(cp); db.commit()
     except asyncio.CancelledError:
         raise

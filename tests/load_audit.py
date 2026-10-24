@@ -3,7 +3,7 @@ import asyncio,json,os,platform,secrets,subprocess,sys,tempfile,time,urllib.requ
 from pathlib import Path
 import httpx
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'docs'/'load-audit-2.4.json'
+OUT=Path(os.environ.get('BAROS_LOAD_AUDIT_OUTPUT', str(ROOT/'docs'/'load-audit-2.4.json')))
 
 def process_stats(pid):
  try:
