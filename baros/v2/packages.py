@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Literal
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, model_validator
-from sqlalchemy import select
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
 from ..db import get_db
 from ..models import Course
@@ -63,7 +63,7 @@ class AssessmentIn(Strict):
     title: str = Field(min_length=2,max_length=200)
     description: str = Field(default='',max_length=3000)
     instructions: str = Field(default='',max_length=30000)
-    positions: list[str] = Field(default=['all'],min_length=1,max_length=8)
+    positions: list[str] = Field(default=['all'],min_length=1,max_length=16)
     sections: list[Section] = Field(min_length=1,max_length=30)
     tasks: list[Task] = Field(min_length=1,max_length=1000)
     time_limit_minutes: int = Field(default=180,ge=1,le=720)
@@ -199,6 +199,24 @@ def assessments(request:Request,a=Depends(actor),db=Depends(get_db)):
                 p=previous.get(test.id);can_start=False
                 if p is None:continue
         result.append({**card(test,p),**({'can_start':can_start} if a.role=='employee' else {})})
+    ids=[item['id'] for item in result]
+    if ids and a.role!='employee':
+        pending=dict(db.execute(select(WrittenAttempt.assessment_id,func.count(WrittenAttempt.id))
+            .where(WrittenAttempt.organization_id==oid,WrittenAttempt.assessment_id.in_(ids),
+                   or_(WrittenAttempt.status=='submitted',and_(WrittenAttempt.status=='in_progress',
+                       WrittenAttempt.expires_at<=now()))).group_by(WrittenAttempt.assessment_id)).all())
+        for item in result:item['awaiting_review']=pending.get(item['id'],0) if item['written'] else 0
+    elif ids:
+        latest={}
+        for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.organization_id==oid,
+            WrittenAttempt.account_id==a.id,WrittenAttempt.assessment_id.in_(ids))
+            .order_by(WrittenAttempt.started_at.desc())).all():
+            if attempt.assessment_id not in latest:
+                status=attempt.status
+                if status=='in_progress' and attempt.expires_at<=now():
+                    status='submitted' if any(t['kind']=='written' for t in parse(attempt.snapshot)['tasks']) else 'graded'
+                latest[attempt.assessment_id]={'id':attempt.id,'status':status}
+        for item in result:item['latest_attempt']=latest.get(item['id'])
     return result
 
 @router.get('/api/assessments/{aid}')

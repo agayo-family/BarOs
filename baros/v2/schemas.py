@@ -19,7 +19,7 @@ class JoinIn(StrictModel):
     name: str = Field(min_length=2, max_length=160)
     login: str = Field(min_length=3, max_length=80, pattern=r'^[a-zA-Z0-9_.@+\-]+$')
     password: str = Field(min_length=10, max_length=200)
-    positions: list[str] = Field(min_length=1, max_length=8)
+    positions: list[str] = Field(min_length=1, max_length=16)
 class InviteIn(StrictModel):
     name: str = Field(min_length=2, max_length=160)
     organization: str = Field(min_length=2, max_length=200)
@@ -41,7 +41,7 @@ class VenueUpdate(StrictModel):
     permissions: dict[str, bool] = Field(default_factory=dict)
 class StaffIn(StrictModel):
     name: str = Field(min_length=2, max_length=160)
-    positions: list[str] = Field(default_factory=list, max_length=8)
+    positions: list[str] = Field(default_factory=list, max_length=16)
     active: bool = True
     permissions: dict[str, bool] = Field(default_factory=dict)
 class ProfileIn(StrictModel):
@@ -72,7 +72,7 @@ class QuestionIn(StrictModel):
 class CourseIn(StrictModel):
     title: str = Field(min_length=2, max_length=200)
     description: str = Field(default='', max_length=3000)
-    positions: list[str] = Field(default=['all'], min_length=1, max_length=8)
+    positions: list[str] = Field(default=['all'], min_length=1, max_length=16)
     passing_score: int = Field(default=80, ge=1, le=100)
     required: bool = True
     quiz_size: int = Field(default=30, ge=1, le=100)
@@ -87,10 +87,16 @@ class CourseIn(StrictModel):
 class PublishIn(StrictModel):
     reviewed: bool
     edit_version: int
+class CatalogActivateIn(StrictModel):
+    reviewed: bool
+    fingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
+    expected_revision: int = Field(ge=0)
+class CatalogPauseIn(StrictModel):
+    expected_revision: int = Field(ge=0)
 class GenerateIn(StrictModel):
     title: str = Field(default='Обучение по материалам заведения', min_length=2, max_length=200)
     source_ids: list[int] = Field(default_factory=list, max_length=20)
-    positions: list[str] = Field(default=['all'], min_length=1, max_length=8)
+    positions: list[str] = Field(default=['all'], min_length=1, max_length=16)
     interview: bool = False
     question_target: int | None = Field(default=None, ge=1, le=400)
 class InterviewIn(StrictModel):
@@ -102,11 +108,11 @@ class InterviewIn(StrictModel):
     common_mistakes: str = Field(default='', max_length=5000)
     special_rules: str = Field(default='', max_length=8000)
     tone: str = Field(default='', max_length=2000)
-    roles_present: list[str] = Field(default_factory=list, max_length=8)
+    roles_present: list[str] = Field(default_factory=list, max_length=16)
 class AnswerIn(StrictModel):
     answers: dict[str, int] = Field(default_factory=dict, max_length=100)
 class ReadIn(StrictModel):
     complete: bool = False
 class SourceUpdate(StrictModel):
     text: str = Field(max_length=180000)
-    positions: list[str] = Field(default=['all'], min_length=1, max_length=8)
+    positions: list[str] = Field(default=['all'], min_length=1, max_length=16)
