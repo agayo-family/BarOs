@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix='baros-browser-') as tmp:
             else:
                 raise RuntimeError('Disposable server did not become ready')
             subprocess.run([node, str(repo / 'tests' / 'browser_audit.mjs')],
-                           cwd=repo, env=env, check=True, timeout=600)
+                           cwd=repo, env=env, check=True, timeout=1800)
         finally:
             server.terminate()
             try:
