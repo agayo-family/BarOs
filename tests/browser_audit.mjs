@@ -62,8 +62,9 @@ async function shot(role,path,label,width,theme){
  screens.push({name,path,...info});
  writeFileSync(join(output,'progress.json'),JSON.stringify({screens:screens.length,last:name,errors,server_failures:failures}));
 }
-const sizes=[360,390,768,1440];
-async function sweep(role,routes){for(const width of sizes)for(const theme of ['light','dark'])for(const [path,label]of routes)if(!process.env.BAROS_AUDIT_FOCUS||process.env.BAROS_AUDIT_FOCUS===role+'/'+label)await shot(role,path,label,width,theme)}
+const sizes=process.env.BAROS_AUDIT_REVERSE?[1440,768,390,360]:[360,390,768,1440];
+const themes=process.env.BAROS_AUDIT_REVERSE?['dark','light']:['light','dark'];
+async function sweep(role,routes){for(const width of sizes)for(const theme of themes)for(const [path,label]of routes)if(!process.env.BAROS_AUDIT_FOCUS||process.env.BAROS_AUDIT_FOCUS===role+'/'+label)await shot(role,path,label,width,theme)}
 await sweep('employee',[['/app','home'],['/app/learning','learning'],['/app/learn/'+c.id,'lesson'],['/app/exam/'+exam.id,'exam'],['/app/cards/'+c.id,'cards'],['/app/games/'+c.id,'games'],['/app/mentor','mentor'],['/app/shifts','shifts'],['/app/history','history'],['/app/notices','notices'],['/app/profile','profile'],['/app/settings','settings'],['/app/assessments','assessments']]);
 await call('/exams/'+exam.id+'/finish','POST',{answers:{'0':0,'1':0,'2':0,'3':0}});
 let written=await call('/assessments/'+assessment.id+'/start','POST',{});
@@ -82,7 +83,7 @@ await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/so
 await page.locator('#mobile-menu').click();assert.equal(await page.locator('#mobile-menu').getAttribute('aria-expanded'),'true');await page.screenshot({path:join(output,'manager-mobile-menu-390.png')});await page.keyboard.press('Escape');
 await login('browser.owner');
 await sweep('owner',[['/app','platform'],['/app/venues','venues'],['/app/audit','audit'],['/app/settings','settings'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
-for(const item of (await call('/owner/catalog')).courses)for(const width of sizes)for(const theme of ['light','dark'])await shot('owner','/app/catalog/'+item.key,'full-'+item.key,width,theme);
+for(const item of (await call('/owner/catalog')).courses)for(const width of sizes)for(const theme of themes)await shot('owner','/app/catalog/'+item.key,'full-'+item.key,width,theme);
 await page.goto(base+'/app/catalog');await page.locator('[data-catalog-activate]').click();await page.screenshot({path:join(output,'catalog-approval-modal-1440.png'),fullPage:true});await page.keyboard.press('Escape');
 assert.equal((await call('/owner/catalog')).enabled,false,'Visual preview must not activate library');
 // Full standard-library flow is exercised only on this disposable local server.

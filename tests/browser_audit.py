@@ -13,15 +13,18 @@ repo = Path(__file__).resolve().parent.parent
 node = os.environ.get('CODEX_PRIMARY_RUNTIME_NODE') or shutil.which('node')
 output = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else repo / 'test-results' / 'browser'
 output.mkdir(parents=True, exist_ok=True)
+port = int(os.environ.get('BAROS_AUDIT_PORT', '8159'))
+if not 1024 <= port <= 65535:
+    raise SystemExit('Use an unprivileged local audit port')
 with tempfile.TemporaryDirectory(prefix='baros-browser-') as tmp:
     env = dict(os.environ, DATABASE_URL='sqlite:///' + str(Path(tmp) / 'test.db'),
                FIRST_RUN_TOKEN='browser-audit-disposable-setup-key', BAROS_WORKER='0',
                SESSION_SECRET='browser-audit-disposable-session-key', COOKIE_SECURE='0',
-               MIN_LESSON_SECONDS='0', BAROS_AUDIT_URL='http://127.0.0.1:8159',
+               MIN_LESSON_SECONDS='0', BAROS_AUDIT_URL=f'http://127.0.0.1:{port}',
                BAROS_AUDIT_OUTPUT=str(output))
     with open(output / 'server.log', 'w') as log:
         server = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'baros.main:app',
-                                   '--host', '127.0.0.1', '--port', '8159'],
+                                   '--host', '127.0.0.1', '--port', str(port)],
                                   cwd=repo, env=env, stdout=log, stderr=log)
         try:
             for _ in range(100):

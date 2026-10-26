@@ -10,3 +10,6 @@ playwright-report/
 *.db-*
 node_modules
 *.log
+*.dump
+*.dump.partial
+/backups/
