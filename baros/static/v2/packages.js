@@ -1,4 +1,4 @@
-import {$,$$,state,api,go,esc,icon,btn,modal,on,toast,notice,empty,pageHead,bindForm,pageCleanup} from './core.js?v=2.7.0';
+import {badge,$,$$,state,api,go,esc,icon,btn,modal,on,toast,notice,empty,pageHead,bindForm,pageCleanup} from './core.js?v=2.7.0';
 const labels={in_progress:'В процессе',submitted:'Ожидает проверки',graded:'Проверено'};
 const canEditAssessment=()=>state.me.account.role==='owner'||(state.me.account.role==='manager'&&state.me.venue?.status!=='read_only'&&state.me.venue?.permissions?.courses_manage!==false&&state.me.account.permissions?.courses_manage!==false);
 const capInfo=t=>t.score_cap?notice('Ограничение результата: '+t.score_cap.points+' / '+t.points+'. '+t.score_cap.guidance,'warning'):'';
