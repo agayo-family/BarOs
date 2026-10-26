@@ -100,4 +100,5 @@ jobs:
       - name: Audit all role screens at four widths in both themes
         env:
           CODEX_PRIMARY_RUNTIME_NODE_MODULES: ${{ github.workspace }}/tests/ui/node_modules
+          BAROS_AUDIT_REVERSE: '1'
         run: python tests/browser_audit.py
