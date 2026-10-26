@@ -1,8 +1,9 @@
 """Standard-library upgrades preserve venue edits and immutable learning history."""
-import copy
 import importlib
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 import unittest
 from unittest.mock import patch
 os.environ.setdefault('DATABASE_URL', 'sqlite:///' + tempfile.mktemp(prefix='baros-upgrades-', suffix='.db'))
@@ -137,6 +138,16 @@ class CatalogUpgradeTests(unittest.TestCase):
             self.assertEqual(parse(db.get(CourseRevision,rid).payload)['program']['written_assessment_id'],aid)
             self.assertEqual(db.scalar(select(func.count(ImportedAssessment.id))),1)
 
+    def test_linked_venue_materials_and_pending_source_review_preserve_copy(self):
+        old=release();self.install(old)
+        with SessionLocal() as db:db.get(CourseSettings,self.cid).source_ids_json=dump([123]);db.commit()
+        self.assertEqual(self.install(release(2),previous=old)['customized'],1)
+        with SessionLocal() as db:
+            db.get(CourseSettings,self.cid).source_ids_json='[]';p=db.get(CourseProgram,self.cid)
+            meta=parse(p.payload);meta['source_review']={'required':True,'source_ids':[123]};p.payload=dump(meta);db.commit()
+        self.assertEqual(self.install(release(2),previous=old)['customized'],1)
+        with SessionLocal() as db:self.assertEqual(db.get(CourseSettings,self.cid).version,1)
+
     def test_inactive_venue_gets_content_without_new_assignments(self):
         old=release();self.install(old)
         with SessionLocal() as db:db.get(VenueSettings,self.oid).status='suspended';db.commit()
@@ -176,3 +187,33 @@ class CatalogUpgradeTests(unittest.TestCase):
             self.assertEqual(db.get(Course,self.cid).lessons[0].body,old['courses'][0]['course']['lessons'][0]['body'])
             self.assertEqual(parse(db.get(Setting,catalog.STATE_KEY).value)['fingerprint'],old['fingerprint'])
             self.assertEqual(db.scalar(select(func.count(CourseRevision.id))),1)
+
+    @unittest.skipUnless(engine.dialect.name == 'postgresql', 'Row-lock race requires PostgreSQL')
+    def test_manager_edit_and_global_upgrade_never_silently_overwrite_each_other(self):
+        old=release();self.install(old)
+        with SessionLocal() as db:
+            db.get(Setting,catalog.STATE_KEY).value=dump({**old,'revision':1});db.commit()
+        headers={**self.headers,'x-organization-id':str(self.oid)}
+        current=self.client.get('/api/courses/'+str(self.cid),headers=headers).json()
+        edited={k:v for k,v in current.items() if k in CourseIn.model_fields};edited['title']='Локальная версия управляющего'
+        gate=Barrier(2);new=release(2)
+        def request(kind):
+            c=TestClient(app);c.cookies.update(self.client.cookies);gate.wait(timeout=10)
+            try:
+                if kind=='edit':r=c.put('/api/courses/'+str(self.cid),json=edited,headers=headers)
+                else:r=c.post('/api/owner/catalog/activate',json={'reviewed':True,'fingerprint':new['fingerprint'],'expected_revision':1},headers=self.headers)
+                return r.status_code,r.json()
+            finally:c.close()
+        with patch.object(catalog,'candidate',return_value=new),ThreadPoolExecutor(max_workers=2) as pool:
+            edit_future=pool.submit(request,'edit');upgrade_future=pool.submit(request,'upgrade')
+            edit_status,edit_result=edit_future.result(timeout=30);upgrade_status,upgrade_result=upgrade_future.result(timeout=30)
+        self.assertEqual(upgrade_status,200,upgrade_result)
+        self.assertIn(edit_status,[200,409],edit_result)
+        with SessionLocal() as db:
+            c=db.get(Course,self.cid)
+            if edit_status==200:
+                self.assertEqual(c.title,edited['title']);self.assertEqual(upgrade_result['customized'],1)
+                self.assertEqual(db.get(CourseSettings,c.id).version,1)
+            else:
+                self.assertEqual(c.title,new['courses'][0]['course']['title']);self.assertEqual(upgrade_result['updated'],1)
+                self.assertEqual(db.get(CourseSettings,c.id).version,2)

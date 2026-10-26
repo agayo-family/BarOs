@@ -19,7 +19,7 @@ from .auth import actor, owner
 from .domain import (POSITIONS, applies, digest, dump, iso, log, now, parse,
                      payload, positions, require, settings)
 from .models import (Account, CourseProgram, CourseRevision, CourseSettings,
-                     Enrollment, ImportedAssessment, Notice, Setting, SourceFile, VenueSettings)
+                     Enrollment, ImportedAssessment, Job, Notice, Setting, SourceFile, VenueSettings)
 from .packages import AssessmentIn
 from .schemas import CatalogActivateIn, CatalogPauseIn, CourseIn
 
@@ -83,6 +83,8 @@ def install_snapshot(db, organization_id, approved, by=None, previous=None):
     configs = {c.course_id: c for c in db.scalars(select(CourseSettings)
         .where(CourseSettings.course_id.in_(ids)).order_by(CourseSettings.course_id)
         .with_for_update().execution_options(populate_existing=True)).all()} if ids else {}
+    busy = set(db.scalars(select(Job.course_id).where(Job.course_id.in_(ids),
+        Job.status.in_(['queued', 'running']))).all()) if ids else set()
     previous_courses = {x['key']: x for x in (previous or {}).get('courses', [])}
     venue = settings(db, organization_id)
     active = venue.status == 'active' and venue.subscription_status in {'active', 'trial'} and (
@@ -111,6 +113,8 @@ def install_snapshot(db, organization_id, approved, by=None, previous=None):
             published = db.scalar(select(CourseRevision).where(CourseRevision.course_id == c.id,
                 CourseRevision.version == config.version)) if config else None
             if (not config or config.archived or not c.published or not expected or not published
+                or c.id in busy or parse(config.source_ids_json, [])
+                or meta.get('source_review', {}).get('required')
                 or course_fingerprint(payload(db, c)) != expected
                 or course_fingerprint(parse(published.payload)) != expected):
                 result['customized'] += 1

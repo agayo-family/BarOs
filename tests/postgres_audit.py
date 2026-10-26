@@ -111,7 +111,7 @@ class PostgresConcurrencyTests(unittest.TestCase):
             c=TestClient(app);c.cookies.update(self.client.cookies)
             return c.post('/api/owner/catalog/activate',json={'reviewed':True,'fingerprint':catalog['fingerprint'],'expected_revision':0},headers={'x-csrf-token':csrf}).status_code
         self.assertEqual(self.parallel(action),[200,409])
-        with SessionLocal() as db:self.assertEqual(db.scalar(select(func.count(Course.id))),36)
+        with SessionLocal() as db:self.assertEqual(db.scalar(select(func.count(Course.id))),2*len(catalog['courses']))
 
 
 if __name__ == '__main__':
