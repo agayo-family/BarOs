@@ -103,7 +103,7 @@ class PostgresConcurrencyTests(unittest.TestCase):
         self.assertEqual(self.parallel(action),[200,200])
         with SessionLocal() as db:
             for oid in db.scalars(select(Organization.id).where(Organization.name!='__BAROS_PLATFORM__')).all():
-                self.assertEqual(db.scalar(select(func.count(Course.id)).where(Course.organization_id==oid)),18)
+                self.assertEqual(db.scalar(select(func.count(Course.id)).where(Course.organization_id==oid)),len(catalog['courses']))
 
     def test_catalog_two_approvals_have_one_winner_and_no_duplicates(self):
         csrf,catalog=self.catalog_clients()
@@ -111,7 +111,7 @@ class PostgresConcurrencyTests(unittest.TestCase):
             c=TestClient(app);c.cookies.update(self.client.cookies)
             return c.post('/api/owner/catalog/activate',json={'reviewed':True,'fingerprint':catalog['fingerprint'],'expected_revision':0},headers={'x-csrf-token':csrf}).status_code
         self.assertEqual(self.parallel(action),[200,409])
-        with SessionLocal() as db:self.assertEqual(db.scalar(select(func.count(Course.id))),36)
+        with SessionLocal() as db:self.assertEqual(db.scalar(select(func.count(Course.id))),2*len(catalog['courses']))
 
 
 if __name__ == '__main__':

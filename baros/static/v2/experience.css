@@ -60,7 +60,6 @@ body,.sidebar,.topbar,.card,.btn,input,textarea,select,.modal,.bottom-nav,.learn
 .learning-block p{font-size:.94rem;line-height:1.8;margin:10px 0;white-space:normal}
 .learning-list{padding-left:24px;margin:12px 0;line-height:1.8;font-size:.94rem}.learning-list li{padding:4px 0 4px 4px}.learning-list li::marker{color:var(--accent);font-weight:700}
 .learning-fact{display:flex;gap:12px;align-items:flex-start;background:var(--lav);border-radius:12px;padding:14px 16px;margin:14px 0}.learning-fact .icon{flex-shrink:0;color:var(--accent);margin-top:6px}.learning-fact p{margin:0}
-.recall-tip{display:flex;align-items:flex-start;gap:12px;border-top:1px solid var(--line);padding-top:24px;margin-top:28px}.recall-tip>.icon{flex-shrink:0;color:var(--accent)}.recall-tip p{color:var(--muted);font-size:.85rem;line-height:1.7;margin:7px 0}
 .practice-wrap{max-width:820px;margin:auto}.practice-toolbar,.practice-progress{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap}.practice-toolbar{margin-bottom:20px}.practice-progress{font-size:.8rem;color:var(--muted);margin-bottom:22px}.practice-progress>.progress{flex:1;min-width:100px;max-width:320px}
 .practice-stage{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:14px;perspective:1800px}
 .practice-arrow{background:var(--white);border-color:var(--line);width:44px;height:44px}

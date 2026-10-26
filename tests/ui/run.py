@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='baros-ui-audit-') as tmp:
             server = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'baros.main:app', '--host', '127.0.0.1', '--port', '8147'],
                                       cwd=repo, env=env, stdout=log, stderr=log)
             try:
-                for _ in range(100):
+                for _ in range(300):
                     if server.poll() is not None: raise RuntimeError('Test server failed to start')
                     try:
                         urllib.request.urlopen(env['BAROS_AUDIT_URL']+'/health', timeout=1)

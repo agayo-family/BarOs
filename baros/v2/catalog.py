@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import timedelta
 from functools import lru_cache
 import json
+import math
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -18,7 +19,7 @@ from .auth import actor, owner
 from .domain import (POSITIONS, applies, digest, dump, iso, log, now, parse,
                      payload, positions, require, settings)
 from .models import (Account, CourseProgram, CourseRevision, CourseSettings,
-                     Enrollment, ImportedAssessment, Notice, Setting, SourceFile, VenueSettings)
+                     Enrollment, ImportedAssessment, Job, Notice, Setting, SourceFile, VenueSettings)
 from .packages import AssessmentIn
 from .schemas import CatalogActivateIn, CatalogPauseIn, CourseIn
 
@@ -44,11 +45,6 @@ def candidate():
         require(all(s['url'].startswith('https://') for s in item.get('sources', [])),
                 'Некорректная ссылка в библиотеке', 500)
         item['course'] = course.model_dump(mode='json')
-        practice = AssessmentIn.model_validate(item['practice'])
-        require(practice.positions == course.positions and len(practice.tasks) >= 2
-                and all(t.kind == 'written' for t in practice.tasks),
-                'Для каждого курса нужны письменные ситуации по должности', 500)
-        item['practice'] = practice.model_dump(mode='json')
     data['fingerprint'] = digest(json.dumps(data, ensure_ascii=False, sort_keys=True))
     return data
 
@@ -64,60 +60,110 @@ def lock_state(db):
     return row
 
 
-def install_snapshot(db, organization_id, approved, by=None):
-    """Only add absent keys. Preserve edited, archived and previously assigned copies."""
+def course_fingerprint(data):
+    content = {k: v for k, v in data.items() if k in CourseIn.model_fields}
+    normalized = CourseIn.model_validate(content).model_dump(mode='json')
+    normalized.pop('edit_version', None)
+    return digest(json.dumps(normalized, ensure_ascii=False, sort_keys=True))
+
+
+def install_snapshot(db, organization_id, approved, by=None, previous=None):
+    """Publish missing courses or untouched older standard copies; retain local work."""
+    result = {'added': 0, 'updated': 0, 'customized': 0, 'existing': 0, 'enrollments': 0}
     if not approved.get('enabled'):
-        return {'added': 0, 'existing': 0, 'enrollments': 0}
-    programs = db.scalars(select(CourseProgram).join(Course, Course.id == CourseProgram.course_id)
-                          .where(Course.organization_id == organization_id)).all()
-    existing = {parse(p.payload).get('standard_catalog', {}).get('key') for p in programs}
+        return result
+    rows = db.execute(select(Course, CourseProgram).join(CourseProgram,
+        Course.id == CourseProgram.course_id).where(Course.organization_id == organization_id)).all()
+    existing = {}
+    for course, program in rows:
+        key = parse(program.payload).get('standard_catalog', {}).get('key')
+        if key: existing.setdefault(key, []).append((course, program))
+    # Same order as other course mutations; the catalog lock is acquired first.
+    ids = sorted(course.id for pairs in existing.values() for course, _ in pairs)
+    configs = {c.course_id: c for c in db.scalars(select(CourseSettings)
+        .where(CourseSettings.course_id.in_(ids)).order_by(CourseSettings.course_id)
+        .with_for_update().execution_options(populate_existing=True)).all()} if ids else {}
+    busy = set(db.scalars(select(Job.course_id).where(Job.course_id.in_(ids),
+        Job.status.in_(['queued', 'running']))).all()) if ids else set()
+    previous_courses = {x['key']: x for x in (previous or {}).get('courses', [])}
     venue = settings(db, organization_id)
     active = venue.status == 'active' and venue.subscription_status in {'active', 'trial'} and (
         not venue.paid_until or venue.paid_until > now())
     employees = db.scalars(select(Account).where(Account.organization_id == organization_id,
         Account.role == 'employee', Account.active == True)).all() if active else []
-    result = {'added': 0, 'existing': 0, 'enrollments': 0}
-    # Reuse the established course validation and persistence path, without any AI call.
     from .content import save_course
     for item in approved['courses']:
-        if item['key'] in existing:
-            result['existing'] += 1
+        old = existing.get(item['key'], [])
+        if len(old) > 1:
+            result['customized'] += 1
             continue
+        if old:
+            c, program = old[0]
+            db.refresh(program)
+            meta = parse(program.payload)
+            provenance = meta.get('standard_catalog', {})
+            if provenance.get('version', 1) >= item.get('version', 1):
+                result['existing'] += 1
+                continue
+            config = configs.get(c.id)
+            db.refresh(c)
+            db.expire(c, ['lessons', 'questions'])
+            before = previous_courses.get(item['key'])
+            expected = provenance.get('content_fingerprint') or (course_fingerprint(before['course']) if before else None)
+            published = db.scalar(select(CourseRevision).where(CourseRevision.course_id == c.id,
+                CourseRevision.version == config.version)) if config else None
+            if (not config or config.archived or not c.published or not expected or not published
+                or c.id in busy or parse(config.source_ids_json, [])
+                or meta.get('source_review', {}).get('required')
+                or course_fingerprint(payload(db, c)) != expected
+                or course_fingerprint(parse(published.payload)) != expected):
+                result['customized'] += 1
+                continue
+            kind = 'updated'
+        else:
+            c = Course(organization_id=organization_id, title=item['course']['title'], published=False)
+            db.add(c); db.flush()
+            program = CourseProgram(course_id=c.id, payload='{}')
+            db.add(program); db.flush()
+            meta = {}; kind = 'added'
         data = CourseIn.model_validate(item['course'])
-        c = Course(organization_id=organization_id, title=data.title, published=False)
-        db.add(c); db.flush()
         save_course(db, c, data)
-        provenance = {'key': item['key'], 'release': approved['fingerprint'],
-                      'sources': item.get('sources', []), 'version': item.get('version', 1)}
-        practice = AssessmentIn.model_validate(item['practice'])
-        assessment = ImportedAssessment(organization_id=organization_id, title=practice.title,
-            payload=dump(practice.model_dump(mode='json')), published=True)
-        db.add(assessment); db.flush()
-        db.add(CourseProgram(course_id=c.id, payload=dump({'standard_catalog': provenance,
-            'written_assessment_id': assessment.id})))
-        db.flush()
+        meta['standard_catalog'] = {'key': item['key'], 'release': approved['fingerprint'],
+            'sources': item.get('sources', []), 'version': item.get('version', 1),
+            'content_fingerprint': course_fingerprint(item['course'])}
+        # Expanded catalog courses have theory and a question bank, without homework.
+        # Old written work stays in its own assessment/history; no rows are deleted.
+        meta.pop('written_assessment_id', None)
+        assessment = None
+        if item.get('practice'):
+            # Compatibility for the owner's previously approved v1 snapshot.
+            practice = AssessmentIn.model_validate(item['practice'])
+            assessment = ImportedAssessment(organization_id=organization_id, title=practice.title,
+                payload=dump(practice.model_dump(mode='json')), published=True)
+            db.add(assessment); db.flush(); meta['written_assessment_id'] = assessment.id
+        program.payload = dump(meta)
         config = db.get(CourseSettings, c.id)
-        config.version = 1
+        config.version += 1
         c.published = True
+        db.flush()
         content = payload(db, c)
-        rev = CourseRevision(course_id=c.id, version=1, payload=dump(content))
+        rev = CourseRevision(course_id=c.id, version=config.version, payload=dump(content))
         db.add(rev); db.flush()
-        # Revisions are new, so bulk-create their enrollments without per-employee reads.
         due = now() + timedelta(days=data.deadline_days)
         for employee in employees:
             if applies(employee, content):
                 db.add(Enrollment(account_id=employee.id, revision_id=rev.id, due_at=due))
                 db.add(Notice(account_id=employee.id, event_key=f'published:{rev.id}',
-                    title='Новое обучение', body=f'{c.title}. Пройти до {due:%d.%m.%Y}.',
-                    url=f'/app/learn/{c.id}'))
-                db.add(Notice(account_id=employee.id, event_key=f'assessment:{assessment.id}',
-                    title='Письменные ситуации', body=assessment.title,
-                    url=f'/app/assessments/{assessment.id}'))
+                    title='Новое обучение' if kind == 'added' else 'Обновлено обучение',
+                    body=f'{c.title}. Пройти до {due:%d.%m.%Y}.', url=f'/app/learn/{c.id}'))
+                if assessment:
+                    db.add(Notice(account_id=employee.id, event_key=f'assessment:{assessment.id}',
+                        title='Письменные ситуации', body=assessment.title,
+                        url=f'/app/assessments/{assessment.id}'))
                 result['enrollments'] += 1
-        existing.add(item['key'])
-        result['added'] += 1
-    if result['added']:
-        log(db, by, organization_id, 'Добавлены курсы общей библиотеки', **result)
+        result[kind] += 1
+    if result['added'] or result['updated']:
+        log(db, by, organization_id, 'Обновлена общая библиотека курсов', **result)
     return result
 
 
@@ -138,8 +184,9 @@ def catalogue(a=Depends(actor), db=Depends(get_db)):
             'courses': [{'key': x['key'], 'role': x['role'], 'title': x['course']['title'],
                          'description': x['course']['description'], 'outcomes': x['outcomes'],
                          'lessons': len(x['course']['lessons']), 'questions': len(x['course']['questions']),
-                         'written': len(x['practice']['tasks']),
-                         'minutes': max(1, round(sum(len(l['body'].split()) for l in x['course']['lessons']) / 150))}
+                         'written': len(x.get('practice', {}).get('tasks', [])),
+                         'word_count': sum(len(l['body'].split()) for l in x['course']['lessons']),
+                         'minutes': max(1, math.ceil(sum(len(l['body'].split()) for l in x['course']['lessons']) / 150))}
                         for x in data['courses']]}
 
 
@@ -165,9 +212,9 @@ def activate(data: CatalogActivateIn, a=Depends(actor), db=Depends(get_db)):
     approved = {'enabled': True, 'revision': previous.get('revision', 0) + 1,
                 'fingerprint': current['fingerprint'], 'approved_at': iso(now()),
                 'approved_by': a.name, 'courses': deepcopy(current['courses'])}
-    totals = {'venues': 0, 'added': 0, 'existing': 0, 'enrollments': 0}
+    totals = {'venues': 0, 'added': 0, 'updated': 0, 'customized': 0, 'existing': 0, 'enrollments': 0}
     for oid in db.scalars(select(Organization.id).where(Organization.name != '__BAROS_PLATFORM__').order_by(Organization.id)).all():
-        installed = install_snapshot(db, oid, approved, a)
+        installed = install_snapshot(db, oid, approved, a, previous=previous)
         totals['venues'] += 1
         for key in installed: totals[key] += installed[key]
     row.value = dump(approved)
