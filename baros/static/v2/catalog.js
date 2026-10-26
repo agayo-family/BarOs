@@ -1,5 +1,5 @@
-import {$,$$,state,api,esc,icon,btn,field,check,modal,toast,notice,empty,pageHead,badge,stat,fmtDate,plural,on,bindForm,setOrg,go,showLink} from './core.js?v=2.7.0';
-import {renderLesson} from './learning-ui.js?v=2.7.0';
+import {$,$$,state,api,esc,icon,btn,field,check,modal,toast,notice,empty,pageHead,badge,stat,fmtDate,plural,on,bindForm,setOrg,go,showLink} from './core.js?v=2.8.0';
+import {renderLesson} from './learning-ui.js?v=2.8.0';
 
 const reviewKey=fp=>'baros:catalog-read:'+fp;
 function readKeys(fp){try{const value=JSON.parse(localStorage.getItem(reviewKey(fp))||'[]');return Array.isArray(value)?[...new Set(value.filter(x=>typeof x==='string'))]:[]}catch{return []}}

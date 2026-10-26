@@ -1,4 +1,4 @@
-"""Owner approval, tenant copies and human-reviewed written practice."""
+"""Complete curriculum, owner approval, tenant copies and separate written tests."""
 from datetime import timedelta
 import copy
 from datetime import datetime
@@ -51,21 +51,23 @@ class CatalogTests(unittest.TestCase):
    a=ImportedAssessment(organization_id=self.oid,title=data.title,payload=dump(data.model_dump(mode='json')),published=True)
    db.add(a);db.flush();aid=a.id;db.commit();return aid
  def test_complete_original_content_and_readonly_preview(self):
-  c=self.client.get('/api/owner/catalog').json();self.assertFalse(c['enabled']);self.assertEqual(len(c['courses']),self.catalog_count);self.assertEqual(set(c['roles']),{'bartender','waiter','administrator','hookah_master','cook','cleaner'})
-  for role in c['roles']:self.assertGreaterEqual(sum(x['role']==role for x in c['courses']),3)
+  c=self.client.get('/api/owner/catalog').json();self.assertFalse(c['enabled']);self.assertEqual(len(c['courses']),36);self.assertEqual(set(c['roles']),{'bartender','waiter','administrator','hookah_master','cook','cleaner'})
+  for role in c['roles']:self.assertEqual(sum(x['role']==role for x in c['courses']),6)
   prompts=set()
   for item in c['courses']:
    full=self.client.get('/api/owner/catalog/courses/'+item['key']).json()
    self.assertNotIn('practice',full)
-   if full['version']>=2:
-    self.assertGreaterEqual(len(full['course']['lessons']),8);self.assertEqual(len(full['course']['questions']),40)
-    self.assertGreaterEqual(sum(len(l['body'].split()) for l in full['course']['lessons']),1800)
-    self.assertEqual(full['course']['quiz_size'],30)
+   self.assertEqual(full['version'],2)
+   self.assertGreaterEqual(len(full['course']['lessons']),8);self.assertEqual(len(full['course']['questions']),40)
+   self.assertGreaterEqual(sum(len(l['body'].split()) for l in full['course']['lessons']),1800)
+   self.assertEqual(full['course']['quiz_size'],30);self.assertEqual(full['course']['time_limit_minutes'],45)
+   self.assertEqual(full['course']['passing_score'],80)
    for l in full['course']['lessons']:
     self.assertGreater(len(l['body'].split()),40)
     self.assertIsNone(re.search(r'(?mi)^##\s*(?:Задание|Практика|Практическая проверка|Домашнее)\b',l['body']))
    for q in full['course']['questions']:
     self.assertEqual(len(set(q['choices'])),4);self.assertTrue(0<=q['correct_index']<4);self.assertNotIn(q['prompt'],prompts);prompts.add(q['prompt'])
+  self.assertEqual(len(prompts),1440)
   with SessionLocal() as db:self.assertEqual(db.scalar(select(func.count(Course.id))),1);self.assertEqual(db.scalar(select(func.count(ImportedAssessment.id))),0)
  def test_review_revision_fingerprint_csrf_and_owner_guards(self):
   c=self.client.get('/api/owner/catalog').json();data={'reviewed':False,'fingerprint':c['fingerprint'],'expected_revision':0}
