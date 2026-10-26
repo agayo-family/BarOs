@@ -13,7 +13,7 @@ from ..models import Organization, User, Employee, Course, Lesson, Question, Upl
 from ..security import hash_password
 from .models import Account, VenueSettings, CourseSettings, CourseRevision, Enrollment, LessonRead, Exam, Notice, SourceFile, Event, Setting
 
-POSITIONS = {'bartender': 'Бармен', 'waiter': 'Официант', 'manager': 'Менеджер зала', 'host': 'Хостес', 'cook': 'Повар', 'barista': 'Бариста', 'administrator': 'Администратор', 'sommelier': 'Сомелье'}
+POSITIONS = {'bartender': 'Бармен', 'waiter': 'Официант', 'manager': 'Менеджер зала', 'host': 'Хостес', 'cook': 'Повар', 'barista': 'Бариста', 'administrator': 'Администратор', 'sommelier': 'Сомелье', 'hookah_master': 'Кальянщик', 'cleaner': 'Клининг-мастер'}
 PERMISSIONS = {'employees_manage': 'Сотрудники', 'courses_manage': 'Уроки и тесты', 'uploads_manage': 'Материалы', 'ai_use': 'AI-методист', 'onboarding_edit': 'Интервью', 'shifts_manage': 'График смен'}
 QTYPES = {'knowledge': 'Знание', 'understanding': 'Понимание', 'sales': 'Рекомендация', 'scenario': 'Ситуация'}
 

@@ -33,7 +33,7 @@ async def lifespan(app):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         migrate(db)
-        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock']:
+        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog']:
             if not db.get(Setting,key): db.add(Setting(key=key,value=''))
         db.commit()
         from .notifications import ensure_vapid
@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.6.4', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.7.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -92,13 +92,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.6.4'}
+    return {'status':'ok','service':'baros','version':'2.7.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.6.4'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.7.0'}
 
 
 @app.post('/api/auth/setup')
@@ -267,8 +267,11 @@ def venues(a=Depends(actor),db=Depends(get_db)):
 @app.post('/api/venues')
 def create_venue(data:VenueIn,a=Depends(actor),db=Depends(get_db)):
     owner(a)
+    from .catalog import lock_state, install_snapshot
+    catalog_state = parse(lock_state(db).value)
     org=Organization(name=data.name);db.add(org);db.flush()
     s=settings(db,org.id);s.plan=data.plan;s.seat_limit=data.seat_limit;s.paid_until=now()+timedelta(days=data.days)
+    install_snapshot(db,org.id,catalog_state,a)
     log(db,a,org.id,'Создано заведение',name=org.name)
     db.commit();return venue_data(db,org)
 
@@ -418,6 +421,8 @@ from .growth import router as growth_router
 from .mentor import router as mentor_router
 from .packages import router as packages_router
 from .reports import router as reports_router
+from .catalog import router as catalog_router
+app.include_router(catalog_router)
 app.include_router(reports_router)
 app.include_router(packages_router)
 app.include_router(mentor_router)

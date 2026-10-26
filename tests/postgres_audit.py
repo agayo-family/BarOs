@@ -18,7 +18,7 @@ os.environ.update(DATABASE_URL=url, BAROS_WORKER='0', COOKIE_SECURE='0',
 from fastapi.testclient import TestClient
 from sqlalchemy import select, func
 from baros.db import Base, engine, SessionLocal
-from baros.models import Organization, Employee
+from baros.models import Organization, Employee, Course
 from baros.v2.models import Account, VenueSettings
 
 app = importlib.import_module('baros.v2.app').app
@@ -83,6 +83,35 @@ class PostgresConcurrencyTests(unittest.TestCase):
         with SessionLocal() as db:
             self.assertEqual(db.scalar(select(func.count(Account.id))),1)
             self.assertEqual(db.scalar(select(func.count(Employee.id))),1)
+
+    def catalog_clients(self):
+        self.venues()
+        result=self.client.post('/api/auth/setup',json={'token':os.environ['FIRST_RUN_TOKEN'],
+            'login':'catalog.owner','name':'Catalog owner','password':PASSWORD})
+        self.assertEqual(result.status_code,200,result.text)
+        csrf=self.client.get('/api/me').json()['csrf']
+        return csrf,self.client.get('/api/owner/catalog').json()
+
+    def test_catalog_activation_and_venue_creation_cannot_miss_a_venue(self):
+        csrf,catalog=self.catalog_clients()
+        def action(i):
+            c=TestClient(app);c.cookies.update(self.client.cookies)
+            headers={'x-csrf-token':csrf}
+            if i==0:r=c.post('/api/owner/catalog/activate',json={'reviewed':True,'fingerprint':catalog['fingerprint'],'expected_revision':0},headers=headers)
+            else:r=c.post('/api/venues',json={'name':'Created during activation'},headers=headers)
+            return r.status_code
+        self.assertEqual(self.parallel(action),[200,200])
+        with SessionLocal() as db:
+            for oid in db.scalars(select(Organization.id).where(Organization.name!='__BAROS_PLATFORM__')).all():
+                self.assertEqual(db.scalar(select(func.count(Course.id)).where(Course.organization_id==oid)),18)
+
+    def test_catalog_two_approvals_have_one_winner_and_no_duplicates(self):
+        csrf,catalog=self.catalog_clients()
+        def action(i):
+            c=TestClient(app);c.cookies.update(self.client.cookies)
+            return c.post('/api/owner/catalog/activate',json={'reviewed':True,'fingerprint':catalog['fingerprint'],'expected_revision':0},headers={'x-csrf-token':csrf}).status_code
+        self.assertEqual(self.parallel(action),[200,409])
+        with SessionLocal() as db:self.assertEqual(db.scalar(select(func.count(Course.id))),36)
 
 
 if __name__ == '__main__':

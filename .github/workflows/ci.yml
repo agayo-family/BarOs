@@ -72,7 +72,9 @@ jobs:
       - name: Verify PostgreSQL locks, last seat and duplicate-login rollback
         run: python tests/postgres_audit.py
       - name: Verify source changes and safe publication on PostgreSQL
-        run: python -m unittest discover -s tests -p 'test_release_readiness.py' -v
+        run: |
+          python -m unittest discover -s tests -p 'test_release_readiness.py' -v
+          python -m unittest discover -s tests -p 'test_catalog.py' -v
 
   browser:
     runs-on: ubuntu-latest

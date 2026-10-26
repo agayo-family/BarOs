@@ -64,17 +64,42 @@ const sizes=[360,390,768,1440];
 async function sweep(role,routes){for(const width of sizes)for(const theme of ['light','dark'])for(const [path,label]of routes)if(!process.env.BAROS_AUDIT_FOCUS||process.env.BAROS_AUDIT_FOCUS===role+'/'+label)await shot(role,path,label,width,theme)}
 await sweep('employee',[['/app','home'],['/app/learning','learning'],['/app/learn/'+c.id,'lesson'],['/app/exam/'+exam.id,'exam'],['/app/cards/'+c.id,'cards'],['/app/games/'+c.id,'games'],['/app/mentor','mentor'],['/app/shifts','shifts'],['/app/history','history'],['/app/notices','notices'],['/app/profile','profile'],['/app/settings','settings'],['/app/assessments','assessments']]);
 await call('/exams/'+exam.id+'/finish','POST',{answers:{'0':0,'1':0,'2':0,'3':0}});
-const written=await call('/assessments/'+assessment.id+'/start','POST',{});
-await shot('employee','/app/assessment-attempts/'+written.id,'written',390,'light');
+let written=await call('/assessments/'+assessment.id+'/start','POST',{});
+written=await call('/assessment-attempts/'+written.id,'PUT',{version:written.version,answers:{q1:0}});
+written=await call('/assessment-attempts/'+written.id+'/advance','POST',{version:written.version});
+await sweep('employee',[['/app/assessment-attempts/'+written.id,'written']]);
+written=await call('/assessment-attempts/'+written.id,'PUT',{version:written.version,answers:{q2:'Сначала сверю рецепт и единицы, затем рассчитаю себестоимость и зафиксирую результат.'}});
+written=await call('/assessment-attempts/'+written.id+'/submit','POST',{version:written.version});
+await sweep('employee',[['/app/assessment-attempts/'+written.id,'submitted']]);
 await shot('employee','/app/exam/'+exam.id,'result',1440,'light');
 // Check offline navigation's visible recovery state, then restore connectivity.
 await ctx.setOffline(true);await page.goto(base+'/app').catch(()=>{});await ctx.setOffline(false);
 await ctx.clearCookies();await ctx.addCookies(managerStorage.cookies);me=await call('/me');
-await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/courses/'+c.id,'editor'],['/app/assessments/'+assessment.id,'assessment'],['/app/assessments/'+assessment.id+'/edit','assessment-editor'],['/app/staff','staff'],['/app/sources','sources'],['/app/reports','reports'],['/app/ai','ai'],['/app/interview','interview'],['/app/venues','venue-settings'],['/app/settings','settings']]);
+await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/assessments','assessments'],['/app/assessment-attempts/'+written.id,'written-review'],['/app/courses/'+c.id,'editor'],['/app/assessments/'+assessment.id,'assessment'],['/app/assessments/'+assessment.id+'/edit','assessment-editor'],['/app/staff','staff'],['/app/sources','sources'],['/app/reports','reports'],['/app/ai','ai'],['/app/interview','interview'],['/app/venues','venue-settings'],['/app/settings','settings']]);
 await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/sources');await page.locator('[data-upload]').click();await page.screenshot({path:join(output,'manager-upload-modal-390.png'),fullPage:true});await page.keyboard.press('Escape');
 await page.locator('#mobile-menu').click();assert.equal(await page.locator('#mobile-menu').getAttribute('aria-expanded'),'true');await page.screenshot({path:join(output,'manager-mobile-menu-390.png')});await page.keyboard.press('Escape');
 await login('browser.owner');
-await sweep('owner',[['/app','platform'],['/app/venues','venues'],['/app/audit','audit'],['/app/settings','settings']]);
+await sweep('owner',[['/app','platform'],['/app/venues','venues'],['/app/audit','audit'],['/app/settings','settings'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
+for(const item of (await call('/owner/catalog')).courses){await shot('owner','/app/catalog/'+item.key,'full-'+item.key,390,'light');await shot('owner','/app/catalog/'+item.key,'full-'+item.key,1440,'dark')}
+await page.goto(base+'/app/catalog');await page.locator('[data-catalog-activate]').click();await page.screenshot({path:join(output,'catalog-approval-modal-1440.png'),fullPage:true});await page.keyboard.press('Escape');
+assert.equal((await call('/owner/catalog')).enabled,false,'Visual preview must not activate library');
+// Full standard-library flow is exercised only on this disposable local server.
+let approved=await call('/owner/catalog');await call('/owner/catalog/activate','POST',{reviewed:true,fingerprint:approved.fingerprint,expected_revision:approved.revision});
+const future=await call('/venues','POST',{name:'Future venue after approved catalog'});assert.equal(future.courses,18);
+await login('browser.worker0');const assigned=await call('/learning');const standard=assigned.courses.find(x=>x.id!==c.id);assert(standard);
+const standardCourse=await call('/learning/'+standard.id),standardAid=standardCourse.program.written_assessment_id;
+await sweep('employee',[['/app/learn/'+standard.id,'standard-lesson']]);
+const standardWork=await call('/assessments/'+standardAid+'/start','POST',{});
+await sweep('employee',[['/app/assessment-attempts/'+standardWork.id,'standard-written']]);
+assert.equal(await page.locator('textarea[data-answer]').count(),2);assert.equal(await page.locator('input[type=radio]').count(),0);
+for(const input of await page.locator('textarea[data-answer]').all())await input.fill('Проверю исходные факты и ограничения, согласую выполнимое решение, сообщу следующий шаг и проверю результат.');
+await page.locator('[data-submit-written]').click();await page.getByText('Работа сдана. Письменные ответы ожидают проверки управляющего.',{exact:true}).waitFor();
+const submittedStandard=await call('/assessment-attempts/'+standardWork.id);assert.equal(submittedStandard.status,'submitted');assert.equal(Object.values(submittedStandard.answers).filter(v=>v.includes('Проверю исходные факты')).length,2);
+await login('browser.owner');await sweep('remote',[['/app/assessment-attempts/'+standardWork.id,'standard-review']]);
+for(const input of await page.locator('[name^="grade:"]').all())await input.fill(await input.getAttribute('max'));
+for(const input of await page.locator('[name^="feedback:"]').all())await input.fill('Обоснованное решение принято.');
+await page.locator('#grade-written button[type=submit]').click();await page.waitForURL(base+'/app/assessments/'+standardAid);
+assert.equal((await call('/assessment-attempts/'+standardWork.id)).result.percent,100);
 await shot('remote','/app','overview',390,'light');
 await call('/auth/logout','POST',{});me=null;
 await sweep('public',[['/','login'],['/join','join'],['/owner-recovery','recovery'],['/missing-page','missing']]);

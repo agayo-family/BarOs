@@ -164,6 +164,7 @@ def finish(db,exam,data):
     score=round(100*correct/max(1,len(questions)),1)
     ended=min(now(),exam.expires_at)
     result={'score':score,'passed':score>=data['passing_score'],'correct':correct,'total':len(questions),
+            'written_assessment_id':(data.get('program') or {}).get('written_assessment_id'),
             'exam_id':exam.id,'course_id':db.get(CourseRevision,exam.revision_id).course_id,
             'duration_seconds':max(0,int((ended-exam.started_at).total_seconds())), 'review':review,'expired':now()>=exam.expires_at}
     exam.finished_at=ended

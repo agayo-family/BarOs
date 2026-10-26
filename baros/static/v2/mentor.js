@@ -1,5 +1,5 @@
-import {$,state,api,esc,icon,btn,notice,pageHead,pageCleanup,on,toast,go} from './core.js?v=2.6.4';
-import {petFigure} from './growth.js?v=2.6.4';
+import {$,state,api,esc,icon,btn,notice,pageHead,pageCleanup,on,toast,go} from './core.js?v=2.7.0';
+import {petFigure} from './growth.js?v=2.7.0';
 
 function contextFromURL(){
  const params=new URLSearchParams(location.search),ctx={};

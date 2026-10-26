@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import statistics
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import tempfile
 import time
 
@@ -53,7 +55,7 @@ with TestClient(app) as client:
     assert client.post('/api/auth/login',json={'login':'perf.owner','password':'local-audit-password'}).status_code==200
     headers={'x-organization-id':str(oid)}
     results={}
-    for path in ['/api/staff','/api/courses','/api/venues','/api/sources','/api/export']:
+    for path in ['/api/staff','/api/courses','/api/venues','/api/sources','/api/export','/api/owner/catalog','/api/owner/catalog/courses/bar-02-classics','/api/owner/onboarding']:
         assert client.get(path,headers=headers).status_code==200
         samples=[]; counts=[]; transferred=0
         for _ in range(3):
@@ -61,6 +63,10 @@ with TestClient(app) as client:
             assert response.status_code==200, response.text[:100]
             samples.append((time.perf_counter()-start)*1000); counts.append(len(queries)); transferred=len(response.content)
         results[path]={'median_ms':round(statistics.median(samples),2),'sql_queries':max(counts),'response_bytes':transferred}
+    catalog=client.get('/api/owner/catalog').json();csrf=client.get('/api/me').json()['csrf'];start=time.perf_counter()
+    installed=client.post('/api/owner/catalog/activate',json={'reviewed':True,'fingerprint':catalog['fingerprint'],'expected_revision':0},headers={'x-csrf-token':csrf})
+    assert installed.status_code==200, installed.text
+    results['catalog_activation']={'elapsed_ms':round((time.perf_counter()-start)*1000,2),'courses_added':installed.json()['added'],'enrollments':installed.json()['enrollments']}
     assert client.post('/api/auth/login',json={'login':'perf.staff.0','password':'local-audit-password'}).status_code==200
     client.get('/api/me'); queries.clear(); start=time.perf_counter(); response=client.get('/api/learning')
     assert response.status_code==200
