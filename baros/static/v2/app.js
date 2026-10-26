@@ -30,6 +30,7 @@ async function renderAuthed(ticket){if(state.cleanup){state.cleanup();state.clea
  const root=document.createElement('div');let rendered;
  try{
   if(a.role==='owner'&&p==='/app/catalog')rendered=await page('catalog','catalogPage');
+  else if(a.role==='owner'&&/^\/app\/catalog\/[a-z0-9-]+\/edit$/.test(p))rendered=await page('editor','editorPage',p.split('/').at(-2),{catalog:true});
   else if(a.role==='owner'&&/^\/app\/catalog\/[a-z0-9-]+$/.test(p))rendered=await page('catalog','catalogCoursePage',p.split('/').at(-1));
   else if(a.role==='owner'&&p==='/app/onboarding')rendered=await page('catalog','onboardingPage');
   else if(p==='/app/profile')rendered=await page('growth','profilePage');

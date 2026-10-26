@@ -33,7 +33,7 @@ async def lifespan(app):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         migrate(db)
-        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog']:
+        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog','standard_catalog_draft']:
             if not db.get(Setting,key): db.add(Setting(key=key,value=''))
         db.commit()
         from .notifications import ensure_vapid
