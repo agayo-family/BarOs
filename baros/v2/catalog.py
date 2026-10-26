@@ -97,6 +97,7 @@ def install_snapshot(db, organization_id, approved, by=None, previous=None):
             continue
         if old:
             c, program = old[0]
+            db.refresh(program)
             meta = parse(program.payload)
             provenance = meta.get('standard_catalog', {})
             if provenance.get('version', 1) >= item.get('version', 1):

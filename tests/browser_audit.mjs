@@ -85,21 +85,12 @@ await page.goto(base+'/app/catalog');await page.locator('[data-catalog-activate]
 assert.equal((await call('/owner/catalog')).enabled,false,'Visual preview must not activate library');
 // Full standard-library flow is exercised only on this disposable local server.
 let approved=await call('/owner/catalog');await call('/owner/catalog/activate','POST',{reviewed:true,fingerprint:approved.fingerprint,expected_revision:approved.revision});
-const future=await call('/venues','POST',{name:'Future venue after approved catalog'});assert.equal(future.courses,18);
+const future=await call('/venues','POST',{name:'Future venue after approved catalog'});assert.equal(future.courses,approved.courses.length);
 await login('browser.worker0');const assigned=await call('/learning');const standard=assigned.courses.find(x=>x.id!==c.id);assert(standard);
-const standardCourse=await call('/learning/'+standard.id),standardAid=standardCourse.program.written_assessment_id;
+const standardCourse=await call('/learning/'+standard.id);assert.equal(standardCourse.program.written_assessment_id,undefined);
 await sweep('employee',[['/app/learn/'+standard.id,'standard-lesson']]);
-const standardWork=await call('/assessments/'+standardAid+'/start','POST',{});
-await sweep('employee',[['/app/assessment-attempts/'+standardWork.id,'standard-written']]);
-assert.equal(await page.locator('textarea[data-answer]').count(),2);assert.equal(await page.locator('input[type=radio]').count(),0);
-for(const input of await page.locator('textarea[data-answer]').all())await input.fill('Проверю исходные факты и ограничения, согласую выполнимое решение, сообщу следующий шаг и проверю результат.');
-await page.locator('[data-submit-written]').click();await page.getByText('Работа сдана. Письменные ответы ожидают проверки управляющего.',{exact:true}).waitFor();
-const submittedStandard=await call('/assessment-attempts/'+standardWork.id);assert.equal(submittedStandard.status,'submitted');assert.equal(Object.values(submittedStandard.answers).filter(v=>v.includes('Проверю исходные факты')).length,2);
-await login('browser.owner');await sweep('remote',[['/app/assessment-attempts/'+standardWork.id,'standard-review']]);
-for(const input of await page.locator('[name^="grade:"]').all())await input.fill(await input.getAttribute('max'));
-for(const input of await page.locator('[name^="feedback:"]').all())await input.fill('Обоснованное решение принято.');
-await page.locator('#grade-written button[type=submit]').click();await page.waitForURL(base+'/app/assessments/'+standardAid);
-assert.equal((await call('/assessment-attempts/'+standardWork.id)).result.percent,100);
+assert.equal(await page.locator('.written-practice').count(),0);
+await login('browser.owner');
 await shot('remote','/app','overview',390,'light');
 await call('/auth/logout','POST',{});me=null;
 await sweep('public',[['/','login'],['/join','join'],['/owner-recovery','recovery'],['/missing-page','missing']]);
