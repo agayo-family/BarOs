@@ -11,7 +11,7 @@ def fingerprint(source):
 
 def mark_changed(db, organization_id, source_id, reason):
     rows = db.scalars(select(CourseSettings).join(Course, Course.id == CourseSettings.course_id)
-                      .where(Course.organization_id == organization_id).order_by(CourseSettings.course_id).with_for_update()).all()
+                      .where(Course.organization_id == organization_id).order_by(CourseSettings.course_id).with_for_update(of=CourseSettings)).all()
     count = 0
     for settings in rows:
         if source_id not in parse(settings.source_ids_json, []):

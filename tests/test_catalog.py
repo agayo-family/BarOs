@@ -1,6 +1,7 @@
 """Owner approval, tenant copies and human-reviewed written practice."""
 from datetime import timedelta
 import copy
+from datetime import datetime
 import importlib
 import os
 import re
@@ -14,7 +15,7 @@ from sqlalchemy import select, func
 from baros.db import Base, engine, SessionLocal
 from baros.models import Organization, Course
 from baros.security import hash_password
-from baros.v2.models import Account, CourseProgram, CourseRevision, ImportedAssessment, Notice, Setting, VenueSettings, WrittenAttempt
+from baros.v2.models import Account, CourseProgram, CourseRevision, Exam, ImportedAssessment, Notice, Setting, VenueSettings, WrittenAttempt
 from baros.v2.domain import dump, parse, now
 from baros.v2.packages import AssessmentIn
 from baros.v2 import catalog
@@ -122,6 +123,30 @@ class CatalogTests(unittest.TestCase):
   self.login('worker');a=self.client.get('/api/assessment-attempts/'+rid).json();self.assertEqual(a['status'],'graded');self.assertEqual(a['answers'],answers);self.assertNotIn('rubric',dump(a));self.assertEqual(a['result']['percent'],100)
   for name in ['hookah','cleaner']:
    self.login(name);self.assertEqual(len(self.client.get('/api/learning').json()['courses']),self.role_counts['hookah_master' if name=='hookah' else 'cleaner']);self.assertEqual(len(self.client.get('/api/assessments').json()),0)
+ def test_expanded_bank_cards_and_full_thirty_question_exam(self):
+  self.activate();self.login('worker')
+  cid=self.client.get('/api/learning').json()['courses'][0]['id'];course=self.client.get(f'/api/learning/{cid}').json()
+  self.assertEqual((course['quiz_size'],course['bank_size']),(30,40))
+  self.assertEqual(self.post(f'/api/learning/{cid}/exam',{}).status_code,409)
+  for i in range(len(course['lessons'])):
+   self.assertEqual(self.post(f'/api/learning/{cid}/lessons/{i}',{'complete':False}).status_code,200)
+   with patch('baros.v2.learning.now',return_value=now()+timedelta(seconds=course['min_read_seconds']+1)):
+    r=self.post(f'/api/learning/{cid}/lessons/{i}',{'complete':True});self.assertEqual(r.status_code,200,r.text)
+  cards=self.client.get(f'/api/learning/{cid}/cards').json()['cards'];self.assertEqual(len(cards),40)
+  exam=self.post(f'/api/learning/{cid}/exam',{}).json();self.assertEqual(len(exam['questions']),30)
+  self.assertEqual(len({q['prompt'] for q in exam['questions']}),30)
+  self.assertTrue(all('correct_index' not in q and 'explanation' not in q and len(q['choices'])==4 for q in exam['questions']))
+  duration=datetime.fromisoformat(exam['expires_at'])-datetime.fromisoformat(exam['started_at'])
+  self.assertAlmostEqual(duration.total_seconds(),45*60,delta=1)
+  with SessionLocal() as db:
+   saved=db.get(Exam,exam['id']);snapshot=parse(saved.questions_json,[])
+   answers={str(i):q['correct_index'] for i,q in enumerate(snapshot)}
+   self.assertEqual(len(parse(db.get(CourseRevision,saved.revision_id).payload)['questions']),40)
+  result=self.post('/api/exams/'+exam['id']+'/finish',{'answers':answers}).json()
+  self.assertEqual((result['total'],result['correct'],result['score']),(30,30,100))
+  self.assertIsNone(result['written_assessment_id'])
+  self.assertEqual(len(self.client.get('/api/assessments').json()),0)
+
  def test_onboarding_tracks_actual_counts_and_excludes_platform(self):
   r=self.client.get('/api/owner/onboarding');self.assertEqual(r.status_code,200);data=r.json();self.assertEqual(len(data['venues']),2)
   v=next(x for x in data['venues'] if x['id']==self.oid);self.assertEqual(v['managers'],1);self.assertEqual(v['employees'],3);self.assertEqual(v['courses'],0);self.assertTrue(v['access_ready'])
