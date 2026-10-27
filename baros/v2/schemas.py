@@ -93,6 +93,17 @@ class CatalogActivateIn(StrictModel):
     expected_revision: int = Field(ge=0)
 class CatalogPauseIn(StrictModel):
     expected_revision: int = Field(ge=0)
+class CatalogCourseEditIn(StrictModel):
+    course: CourseIn
+    edit_version: int = Field(ge=0)
+    outcomes: list[str] = Field(min_length=1, max_length=12)
+    @field_validator('outcomes')
+    @classmethod
+    def valid_outcomes(cls, value):
+        value = [s.strip() for s in value]
+        if any(not s or len(s) > 1000 for s in value):
+            raise ValueError('Укажите от одного до двенадцати непустых результатов курса')
+        return value
 class GenerateIn(StrictModel):
     title: str = Field(default='Обучение по материалам заведения', min_length=2, max_length=200)
     source_ids: list[int] = Field(default_factory=list, max_length=20)

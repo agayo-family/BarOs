@@ -1,5 +1,5 @@
-import {$,$$,state,api,esc,icon,btn,field,check,modal,toast,notice,empty,pageHead,badge,stat,fmtDate,plural,on,bindForm,setOrg,go,showLink} from './core.js?v=2.8.0';
-import {renderLesson} from './learning-ui.js?v=2.8.0';
+import {$,$$,state,api,esc,icon,btn,field,check,modal,toast,notice,empty,pageHead,badge,stat,fmtDate,plural,on,bindForm,setOrg,go,showLink} from './core.js?v=2.9.0';
+import {renderLesson} from './learning-ui.js?v=2.9.0';
 
 const reviewKey=fp=>'baros:catalog-read:'+fp;
 function readKeys(fp){try{const value=JSON.parse(localStorage.getItem(reviewKey(fp))||'[]');return Array.isArray(value)?[...new Set(value.filter(x=>typeof x==='string'))]:[]}catch{return []}}
@@ -27,7 +27,7 @@ export async function catalogPage(root){
 export async function catalogCoursePage(root,key){
  const item=await api('/owner/catalog/courses/'+encodeURIComponent(key)),c=item.course;
  const role=state.me.positions?.[item.role]||item.role;
- root.innerHTML=`<a class="btn text" href="/app/catalog" data-clear-org>${icon('back')}Общая библиотека</a>`+pageHead(c.title,c.description,badge(role,'purple'),'ПРОСМОТР ПЕРЕД УТВЕРЖДЕНИЕМ')+
+ root.innerHTML=`<a class="btn text" href="/app/catalog" data-clear-org>${icon('back')}Общая библиотека</a>`+pageHead(c.title,c.description,`<div class="actions">${badge(role,'purple')}<a class="btn soft" href="/app/catalog/${encodeURIComponent(key)}/edit" data-clear-org>${icon('edit')}Редактировать курс и тест</a></div>`,'ПРОСМОТР ПЕРЕД УТВЕРЖДЕНИЕМ')+
  notice('Это полное содержание общей редакции. Просмотр не публикует курс в заведениях. Здесь доступны все уроки, вопросы, правильные ответы и объяснения для вашей проверки.')+
  `<div class="catalog-reader section-space"><aside class="card catalog-outline"><h2>Содержание</h2><nav>${c.lessons.map((l,i)=>`<a href="#catalog-lesson-${i+1}" data-section-link>${i+1}. ${esc(l.title)}</a>`).join('')}<a href="#catalog-questions" data-section-link>Вопросы и объяснения</a><a href="#catalog-sources" data-section-link>Основания и источники</a></nav></aside><div class="stack"><section class="card"><h2>После курса сотрудник сможет</h2><ul>${item.outcomes.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><p class="muted">Автотест: ${c.quiz_size} из ${c.questions.length} вопросов · ${c.time_limit_minutes} минут · порог ${c.passing_score}%. Заданий внутри курса нет.</p></section>`+
  c.lessons.map((l,i)=>`<section class="card lesson-reader" id="catalog-lesson-${i+1}"><div class="eyebrow">УРОК ${i+1}</div><h2>${esc(l.title)}</h2>${renderLesson(l.body)}</section>`).join('')+

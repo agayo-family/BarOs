@@ -1,0 +1,61 @@
+{
+  "fixture": {
+    "venues": 5,
+    "staff": 15,
+    "courses": 20,
+    "questions_per_course": 30,
+    "source_mb": 5
+  },
+  "results": {
+    "/api/staff": {
+      "median_ms": 29.44,
+      "sql_queries": 8,
+      "response_bytes": 132228
+    },
+    "/api/courses": {
+      "median_ms": 7.18,
+      "sql_queries": 8,
+      "response_bytes": 7382
+    },
+    "/api/venues": {
+      "median_ms": 3.98,
+      "sql_queries": 6,
+      "response_bytes": 1683
+    },
+    "/api/sources": {
+      "median_ms": 5.74,
+      "sql_queries": 4,
+      "response_bytes": 1121
+    },
+    "/api/export": {
+      "median_ms": 16.55,
+      "sql_queries": 9,
+      "response_bytes": 1407
+    },
+    "/api/owner/catalog": {
+      "median_ms": 15.88,
+      "sql_queries": 6,
+      "response_bytes": 27232
+    },
+    "/api/owner/catalog/courses/bar-02-classics": {
+      "median_ms": 8.0,
+      "sql_queries": 4,
+      "response_bytes": 58555
+    },
+    "/api/owner/onboarding": {
+      "median_ms": 4.79,
+      "sql_queries": 10,
+      "response_bytes": 882
+    },
+    "catalog_activation": {
+      "elapsed_ms": 1690.11,
+      "courses_added": 180,
+      "enrollments": 90
+    },
+    "/api/learning": {
+      "elapsed_ms": 21.7,
+      "sql_queries": 7,
+      "assigned": 26
+    }
+  }
+}

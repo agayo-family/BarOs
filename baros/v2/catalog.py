@@ -21,10 +21,11 @@ from .domain import (POSITIONS, applies, digest, dump, iso, log, now, parse,
 from .models import (Account, CourseProgram, CourseRevision, CourseSettings,
                      Enrollment, ImportedAssessment, Job, Notice, Setting, SourceFile, VenueSettings)
 from .packages import AssessmentIn
-from .schemas import CatalogActivateIn, CatalogPauseIn, CourseIn
+from .schemas import CatalogActivateIn, CatalogPauseIn, CatalogCourseEditIn, CourseIn
 
 router = APIRouter()
 STATE_KEY = 'standard_catalog'
+DRAFT_KEY = 'standard_catalog_draft'
 DATA_FILE = Path(__file__).with_name('standard_courses.json')
 
 
@@ -52,6 +53,30 @@ def candidate():
 def state(db):
     row = db.get(Setting, STATE_KEY)
     return parse(row.value) if row else {}
+
+
+def draft_state(db):
+    row = db.get(Setting, DRAFT_KEY)
+    return parse(row.value) if row else {}
+
+
+def editable_catalog(db):
+    """Owner edits overlay the shipped library; never mutate the approved snapshot."""
+    base = candidate()
+    draft = draft_state(db)
+    overrides = draft.get('courses', {})
+    if not overrides:
+        return base
+    data = deepcopy(base)
+    for item in data['courses']:
+        saved = overrides.get(item['key'])
+        if saved:
+            item['course'] = deepcopy(saved['course'])
+            item['outcomes'] = list(saved['outcomes'])
+            item['version'] = max(item.get('version', 1), saved['version'])
+    data.pop('fingerprint', None)
+    data['fingerprint'] = digest(json.dumps(data, ensure_ascii=False, sort_keys=True))
+    return data
 
 
 def lock_state(db):
@@ -149,7 +174,7 @@ def install_snapshot(db, organization_id, approved, by=None, previous=None):
         content = payload(db, c)
         rev = CourseRevision(course_id=c.id, version=config.version, payload=dump(content))
         db.add(rev); db.flush()
-        due = now() + timedelta(days=data.deadline_days)
+        due = config.due_at or now() + timedelta(days=data.deadline_days)
         for employee in employees:
             if applies(employee, content):
                 db.add(Enrollment(account_id=employee.id, revision_id=rev.id, due_at=due))
@@ -178,8 +203,9 @@ def state_summary(db, approved):
 @router.get('/api/owner/catalog')
 def catalogue(a=Depends(actor), db=Depends(get_db)):
     owner(a)
-    data = candidate()
+    data = editable_catalog(db)
     return {**state_summary(db, state(db)), 'fingerprint': data['fingerprint'],
+            'edit_version': draft_state(db).get('revision', 0),
             'version': data['version'], 'roles': {k: POSITIONS[k] for k in data['roles']},
             'courses': [{'key': x['key'], 'role': x['role'], 'title': x['course']['title'],
                          'description': x['course']['description'], 'outcomes': x['outcomes'],
@@ -191,21 +217,56 @@ def catalogue(a=Depends(actor), db=Depends(get_db)):
 
 
 @router.get('/api/owner/catalog/courses/{key}')
-def catalogue_course(key: str, a=Depends(actor)):
+def catalogue_course(key: str, a=Depends(actor), db=Depends(get_db)):
     owner(a)
-    data = candidate()
+    data = editable_catalog(db)
     item = next((c for c in data['courses'] if c['key'] == key), None)
     require(item, 'Курс библиотеки не найден', 404)
-    return {**deepcopy(item), 'fingerprint': data['fingerprint']}
+    return {**deepcopy(item), 'fingerprint': data['fingerprint'],
+            'edit_version': draft_state(db).get('revision', 0)}
+
+
+@router.put('/api/owner/catalog/courses/{key}')
+def edit_catalogue_course(key: str, data: CatalogCourseEditIn, a=Depends(actor), db=Depends(get_db)):
+    owner(a)
+    # Same lock as approval and venue creation: saving cannot race global approval.
+    lock_state(db)
+    draft = draft_state(db)
+    require(data.edit_version == draft.get('revision', 0),
+            'Библиотека изменена в другом окне. Обновите страницу перед сохранением.', 409)
+    current = editable_catalog(db)
+    item = next((c for c in current['courses'] if c['key'] == key), None)
+    require(item, 'Курс библиотеки не найден', 404)
+    course = data.course
+    require(course.positions == [item['role']], 'Должность общего курса менять нельзя')
+    require(bool(course.lessons), 'Добавьте хотя бы один урок')
+    require(len(course.questions) >= course.quiz_size,
+            'В банке меньше вопросов, чем нужно для одной попытки теста')
+    require(len({' '.join(q.prompt.casefold().split()) for q in course.questions}) == len(course.questions),
+            'В банке повторяются вопросы')
+    content = course.model_dump(mode='json')
+    content['edit_version'] = None
+    courses = dict(draft.get('courses', {}))
+    courses[key] = {'course': content, 'outcomes': data.outcomes,
+                    'version': item.get('version', 1) + 1}
+    revision = draft.get('revision', 0) + 1
+    row = db.get(Setting, DRAFT_KEY)
+    if not row:
+        row = Setting(key=DRAFT_KEY, value='')
+        db.add(row)
+    row.value = dump({'revision': revision, 'courses': courses})
+    log(db, a, None, 'Изменён черновик общей библиотеки', key=key, edit_version=revision)
+    db.commit()
+    return {'ok': True, 'edit_version': revision, 'fingerprint': editable_catalog(db)['fingerprint']}
 
 
 @router.post('/api/owner/catalog/activate')
 def activate(data: CatalogActivateIn, a=Depends(actor), db=Depends(get_db)):
     owner(a)
     require(data.reviewed, 'Подтвердите, что проверили содержание всех курсов')
-    current = candidate()
-    require(data.fingerprint == current['fingerprint'], 'Содержание библиотеки изменилось. Прочитайте актуальную редакцию.', 409)
     row = lock_state(db)
+    current = editable_catalog(db)
+    require(data.fingerprint == current['fingerprint'], 'Содержание библиотеки изменилось. Прочитайте актуальную редакцию.', 409)
     previous = parse(row.value)
     require(data.expected_revision == previous.get('revision', 0),
             'Настройки библиотеки изменены в другом окне. Обновите страницу.', 409)
