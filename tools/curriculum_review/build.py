@@ -39,3 +39,30 @@ def review(key, packs):
     data['version'] = '2026.10.3'
     TARGET.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
     print(key, sum(c['version'] >= 3 for c in data['courses']), '/36')
+
+def revise(key, text):
+    """One editorial line per existing question; optional standalone prompt before =>."""
+    data = json.loads(TARGET.read_text())
+    item = next(c for c in data['courses'] if c['key'] == key)
+    original = next(c for c in BASE['courses'] if c['key'] == key)
+    lines = [x.strip() for x in text.strip().splitlines() if x.strip()]
+    assert len(lines) == 40, (key, len(lines))
+    questions = []
+    for i, line in enumerate(lines):
+        q = dict(original['course']['questions'][i])
+        if '=>' in line:
+            q['prompt'], line = [x.strip() for x in line.split('=>', 1)]
+        answers = [x.strip() for x in line.split('|')]
+        assert len(answers) == len(set(answers)) == 4, (key, i)
+        assert not any(re.match(r'(?i)^(только|сразу|всегда|никогда|да,|нет,)\b', a) for a in answers), (key, i)
+        order = [(j - i) % 4 for j in range(4)]
+        q.update(choices=[answers[j] for j in order], correct_index=order.index(0))
+        questions.append(q)
+    assert len({q['prompt'] for q in questions}) == 40, key
+    item['course']['questions'] = questions
+    item['version'] = 3
+    item['assessment_design'] = {'revision': 3, 'reviewed_at': '2026-10-27',
+        'approach': 'Сохранена тема каждого вопроса; варианты выражают близкие рабочие решения и типичные ошибки'}
+    data['version'] = '2026.10.3'
+    TARGET.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+    print(key, sum(c['version'] >= 3 for c in data['courses']), '/36')
