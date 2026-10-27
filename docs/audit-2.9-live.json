@@ -1,0 +1,123 @@
+{
+  "service": "https://baros-staging.onrender.com",
+  "version": "2.9.0",
+  "checks": [
+    {
+      "path": "/health",
+      "status": 200,
+      "version": "2.9.0"
+    },
+    {
+      "path": "/api/public",
+      "status": 200,
+      "setup_required": false
+    },
+    {
+      "path": "/",
+      "status": 200
+    },
+    {
+      "path": "/app/catalog",
+      "status": 200
+    },
+    {
+      "path": "/app/catalog/bar-02-classics",
+      "status": 200
+    },
+    {
+      "path": "/app/catalog/bar-02-classics/edit",
+      "status": 200
+    },
+    {
+      "path": "/join",
+      "status": 200
+    },
+    {
+      "path": "/owner-recovery",
+      "status": 200
+    },
+    {
+      "path": "/api/me",
+      "status": 401
+    },
+    {
+      "path": "/api/courses",
+      "status": 401
+    },
+    {
+      "path": "/api/learning",
+      "status": 401
+    },
+    {
+      "path": "/api/owner/catalog",
+      "status": 401
+    },
+    {
+      "path": "/api/owner/catalog/courses/bar-02-classics",
+      "status": 401
+    },
+    {
+      "path": "/api/venues",
+      "status": 401
+    },
+    {
+      "path": "/static/v2/app.js?v=2.9.0",
+      "status": 200,
+      "sha256": "5fede074337799f79b9c855d5ea0bf7c32a625e07a60610ea06bda91637b9979"
+    },
+    {
+      "path": "/static/v2/core.js?v=2.9.0",
+      "status": 200,
+      "sha256": "66290eec21ceacbeac79cd36017e57454e72c5b87883068aa34f166f2d779914"
+    },
+    {
+      "path": "/static/v2/catalog.js?v=2.9.0",
+      "status": 200,
+      "sha256": "6466e841d98a05c7c3e23905ade1591f9f9345ea1e3d45114ed3b2665cbe1ff1"
+    },
+    {
+      "path": "/static/v2/editor.js?v=2.9.0",
+      "status": 200,
+      "sha256": "5ac06442d1a256e5f32d11fefa5a4ef56b1942eb482ab5b3bcf23938c1d2870a"
+    },
+    {
+      "path": "/static/v2/learn.js?v=2.9.0",
+      "status": 200,
+      "sha256": "f8703c41727c6eddad4a324ae0c8da19fa564a64bd593aa14a3fdb6cb373c690"
+    },
+    {
+      "path": "/static/v2/learning-ui.js?v=2.9.0",
+      "status": 200,
+      "sha256": "c89ca6c49f0c030e983d2c134d860839f9a3a77f85ed0573b517875c3529a8ca"
+    },
+    {
+      "path": "/static/v2/style.css?v=2.9.0",
+      "status": 200,
+      "sha256": "6e2e18861b4fd6fefd8a51e8caf48fe971c40461272e3f02bb31f467123c822e"
+    },
+    {
+      "path": "/static/v2/experience.css?v=2.9.0",
+      "status": 200,
+      "sha256": "ca1bec06881cbc4304b7682afa60a14f1c459bf85693cc60a535808607b7244b"
+    },
+    {
+      "path": "/static/v2/index.html?v=2.9.0",
+      "status": 200,
+      "sha256": "6eff75aaaa9427656d79117d687a149dc6d41a727604bd565172dfcb9d6a314f"
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "sha256": "52a1f36225d3ddf316fbc6669bfba446e35ad2695ee87fad54b9a37424375717"
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200
+    }
+  ],
+  "mutations": 0,
+  "deployed_commit": "58a6a07a575e214615fb6d898e4eb2674f2de8fd",
+  "deploy_id": "dep-dbga8bl9fdbs73d80de0",
+  "live_at_moscow": "2026-10-27T16:17:47+03:00",
+  "post_deploy_error_logs": 0
+}
