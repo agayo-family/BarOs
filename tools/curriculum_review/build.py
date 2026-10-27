@@ -20,7 +20,16 @@ def review(key, packs):
     old = next(c for c in BASE['courses'] if c['key'] == key)
     lessons = json.loads(json.dumps(old['course']['lessons']))
     questions = []
-    for title, answers, prompts, rule, li in packs:
+    layout = {
+        'bar-01-station': [3,2,2,1,5,5,1,0,7,4],
+        'bar-02-classics': [0,1,2,4,0,5,6,0,6,7],
+        'bar-03-history': [1,6,2,4,5,7,1,5,6,9],
+        'bar-04-spirits': [0,1,2,5,4,6,6,7,7,5],
+        'bar-05-wine-beer': [0,4,0,7,3,1,5,7,1,0],
+        'bar-06-economics': [0,1,2,2,2,3,0,5,6,7],
+    }.get(key)
+    for pi, (title, answers, prompts, rule, li) in enumerate(packs):
+        if layout: li = layout[pi]
         assert 0 <= li < len(lessons)
         assert not any(re.match(r'(?i)^(только|сразу|всегда|никогда|да,|нет,)\b', a) for a in answers)
         for i, entry in enumerate(prompts):

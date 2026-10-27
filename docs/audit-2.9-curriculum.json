@@ -1,0 +1,256 @@
+{
+  "date": "2026-10-27",
+  "catalog_version": "2026.10.3",
+  "courses": 36,
+  "roles": {
+    "bartender": 6,
+    "waiter": 6,
+    "administrator": 6,
+    "hookah_master": 6,
+    "cook": 6,
+    "cleaner": 6
+  },
+  "lessons": 320,
+  "changed_lesson_bodies": 188,
+  "questions": 1440,
+  "answer_positions": {
+    "0": 360,
+    "1": 360,
+    "2": 360,
+    "3": 360
+  },
+  "formulaic_choice_prefixes": 0,
+  "before": {
+    "mean_correct_words": 5.341,
+    "mean_wrong_words": 4.124,
+    "longest_choice_first_tie_accuracy": 0.6104
+  },
+  "after": {
+    "mean_correct_words": 3.694,
+    "mean_wrong_words": 3.686,
+    "longest_choice_first_tie_accuracy": 0.3312
+  },
+  "course_details": [
+    {
+      "key": "bar-01-station",
+      "lessons": 8,
+      "words": 2404,
+      "questions": 40
+    },
+    {
+      "key": "bar-02-classics",
+      "lessons": 8,
+      "words": 2281,
+      "questions": 40
+    },
+    {
+      "key": "bar-03-history",
+      "lessons": 10,
+      "words": 2136,
+      "questions": 40
+    },
+    {
+      "key": "bar-04-spirits",
+      "lessons": 8,
+      "words": 2169,
+      "questions": 40
+    },
+    {
+      "key": "bar-05-wine-beer",
+      "lessons": 8,
+      "words": 2193,
+      "questions": 40
+    },
+    {
+      "key": "bar-06-economics",
+      "lessons": 8,
+      "words": 2203,
+      "questions": 40
+    },
+    {
+      "key": "waiter-01-service",
+      "lessons": 10,
+      "words": 1854,
+      "questions": 40
+    },
+    {
+      "key": "waiter-02-sales",
+      "lessons": 10,
+      "words": 1821,
+      "questions": 40
+    },
+    {
+      "key": "waiter-03-difficult",
+      "lessons": 10,
+      "words": 1850,
+      "questions": 40
+    },
+    {
+      "key": "waiter-04-menu",
+      "lessons": 8,
+      "words": 1829,
+      "questions": 40
+    },
+    {
+      "key": "waiter-05-team-events",
+      "lessons": 8,
+      "words": 1839,
+      "questions": 40
+    },
+    {
+      "key": "waiter-06-inclusive",
+      "lessons": 8,
+      "words": 1821,
+      "questions": 40
+    },
+    {
+      "key": "admin-01-shift",
+      "lessons": 10,
+      "words": 1814,
+      "questions": 40
+    },
+    {
+      "key": "admin-02-guest",
+      "lessons": 10,
+      "words": 1836,
+      "questions": 40
+    },
+    {
+      "key": "admin-03-control",
+      "lessons": 10,
+      "words": 1832,
+      "questions": 40
+    },
+    {
+      "key": "admin-04-mentoring",
+      "lessons": 8,
+      "words": 1829,
+      "questions": 40
+    },
+    {
+      "key": "admin-05-stock",
+      "lessons": 8,
+      "words": 1835,
+      "questions": 40
+    },
+    {
+      "key": "admin-06-quality",
+      "lessons": 8,
+      "words": 1830,
+      "questions": 40
+    },
+    {
+      "key": "hookah-01-bowls",
+      "lessons": 10,
+      "words": 1840,
+      "questions": 40
+    },
+    {
+      "key": "hookah-02-blends",
+      "lessons": 10,
+      "words": 1874,
+      "questions": 40
+    },
+    {
+      "key": "hookah-03-workflow",
+      "lessons": 10,
+      "words": 1829,
+      "questions": 40
+    },
+    {
+      "key": "hookah-04-system",
+      "lessons": 8,
+      "words": 1850,
+      "questions": 40
+    },
+    {
+      "key": "hookah-05-economics",
+      "lessons": 8,
+      "words": 1882,
+      "questions": 40
+    },
+    {
+      "key": "hookah-06-consultation",
+      "lessons": 8,
+      "words": 1817,
+      "questions": 40
+    },
+    {
+      "key": "cook-01-station",
+      "lessons": 10,
+      "words": 1843,
+      "questions": 40
+    },
+    {
+      "key": "cook-02-safety",
+      "lessons": 10,
+      "words": 1872,
+      "questions": 40
+    },
+    {
+      "key": "cook-03-allergens",
+      "lessons": 10,
+      "words": 1868,
+      "questions": 40
+    },
+    {
+      "key": "cook-04-heat",
+      "lessons": 8,
+      "words": 1980,
+      "questions": 40
+    },
+    {
+      "key": "cook-05-yield",
+      "lessons": 8,
+      "words": 1946,
+      "questions": 40
+    },
+    {
+      "key": "cook-06-quality",
+      "lessons": 8,
+      "words": 1943,
+      "questions": 40
+    },
+    {
+      "key": "clean-01-zones",
+      "lessons": 10,
+      "words": 1871,
+      "questions": 40
+    },
+    {
+      "key": "clean-02-chemistry",
+      "lessons": 10,
+      "words": 1840,
+      "questions": 40
+    },
+    {
+      "key": "clean-03-quality",
+      "lessons": 10,
+      "words": 1823,
+      "questions": 40
+    },
+    {
+      "key": "clean-04-materials",
+      "lessons": 8,
+      "words": 1929,
+      "questions": 40
+    },
+    {
+      "key": "clean-05-equipment",
+      "lessons": 8,
+      "words": 1934,
+      "questions": 40
+    },
+    {
+      "key": "clean-06-workload",
+      "lessons": 8,
+      "words": 1921,
+      "questions": 40
+    }
+  ],
+  "limitations": [
+    "Лингвистическая эвристика не является проверкой знания профессии.",
+    "Требуются чтение владельцем и наблюдение пробного прохождения сотрудниками.",
+    "Разные обоснованные сервисные ответы оцениваются в отдельных письменных работах."
+  ]
+}

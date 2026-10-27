@@ -37,7 +37,7 @@ function openEditors(){for(const detail of all('#edit-assessment details'))detai
 
 await auth('setup',{token:'baros-ui-audit-only',name:'Editor owner',login:'editor.owner',password:'editor-owner-password'});
 await import('./ui/app.js');
-const core=await import('./ui/core.js?v=2.8.0');
+const core=await import('./ui/core.js?v=2.9.0');
 await until(()=>document.querySelector('[data-new-venue]'),'Owner loaded');
 const venue=await core.api('/venues','POST',{name:'Isolated assessment editor UI'});
 core.setOrg(venue.id);

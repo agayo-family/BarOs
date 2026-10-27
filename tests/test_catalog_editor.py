@@ -4,6 +4,8 @@ import importlib
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from unittest.mock import patch
 
 os.environ.setdefault('DATABASE_URL', 'sqlite:///' + tempfile.mktemp(prefix='catalog-editor-') + '.db')
@@ -97,6 +99,41 @@ class CatalogEditorTests(unittest.TestCase):
         self.assertEqual(self.save(first).status_code,200)
         stale['course']['title']='Устаревшая правка';self.assertEqual(self.save(stale).status_code,409)
         self.assertEqual(self.body()['course']['title'],'Первая правка')
+
+    @unittest.skipUnless(engine.dialect.name=='postgresql', 'Row-lock ordering needs PostgreSQL')
+    def test_edit_waiting_on_catalog_lock_invalidates_queued_old_approval(self):
+        listing=self.client.get('/api/owner/catalog').json()
+        data=self.body();data['course']['title']='Saved before queued approval'
+        clients=[TestClient(app),TestClient(app)]
+        headers=[]
+        for client in clients:
+            self.assertEqual(client.post('/api/auth/login',json={'login':'editor-owner','password':'catalog-editor-password'}).status_code,200)
+            headers.append({'x-csrf-token':client.get('/api/me').json()['csrf']})
+        entered=[threading.Event(),threading.Event()]
+        original=catalog.lock_state
+        count=0;guard=threading.Lock()
+        def observed(db):
+            nonlocal count
+            with guard:
+                index=count;count+=1
+            if index<len(entered):entered[index].set()
+            return original(db)
+        with ThreadPoolExecutor(max_workers=2) as pool, patch.object(catalog,'lock_state',side_effect=observed):
+            with SessionLocal() as db:
+                db.scalar(select(Setting).where(Setting.key==catalog.STATE_KEY).with_for_update())
+                try:
+                    saved=pool.submit(clients[0].put,'/api/owner/catalog/courses/waiter-fixture',json=data,headers=headers[0])
+                    self.assertTrue(entered[0].wait(5));self.assertFalse(saved.done())
+                    approved=pool.submit(clients[1].post,'/api/owner/catalog/activate',json={
+                        'reviewed':True,'fingerprint':listing['fingerprint'],'expected_revision':listing['revision']},headers=headers[1])
+                    self.assertTrue(entered[1].wait(5));self.assertFalse(approved.done())
+                finally:
+                    db.rollback()
+            self.assertEqual(saved.result(timeout=10).status_code,200)
+            self.assertEqual(approved.result(timeout=10).status_code,409)
+        self.assertFalse(self.client.get('/api/owner/catalog').json()['enabled'])
+        for client in clients:client.close()
+        self.assertEqual(self.body()['course']['title'],'Saved before queued approval')
 
     def test_editor_permission_csrf_role_and_bank_guards(self):
         data=self.body()

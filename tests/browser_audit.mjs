@@ -53,6 +53,11 @@ async function shot(role,path,label,width,theme){
  await page.waitForFunction(()=>document.querySelector('#app')?.getAttribute('aria-busy')==='false');
  await page.evaluate(()=>document.fonts.ready);
  if(label.startsWith('full-'))await page.locator('.catalog-question').evaluateAll(nodes=>nodes.forEach(n=>n.open=true));
+ if(label.startsWith('library-editor-')){
+  const section=label.split('-').at(-1);
+  await page.locator(`[data-editor-tab="${section}"]`).click();
+  assert.equal(await page.locator('[data-publish]').count(),0,'Shared draft does not expose publication');
+ }
  if(label==='exam')assert.equal(await page.locator('[data-retry-answer]').isVisible(),false,'Retry saving is hidden until a save fails');
  if(width<431)for(const action of await page.locator('.page-head .actions .btn').all()){
   const box=await action.boundingBox();assert(!box||box.width>=140,`Readable action width on ${role}/${label}: ${box?.width}`);
@@ -83,6 +88,7 @@ await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/so
 await page.locator('#mobile-menu').click();assert.equal(await page.locator('#mobile-menu').getAttribute('aria-expanded'),'true');await page.screenshot({path:join(output,'manager-mobile-menu-390.png')});await page.keyboard.press('Escape');
 await login('browser.owner');
 await sweep('owner',[['/app','platform'],['/app/venues','venues'],['/app/audit','audit'],['/app/settings','settings'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
+await sweep('owner',['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].flatMap(key=>['theory','questions','settings'].map(section=>['/app/catalog/'+key+'/edit','library-editor-'+key+'-'+section])));
 for(const item of (await call('/owner/catalog')).courses)for(const width of sizes)for(const theme of themes)await shot('owner','/app/catalog/'+item.key,'full-'+item.key,width,theme);
 await page.goto(base+'/app/catalog');await page.locator('[data-catalog-activate]').click();await page.screenshot({path:join(output,'catalog-approval-modal-1440.png'),fullPage:true});await page.keyboard.press('Escape');
 assert.equal((await call('/owner/catalog')).enabled,false,'Visual preview must not activate library');

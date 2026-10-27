@@ -11,7 +11,7 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(test,message){for(let i=0;i<250;i++){if(test())return;await pause(20)}throw new Error(message+' '+document.body.textContent.slice(-500))}
 async function auth(path,body){const r=await fetch('/api/auth/'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.text())}
 await auth('setup',{token:'baros-ui-audit-only',name:'Return owner',login:'return.owner',password:'return-owner-password'});
-await import('./ui/app.js');const core=await import('./ui/core.js?v=2.8.0');
+await import('./ui/app.js');const core=await import('./ui/core.js?v=2.9.0');
 await until(()=>document.querySelector('[data-new-venue]'),'Owner ready');
 const venue=await core.api('/venues','POST',{name:'Return section test'});core.setOrg(venue.id);
 const pkg={format:'baros-package',version:1,kind:'assessment',assessment:{title:'Возврат в пропущенный раздел',positions:['bartender'],sections:[{id:'first',title:'Теория'},{id:'second',title:'Практика'}],tasks:[{id:'q1',section_id:'first',kind:'written',prompt:'Опишите первый ответ по теории.',points:1,rubric:[{id:'r1',label:'Точность',points:1}]},{id:'q2',section_id:'second',kind:'written',prompt:'Опишите второй ответ по практике.',points:1,rubric:[{id:'r2',label:'Точность',points:1}]}]}};

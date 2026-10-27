@@ -31,6 +31,7 @@ with tempfile.TemporaryDirectory(prefix='baros-ui-audit-') as tmp:
     for index, script in enumerate(scripts):
         if script not in audit_scripts: raise SystemExit('Unknown audit script')
         env = dict(os.environ, DATABASE_URL='sqlite:///'+str(workspace/f'audit-{index}.db'),
+                   BAROS_TEST_PYTHON=sys.executable,
                    FIRST_RUN_TOKEN='baros-ui-audit-only', SESSION_SECRET='baros-ui-audit-test-only',
                    COOKIE_SECURE='0', BAROS_WORKER='0', BAROS_AUDIT_URL='http://127.0.0.1:8147')
         with open(workspace/'server.log', 'w') as log:

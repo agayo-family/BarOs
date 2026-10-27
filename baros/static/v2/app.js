@@ -1,9 +1,9 @@
-import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute,pageHead,dismissModal} from './core.js?v=2.8.0';
-import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.8.0';
-import {mountShell} from './shell.js?v=2.8.0';
+import {state,$,$$,api,reloadMe,go,icon,brand,esc,btn,avatar,badge,toast,modal,notice,fmtDate,roleName,setOrg,absolute,pageHead,dismissModal} from './core.js?v=2.9.0';
+import {initExperience,themeButton,syncThemeControls,experienceSettings} from './experience.js?v=2.9.0';
+import {mountShell} from './shell.js?v=2.9.0';
 
 let shellCleanup=null;
-const loadPage=name=>import('./'+name+'.js?v=2.8.0');
+const loadPage=name=>import('./'+name+'.js?v=2.9.0');
 async function renderAuth(path,ticket){const module=await loadPage('auth');if(ticket!==state.renderTicket)return;return module.authPage(path,ticket)}
 function loading(active){let bar=$('#route-progress');if(!bar){bar=document.createElement('div');bar.id='route-progress';bar.className='route-progress';bar.setAttribute('aria-hidden','true');document.body.append(bar)}bar.hidden=!active;$app()?.setAttribute('aria-busy',String(active));const content=$('#page-content');if(content)content.inert=active;}
 

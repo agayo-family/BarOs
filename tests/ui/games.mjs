@@ -14,7 +14,7 @@ const click=s=>e(s).click();
 function input(s,value){const x=e(s);x.value=value;x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}))}
 async function raw(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.clone().text());return r.json()}
 await raw('/auth/setup',{token:'baros-ui-audit-only',name:'Game owner',login:'game.owner',password:'audit-owner-password'});
-const core=await import('./ui/core.js?v=2.8.0');await core.reloadMe();
+const core=await import('./ui/core.js?v=2.9.0');await core.reloadMe();
 const venue=await core.api('/venues','POST',{name:'Game UI venue'});core.setOrg(venue.id);
 const answers=['90 °C','Высокий стакан со льдом','Уточнить состав у кухни','Предложить напиток по вкусу гостя','Сироп и вода и лёд','Чистые приборы'];
 const course=await core.api('/courses','POST',{title:'Материал игр UI',description:'Учимся по реальному материалу',positions:['bartender'],quiz_size:2,
@@ -64,7 +64,7 @@ const originalRandom=Math.random;Math.random=()=>.5;const phrases=new Set();
 for(let i=0;i<20;i++){click('.companion-bubble');phrases.add(e('[data-companion-phrase]').textContent);click('[data-companion-close]')}assert.equal(phrases.size,20,'Phrases do not repeat');
 Math.random=()=>.01;click('.companion-bubble');assert(e('.companion-popover').classList.contains('pet-trick'));click('[data-companion-close]');Math.random=originalRandom;
 const {execFileSync}=await import('node:child_process');
-execFileSync('python',['-c',"import sys;from baros.db import SessionLocal;from baros.v2.models import Account;from baros.v2.growth import reward;db=SessionLocal();a=db.get(Account,int(sys.argv[1]));reward(db,a,'ui-seed-disposable-only','theory',300,160,theory=1);db.commit();db.close()",String(core.state.me.account.id)],{env:process.env});
+execFileSync(process.env.BAROS_TEST_PYTHON||'python',['-c',"import sys;from baros.db import SessionLocal;from baros.v2.models import Account;from baros.v2.growth import reward;db=SessionLocal();a=db.get(Account,int(sys.argv[1]));reward(db,a,'ui-seed-disposable-only','theory',300,160,theory=1);db.commit();db.close()",String(core.state.me.account.id)],{env:process.env});
 core.go('/app/profile');await until(()=>document.querySelector('.profile-hero')?.textContent.includes('Уровень 3'),'Profile refresh and level');
 click('[data-profile-tab=shop]');assert.equal(document.querySelectorAll('[data-buy]').length,6);assert(!e('[data-buy=artifact-lantern]').disabled);click('[data-buy=artifact-lantern]');await until(()=>document.querySelector('[data-equip=artifact-lantern]'),'Shop purchase');
 click('[data-equip=artifact-lantern]');await until(()=>document.querySelector('[data-equip=""][data-slot=artifact]'),'Artifact equipped');assert(document.querySelector('.artifact-lantern'));
