@@ -12,6 +12,7 @@ jobs:
       DATABASE_URL: sqlite:////tmp/baros-ci.db
       FIRST_RUN_TOKEN: ci
       SESSION_SECRET: ci-secret-not-for-production
+      BAROS_AI_ENABLED: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,7 +24,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt
       - run: python -m compileall -q baros
-      - name: Verify access, learning, games, shifts, AI mentor and data preservation
+      - name: Verify access, learning, drafts, analytics and data preservation
         run: python -m unittest discover -s tests -v
       - run: python -c "from baros.main import app; print(app.title)"
       - run: python -c "from baros.v2 import ai; s=ai.status(); assert s['model']==ai.FREE_PRIMARY; assert s['mode']=='offline'; print(s)"
@@ -73,7 +74,9 @@ jobs:
         run: python tests/postgres_audit.py
       - name: Verify source changes and safe publication on PostgreSQL
         run: |
-          python -m unittest discover -s tests -p 'test_release_readiness.py' -v
+          BAROS_AI_ENABLED=1 python -m unittest discover -s tests -p 'test_release_readiness.py' -v
+          python -m unittest discover -s tests -p 'test_review_workspace.py' -v
+          python -m unittest discover -s tests -p 'test_analytics.py' -v
           python -m unittest discover -s tests -p 'test_catalog.py' -v
           python -m unittest discover -s tests -p 'test_catalog_upgrades.py' -v
           python -m unittest discover -s tests -p 'test_catalog_editor.py' -v
@@ -86,6 +89,10 @@ jobs:
           python tests/backup_restore_audit.py
 
   browser:
+    strategy:
+      fail-fast: false
+      matrix:
+        audit: [1, 2]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,5 +108,19 @@ jobs:
       - name: Audit all role screens at four widths in both themes
         env:
           CODEX_PRIMARY_RUNTIME_NODE_MODULES: ${{ github.workspace }}/tests/ui/node_modules
-          BAROS_AUDIT_REVERSE: '1'
+          BAROS_AUDIT_REVERSE: ${{ matrix.audit == 2 && '1' || '' }}
         run: python tests/browser_audit.py
+
+      - name: Retain audit results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-audit-${{ matrix.audit }}
+          path: |
+            test-results/browser/result.json
+            test-results/browser/progress.json
+            test-results/browser/server.log
+            test-results/browser/manager-reports*.png
+            test-results/browser/manager-drafts-*.png
+            test-results/browser/manager-empty-test-editor-*.png
+          retention-days: 1

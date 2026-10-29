@@ -413,3 +413,28 @@ class WrittenAttempt(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
     graded_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class DraftOrigin(Base):
+    __tablename__ = 'v2_draft_origins'
+    __table_args__ = (UniqueConstraint('organization_id','kind','resource_id'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'),index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    resource_id: Mapped[int] = mapped_column(Integer)
+    sources_json: Mapped[str] = mapped_column(Text,default='[]')
+    review_required: Mapped[bool] = mapped_column(Boolean,default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime,default=now)
+
+
+class PushDelivery(Base):
+    __tablename__ = 'v2_push_deliveries'
+    __table_args__ = (UniqueConstraint('notice_id','subscription_id'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notice_id: Mapped[int] = mapped_column(ForeignKey('v2_notices.id'),index=True)
+    subscription_id: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24),default='pending')
+    attempts: Mapped[int] = mapped_column(Integer,default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime,default=now,index=True)
+    last_error: Mapped[str] = mapped_column(String(80),default='')
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime)

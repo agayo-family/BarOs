@@ -81,3 +81,5 @@ body,.sidebar,.topbar,.card,.btn,input,textarea,select,.modal,.bottom-nav,.learn
 @media(max-width:480px){.topbar{gap:8px;padding-left:12px;padding-right:12px}.mobile-brand .brand{gap:7px;font-size:1.16rem}.mobile-brand .brand small{display:none}.topbar .top-actions{gap:4px}.topbar .top-actions>a[href="/app/settings"]{display:none}.bottom-nav a{flex:1;min-width:0;padding-left:3px;padding-right:3px;font-size:.62rem}}
 @media(max-width:380px){.flashcard-face{padding:20px}.practice-toolbar>.row{width:100%;justify-content:space-between}.practice-assess .btn{flex:1;font-size:.78rem;padding:10px}.job-progress-parts{grid-template-columns:1fr}.contact-option>.icon:last-child{display:none}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.theme-rain{display:none}}
+
+.badge.outline{color:var(--muted)}

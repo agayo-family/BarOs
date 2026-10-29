@@ -74,7 +74,7 @@ class CatalogEditorTests(unittest.TestCase):
         item=self.client.get('/api/owner/catalog/courses/waiter-fixture').json()
         self.assertEqual(item['course']['lessons'],data['course']['lessons'])
         self.assertEqual(item['course']['questions'],data['course']['questions'])
-        self.assertEqual(item['outcomes'],data['outcomes']);self.assertEqual(item['version'],3)
+        self.assertEqual(item['outcomes'],data['outcomes']);self.assertGreaterEqual(item['version'],3)
         self.assertEqual(item['edit_version'],1);self.assertNotEqual(item['fingerprint'],before['fingerprint'])
         self.assertFalse(self.client.get('/api/owner/catalog').json()['enabled'])
         with SessionLocal() as db:

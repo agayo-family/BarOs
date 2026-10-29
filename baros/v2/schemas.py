@@ -75,7 +75,7 @@ class CourseIn(StrictModel):
     positions: list[str] = Field(default=['all'], min_length=1, max_length=16)
     passing_score: int = Field(default=80, ge=1, le=100)
     required: bool = True
-    quiz_size: int = Field(default=30, ge=1, le=100)
+    quiz_size: int = Field(default=30, ge=0, le=100)
     time_limit_minutes: int = Field(default=30, ge=1, le=180)
     max_attempts: int = Field(default=0, ge=0, le=50)
     deadline_days: int = Field(default=7, ge=1, le=365)

@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 
 const base=process.env.BAROS_AUDIT_URL||'http://127.0.0.1:8137';
 const dom=new JSDOM('<div id="app"></div><div id="modal-root"></div><div id="toast-root"></div>',{url:base+'/app',pretendToBeVisual:true});
-for(const key of ['window','document','location','history','localStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
+for(const key of ['window','document','location','history','localStorage','sessionStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 globalThis.confirm=()=>true;
 dom.window.scrollTo=()=>{};
@@ -29,7 +29,7 @@ function submit(selector){element(selector).dispatchEvent(new Event('submit',{bu
 async function request(path,method='GET',body){const r=await fetch('/api'+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});const data=await r.json();assert(r.ok,JSON.stringify(data));return data;}
 await request('/auth/setup','POST',{token:'baros-ui-audit-only',name:'Тестовый владелец',login:'ui.owner',password:'audit-owner-password'});
 await import('./ui/app.js');
-const core=await import('./ui/core.js?v=2.9.0');
+const core=await import('./ui/core.js?v=2.10.0');
 await until(()=>document.querySelector('[data-new-venue]'),'Owner screen');
 click('[data-new-venue]');
 assert(document.querySelector('#venue-form'),'Owner button must retain its handler after shell mounting');
@@ -132,7 +132,7 @@ assert.equal(element('[data-flip]').getAttribute('aria-pressed'),'false');const 
 assert.equal(element('[data-flip]'),originalFace,'Flip keeps the same DOM for the CSS animation');assert.equal(element('[data-flip]').getAttribute('aria-pressed'),'true');
 assert.equal(element('.flashcard-answer').textContent,'Высокий стакан');click('[data-remember=yes]');
 await until(()=>/1 \/ 1/.test(element('.practice-progress').textContent),'Card mark persisted');assert.equal((await core.api('/learning')).attempts,1);
-const {mountDeck}=await import('./ui/cards.js?v=2.9.0');const fixture=document.createElement('section');document.body.append(fixture);
+const {mountDeck}=await import('./ui/cards.js?v=2.10.0');const fixture=document.createElement('section');document.body.append(fixture);
 mountDeck(fixture,{revision_id:'gesture-test',cards:[{id:0,question:'First?',answer:'First answer'},{id:1,question:'Second?',answer:'Second answer'}]});
 function pointer(target,type,x,y){target.dispatchEvent(new MouseEvent(type,{bubbles:true,clientX:x,clientY:y,button:0}))}
 let gesture=fixture.querySelector('[data-flip]');pointer(gesture,'pointerdown',250,100);pointer(gesture,'pointerup',80,108);
@@ -142,7 +142,7 @@ pointer(gesture,'pointerdown',70,100);pointer(gesture,'pointerup',240,106);await
 gesture=fixture.querySelector('[data-flip]');pointer(gesture,'pointerdown',180,70);pointer(gesture,'pointerup',200,250);assert.equal(fixture.querySelector('.flashcard-question').textContent,'First?','Vertical scrolling does not change cards');
 gesture.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await until(()=>fixture.querySelector('.flashcard-question')?.textContent==='Second?','Keyboard advances');
 core.state.cleanup?.();core.state.cleanup=null;fixture.remove();
-const {renderLesson}=await import('./ui/learning-ui.js?v=2.9.0');const safe=renderLesson('## Факты\nВ напитке 2.5 мл сиропа. <img src=x onerror=alert(1)>\n\n4. Налейте 20 мл.\n> Важно: **90 °C**');const parsed=new JSDOM(safe).window.document;
+const {renderLesson}=await import('./ui/learning-ui.js?v=2.10.0');const safe=renderLesson('## Факты\nВ напитке 2.5 мл сиропа. <img src=x onerror=alert(1)>\n\n4. Налейте 20 мл.\n> Важно: **90 °C**');const parsed=new JSDOM(safe).window.document;
 assert(!parsed.querySelector('img'),'Lesson renderer escapes source HTML');assert(safe.includes('2.5 мл'));assert.equal(parsed.querySelector('li').value,4);assert(parsed.querySelector('.learning-fact strong'));
 console.log('CARDS: published API, flip DOM animation, remembered state, left/right pointer swipes, vertical-scroll guard, keyboard and XSS-safe lesson blocks OK');
 core.go('/app/settings');await until(()=>document.querySelector('[data-logout]'),'Employee profile');
@@ -167,16 +167,14 @@ core.go('/app/sources');await until(()=>document.querySelector('[data-upload]'),
 input('[data-search]','нет-такого-файла');assert(document.body.textContent.includes('Материалы не найдены'));assert(!document.querySelector('[data-first-upload]'));
 
 core.go('/app/reports');await until(()=>document.querySelector('#page-content')?.textContent.includes('UI сотрудник'),'Manager sees actual learner report');
-core.go('/app/ai');await until(()=>document.querySelector('[data-refresh-jobs]'),'AI history');const before=requests.length;click('[data-refresh-jobs]');assert(element('[data-refresh-jobs]').disabled);assert.match(element('[data-refresh-jobs]').textContent,/Обновляем/);await until(()=>!element('[data-refresh-jobs]').disabled,'Refresh completes');assert(requests.slice(before).some(r=>r.path==='/api/jobs'));assert.match(element('.refresh-status').textContent,/состояние не изменилось/);
-console.log('EXPERIENCE: night theme persistence, contact destinations, PWA instructions and actual refresh with visible feedback OK');
+core.go('/app/ai');await until(()=>document.querySelector('[data-draft-import]'),'Manual drafts workspace');assert(!document.querySelector('[data-refresh-jobs]'));assert(document.body.textContent.includes('Черновики обучения'));
 core.go('/app/settings');await until(()=>document.querySelector('[data-logout]'),'Manager profile');
 click('[data-logout]');await until(()=>location.pathname==='/'&&document.querySelector('#auth-form'),'Manager logout');
 assert.equal((await fetch('/api/me')).status,401);
 console.log('MANAGER: individual invite, academy filters, employee results, logout OK');
 input('#auth-form [name=login]','ui.owner');input('#auth-form [name=password]','audit-owner-password');submit('#auth-form');
 await until(()=>core.state.me?.account?.role==='owner'&&document.querySelector('[data-enter-venue]'),'Owner returns');click('[data-enter-venue]');await until(()=>document.querySelector('[data-create]'),'Owner remote dashboard returns');
-core.go('/app/ai');await until(()=>document.querySelector('#ai-budget [data-ai-budget-detail=setup]'),'Owner AI instructions');const setupDetails=element('#ai-budget [data-ai-budget-detail=setup]');setupDetails.open=true;click('[data-refresh-jobs]');await until(()=>!element('[data-refresh-jobs]').disabled,'Owner refresh completes');assert.equal(element('#ai-budget [data-ai-budget-detail=setup]'),setupDetails);assert(setupDetails.open,'AI instructions stay open while history refreshes');
-console.log('AI: owner instructions remain open and retain focusable DOM while history refreshes OK');
+core.go('/app/ai');await until(()=>document.querySelector('[data-draft-import]'),'Owner manual workspace');assert(!document.querySelector('#ai-budget'));
 dom.window.innerWidth=390;
 core.go('/app');await until(()=>document.querySelector('[data-create]')&&document.querySelector('#app')?.getAttribute('aria-busy')==='false','Mobile owner shell');
 click('#mobile-menu');assert(element('#sidebar').classList.contains('open'));assert(element('.shell-main').inert,'Background is inert while the mobile menu is open');

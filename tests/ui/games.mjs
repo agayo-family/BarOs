@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 const base=process.env.BAROS_AUDIT_URL||'http://127.0.0.1:8147';
 const dom=new JSDOM('<div id="app"></div><div id="modal-root"></div><div id="toast-root"></div>',{url:base+'/app',pretendToBeVisual:true});
-for(const key of ['window','document','location','history','localStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
+for(const key of ['window','document','location','history','localStorage','sessionStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});globalThis.confirm=()=>true;dom.window.scrollTo=()=>{};dom.window.HTMLElement.prototype.scrollIntoView=function(){};
 dom.window.matchMedia=q=>({matches:q.includes('reduced-motion'),addEventListener(){},removeEventListener(){}});
 const nativeFetch=globalThis.fetch,requests=[];let failAnswerOnce=false,failMentorOnce=false;
@@ -14,7 +14,7 @@ const click=s=>e(s).click();
 function input(s,value){const x=e(s);x.value=value;x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}))}
 async function raw(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.clone().text());return r.json()}
 await raw('/auth/setup',{token:'baros-ui-audit-only',name:'Game owner',login:'game.owner',password:'audit-owner-password'});
-const core=await import('./ui/core.js?v=2.9.0');await core.reloadMe();
+const core=await import('./ui/core.js?v=2.10.0');await core.reloadMe();
 const venue=await core.api('/venues','POST',{name:'Game UI venue'});core.setOrg(venue.id);
 const answers=['90 °C','Высокий стакан со льдом','Уточнить состав у кухни','Предложить напиток по вкусу гостя','Сироп и вода и лёд','Чистые приборы'];
 const course=await core.api('/courses','POST',{title:'Материал игр UI',description:'Учимся по реальному материалу',positions:['bartender'],quiz_size:2,

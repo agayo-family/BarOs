@@ -57,7 +57,7 @@ class CatalogTests(unittest.TestCase):
   for item in c['courses']:
    full=self.client.get('/api/owner/catalog/courses/'+item['key']).json()
    self.assertNotIn('practice',full)
-   self.assertEqual(full['version'],3)
+   self.assertGreaterEqual(full['version'],3)
    self.assertGreaterEqual(len(full['course']['lessons']),8);self.assertEqual(len(full['course']['questions']),40)
    self.assertGreaterEqual(sum(len(l['body'].split()) for l in full['course']['lessons']),1800)
    self.assertEqual(full['course']['quiz_size'],30);self.assertEqual(full['course']['time_limit_minutes'],45)

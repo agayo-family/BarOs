@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix='baros-ui-audit-') as tmp:
     workspace = Path(tmp)
     shutil.copytree(repo/'baros'/'static'/'v2', workspace/'ui')
     (workspace/'ui'/'package.json').write_text('{"type":"module"}')
-    audit_scripts = ['audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs', 'assessment-editor.mjs', 'return-section.mjs', 'exam-saving.mjs', 'catalog.mjs']
+    audit_scripts = ['audit.mjs', 'shifts.mjs', 'games.mjs', 'packages.mjs', 'assessment-editor.mjs', 'return-section.mjs', 'exam-saving.mjs', 'catalog.mjs', 'review-workspace.mjs']
     for name in audit_scripts:
         shutil.copyfile(folder/name, workspace/name)
     try:
@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix='baros-ui-audit-') as tmp:
         env = dict(os.environ, DATABASE_URL='sqlite:///'+str(workspace/f'audit-{index}.db'),
                    BAROS_TEST_PYTHON=sys.executable,
                    FIRST_RUN_TOKEN='baros-ui-audit-only', SESSION_SECRET='baros-ui-audit-test-only',
-                   COOKIE_SECURE='0', BAROS_WORKER='0', BAROS_AUDIT_URL='http://127.0.0.1:8147')
+                   COOKIE_SECURE='0', BAROS_WORKER='0', MIN_LESSON_SECONDS='0', BAROS_AUDIT_URL='http://127.0.0.1:8147')
         with open(workspace/'server.log', 'w') as log:
             server = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'baros.main:app', '--host', '127.0.0.1', '--port', '8147'],
                                       cwd=repo, env=env, stdout=log, stderr=log)
