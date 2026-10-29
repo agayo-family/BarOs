@@ -65,9 +65,9 @@ class AnalyticsTests(unittest.TestCase):
   r=self.analytics();self.assertEqual((r['summary']['pending_review'],r['summary']['written_graded']),(1,1));self.assertGreater(r['review_queue'][0]['waiting_hours'],1400);self.assertEqual(r['assessments'][0]['average_score'],80)
   self.assertEqual({x['criterion']:x['average_percent'] for x in r['rubrics']},{'Проверены факты':50,'Решение':100})
  def test_written_revisions_are_separate_and_diagnostics_have_no_failure(self):
-  self.written('old');p=copy.deepcopy(self.payload);p['passing_score']=None;p['tasks'][0]['prompt']='Как действовать при задержке заказа?'
+  self.written('old');self.written('pending-old','submitted');p=copy.deepcopy(self.payload);p['passing_score']=None;p['tasks'][0]['prompt']='Как действовать при задержке заказа?'
   with SessionLocal() as db:db.get(ImportedAssessment,self.aid).payload=dump(p);db.commit()
-  self.written('new',payload=p);r=self.analytics();self.assertEqual(r['summary']['written_graded'],1);self.assertIsNone(r['attempts'][0]['passed'])
+  self.written('new',payload=p);r=self.analytics();self.assertEqual(r['summary']['written_graded'],1);self.assertEqual(r['summary']['pending_review'],1);self.assertFalse(r['review_queue'][0]['current']);self.assertIsNone(r['attempts'][0]['passed'])
   r=self.analytics('?history=true');self.assertEqual(r['summary']['written_graded'],2);self.assertEqual(len(r['assessments']),2);self.assertEqual(len({x['revision'] for x in r['rubrics']}),2)
  def test_archived_course_versions_do_not_merge(self):
   self.exam('old',score=10)

@@ -116,5 +116,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-audit-${{ matrix.audit }}
-          path: test-results/browser
-          retention-days: 7
+          path: |
+            test-results/browser/result.json
+            test-results/browser/progress.json
+            test-results/browser/server.log
+            test-results/browser/manager-reports*.png
+            test-results/browser/manager-drafts-*.png
+            test-results/browser/manager-empty-test-editor-*.png
+          retention-days: 1
