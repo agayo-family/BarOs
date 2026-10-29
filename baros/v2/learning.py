@@ -49,11 +49,14 @@ def history(request:Request,a=Depends(actor),db=Depends(get_db)):
 @router.get('/api/learning/{cid}')
 def lesson_list(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     c,s,rev,data,e=learning_course(request,db,a,cid)
+    from .readiness import assessment_stats
+    aid=(data.get('program') or {}).get('written_assessment_id')
+    written=next((x for x in assessment_stats(db,[a]).get(a.id,[]) if x['id']==aid),None) if aid else None
     reads={r.lesson_index:r for r in db.scalars(select(LessonRead).where(LessonRead.account_id==a.id,LessonRead.revision_id==rev.id)).all()}
     exams=exams_for(db,a,rev.id)
     db.commit()
     return {'id':cid,'revision_id':rev.id,'version':rev.version,'title':data['title'],'description':data['description'],
-            'program':data.get('program'),
+            'program':data.get('program'),'written_status':written['status'] if written else None,
             'lessons':[{**l,'index':i,'completed':bool(reads.get(i) and reads[i].completed_at),'seconds':reads[i].seconds if i in reads else 0} for i,l in enumerate(data['lessons'])],
             'quiz_size':data['quiz_size'],'bank_size':len(data['questions']),'passing_score':data['passing_score'],
             'time_limit_minutes':data['time_limit_minutes'],'max_attempts':data['max_attempts'],'attempt_count':len(exams),

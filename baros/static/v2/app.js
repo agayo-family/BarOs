@@ -46,7 +46,7 @@ async function renderAuthed(ticket){if(state.cleanup){state.cleanup();state.clea
   else if((a.role==='manager'||a.role==='owner')&&p==='/app')rendered=await page('manage','overview');
   else if((a.role==='manager'||a.role==='owner')&&p==='/app/courses')rendered=await page('manage','coursesPage');
   else if((a.role==='manager'||a.role==='owner')&&p==='/app/staff')rendered=await page('manage','staffPage');
-  else if((a.role==='manager'||a.role==='owner')&&p==='/app/reports')rendered=await page('manage','reportsPage');
+  else if((a.role==='manager'||a.role==='owner')&&p==='/app/reports')rendered=await page('analytics','analyticsPage');
   else if((a.role==='manager'||a.role==='owner')&&p==='/app/sources')rendered=await page('manage','sourcesPage');
   else if((a.role==='manager'||a.role==='owner')&&['/app/ai','/app/drafts'].includes(p))rendered=await page('drafts','draftsPage');
   else if((a.role==='manager'||a.role==='owner')&&p==='/app/interview')rendered=await page('manage','interviewPage');

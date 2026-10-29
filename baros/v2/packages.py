@@ -251,7 +251,12 @@ def edit_assessment(aid:int,data:AssessmentEditIn,request:Request,a=Depends(acto
 @router.post('/api/assessments/{aid}/publish')
 def publish(aid:int,data:ConfirmIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     require(data.reviewed,'Подтвердите проверку файла и рубрик')
-    test,p=accessible(request,db,a,aid,True,lock=True);test.published=True;test.archived=False
+    test,p=accessible(request,db,a,aid,True,lock=True)
+    try:AssessmentIn.model_validate(p)
+    except ValueError:require(False,'Добавьте корректные задания и критерии перед публикацией',409)
+    from .drafts import acknowledge_origin
+    acknowledge_origin(db,test.organization_id,'assessment',aid)
+    test.published=True;test.archived=False
     employees=[employee for employee in db.scalars(select(Account).where(Account.organization_id==test.organization_id,Account.role=='employee',Account.active==True)).all() if applies(employee,p)]
     key='assessment:'+str(aid)
     notified=set(db.scalars(select(Notice.account_id).where(Notice.account_id.in_([employee.id for employee in employees]),Notice.event_key==key)).all()) if employees else set()

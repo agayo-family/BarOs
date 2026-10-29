@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 const base=process.env.BAROS_AUDIT_URL||'http://127.0.0.1:8147';
 const dom=new JSDOM('<div id="app"></div><div id="modal-root"></div><div id="toast-root"></div>',{url:base+'/app',pretendToBeVisual:true});
-for(const key of ['window','document','location','history','localStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
+for(const key of ['window','document','location','history','localStorage','sessionStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});globalThis.confirm=()=>true;dom.window.scrollTo=()=>{};dom.window.HTMLElement.prototype.scrollIntoView=function(){};
 dom.window.matchMedia=q=>({matches:q.includes('reduced-motion'),addEventListener(){},removeEventListener(){}});
 const nativeFetch=globalThis.fetch,requests=[];let failAnswerOnce=false,failMentorOnce=false;

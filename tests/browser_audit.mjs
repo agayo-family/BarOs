@@ -35,6 +35,11 @@ await call('/courses','POST',{title:'Новый черновик для упра
 await call('/sources','POST',undefined,{multipart:{roles:'["bartender"]',file:{name:'Меню бара — актуальные стандарты.txt',mimeType:'text/plain',buffer:Buffer.from(lessons.map(x=>x.body).join('\n'))}}});
 const pack={format:'baros-package',version:1,kind:'assessment',assessment:{title:'Письменная аттестация: знания и проект R&D',description:'Диагностика знаний с ручной проверкой.',positions:['bartender'],sections:[{id:'theory',title:'Теория'},{id:'rnd',title:'Письменный R&D'}],tasks:[{id:'q1',section_id:'theory',kind:'single_choice',prompt:'Какой объём сиропа указан в учебной техкарте?',points:20,choices:['20 мл','30 мл','40 мл','50 мл'],correct_index:0,explanation:'Сироп 20 мл.'},{id:'q2',section_id:'rnd',kind:'written',prompt:'Опишите план проверки рецептуры и порядок расчёта себестоимости.',points:80,rubric:[{id:'plan',label:'План проверки',points:50},{id:'cost',label:'Проверка арифметики',points:30}]}]}};
 const assessment=await call('/packages/import','POST',{package:pack});await call('/assessments/'+assessment.id+'/publish','POST',{reviewed:true});
+const writtenCourse=await call('/courses','POST',{title:'Курс с письменной проверкой без автотеста',positions:['bartender'],quiz_size:0,lessons,questions:[]});
+const linkedCourse=await call('/drafts/courses/'+writtenCourse.id+'/assessment','PUT',{assessment_id:assessment.id,edit_version:writtenCourse.edit_version});
+await call('/courses/'+writtenCourse.id+'/publish','POST',{reviewed:true,edit_version:linkedCourse.edit_version});
+const emptyTest=await call('/assessments','POST',{title:'Черновик пустого теста для проверки редактора',positions:['bartender']});
+
 await call(invite.url.replace('/invite/','/invites/'),'POST',{name:'Управляющий аудита',organization:venue.name});const managerMe=await call('/me');
 me=managerMe;
 // The one-time invite grants a session; retain its cookies instead of a secret.
@@ -58,6 +63,7 @@ async function shot(role,path,label,width,theme){
   await page.locator(`[data-editor-tab="${section}"]`).click();
   assert.equal(await page.locator('[data-publish]').count(),0,'Shared draft does not expose publication');
  }
+ if(label==='written-only-lesson'){assert.equal(await page.locator('[data-start-exam]').count(),0);assert.equal(await page.locator('a[href^="/app/cards/"]').count(),0)}
  if(label==='exam')assert.equal(await page.locator('[data-retry-answer]').isVisible(),false,'Retry saving is hidden until a save fails');
  if(width<431)for(const action of await page.locator('.page-head .actions .btn').all()){
   const box=await action.boundingBox();assert(!box||box.width>=140,`Readable action width on ${role}/${label}: ${box?.width}`);
@@ -70,7 +76,7 @@ async function shot(role,path,label,width,theme){
 const sizes=process.env.BAROS_AUDIT_REVERSE?[1440,768,390,360]:[360,390,768,1440];
 const themes=process.env.BAROS_AUDIT_REVERSE?['dark','light']:['light','dark'];
 async function sweep(role,routes){for(const width of sizes)for(const theme of themes)for(const [path,label]of routes)if(!process.env.BAROS_AUDIT_FOCUS||process.env.BAROS_AUDIT_FOCUS===role+'/'+label)await shot(role,path,label,width,theme)}
-await sweep('employee',[['/app','home'],['/app/learning','learning'],['/app/learn/'+c.id,'lesson'],['/app/exam/'+exam.id,'exam'],['/app/cards/'+c.id,'cards'],['/app/games/'+c.id,'games'],['/app/mentor','mentor'],['/app/shifts','shifts'],['/app/history','history'],['/app/notices','notices'],['/app/profile','profile'],['/app/settings','settings'],['/app/assessments','assessments']]);
+await sweep('employee',[['/app','home'],['/app/learning','learning'],['/app/learn/'+c.id,'lesson'],['/app/learn/'+writtenCourse.id,'written-only-lesson'],['/app/exam/'+exam.id,'exam'],['/app/cards/'+c.id,'cards'],['/app/games/'+c.id,'games'],['/app/mentor','mentor'],['/app/shifts','shifts'],['/app/history','history'],['/app/notices','notices'],['/app/profile','profile'],['/app/settings','settings'],['/app/assessments','assessments']]);
 await call('/exams/'+exam.id+'/finish','POST',{answers:{'0':0,'1':0,'2':0,'3':0}});
 let written=await call('/assessments/'+assessment.id+'/start','POST',{});
 written=await call('/assessment-attempts/'+written.id,'PUT',{version:written.version,answers:{q1:0}});
@@ -83,7 +89,7 @@ await shot('employee','/app/exam/'+exam.id,'result',1440,'light');
 // Check offline navigation's visible recovery state, then restore connectivity.
 await ctx.setOffline(true);await page.goto(base+'/app').catch(()=>{});await ctx.setOffline(false);
 await ctx.clearCookies();await ctx.addCookies(managerStorage.cookies);me=await call('/me');
-await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/assessments','assessments'],['/app/assessment-attempts/'+written.id,'written-review'],['/app/courses/'+c.id,'editor'],['/app/assessments/'+assessment.id,'assessment'],['/app/assessments/'+assessment.id+'/edit','assessment-editor'],['/app/staff','staff'],['/app/sources','sources'],['/app/reports','reports'],['/app/ai','ai'],['/app/interview','interview'],['/app/venues','venue-settings'],['/app/settings','settings']]);
+await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/assessments','assessments'],['/app/assessment-attempts/'+written.id,'written-review'],['/app/courses/'+c.id,'editor'],['/app/assessments/'+assessment.id,'assessment'],['/app/assessments/'+assessment.id+'/edit','assessment-editor'],['/app/staff','staff'],['/app/sources','sources'],['/app/reports','reports'],...['courses','questions','written','timeline','attempts'].map(tab=>['/app/reports?tab='+tab,'reports-'+tab]),['/app/drafts','drafts'],['/app/ai','legacy-drafts'],['/app/assessments/'+emptyTest.id+'/edit','empty-test-editor'],['/app/interview','interview'],['/app/venues','venue-settings'],['/app/settings','settings']]);
 await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/sources');await page.locator('[data-upload]').click();await page.screenshot({path:join(output,'manager-upload-modal-390.png'),fullPage:true});await page.keyboard.press('Escape');
 await page.locator('#mobile-menu').click();assert.equal(await page.locator('#mobile-menu').getAttribute('aria-expanded'),'true');await page.screenshot({path:join(output,'manager-mobile-menu-390.png')});await page.keyboard.press('Escape');
 await login('browser.owner');

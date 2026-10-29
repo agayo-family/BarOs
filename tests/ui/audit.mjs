@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 
 const base=process.env.BAROS_AUDIT_URL||'http://127.0.0.1:8137';
 const dom=new JSDOM('<div id="app"></div><div id="modal-root"></div><div id="toast-root"></div>',{url:base+'/app',pretendToBeVisual:true});
-for(const key of ['window','document','location','history','localStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
+for(const key of ['window','document','location','history','localStorage','sessionStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
 globalThis.confirm=()=>true;
 dom.window.scrollTo=()=>{};
@@ -167,16 +167,14 @@ core.go('/app/sources');await until(()=>document.querySelector('[data-upload]'),
 input('[data-search]','нет-такого-файла');assert(document.body.textContent.includes('Материалы не найдены'));assert(!document.querySelector('[data-first-upload]'));
 
 core.go('/app/reports');await until(()=>document.querySelector('#page-content')?.textContent.includes('UI сотрудник'),'Manager sees actual learner report');
-core.go('/app/ai');await until(()=>document.querySelector('[data-refresh-jobs]'),'AI history');const before=requests.length;click('[data-refresh-jobs]');assert(element('[data-refresh-jobs]').disabled);assert.match(element('[data-refresh-jobs]').textContent,/Обновляем/);await until(()=>!element('[data-refresh-jobs]').disabled,'Refresh completes');assert(requests.slice(before).some(r=>r.path==='/api/jobs'));assert.match(element('.refresh-status').textContent,/состояние не изменилось/);
-console.log('EXPERIENCE: night theme persistence, contact destinations, PWA instructions and actual refresh with visible feedback OK');
+core.go('/app/ai');await until(()=>document.querySelector('[data-draft-import]'),'Manual drafts workspace');assert(!document.querySelector('[data-refresh-jobs]'));assert(document.body.textContent.includes('Черновики обучения'));
 core.go('/app/settings');await until(()=>document.querySelector('[data-logout]'),'Manager profile');
 click('[data-logout]');await until(()=>location.pathname==='/'&&document.querySelector('#auth-form'),'Manager logout');
 assert.equal((await fetch('/api/me')).status,401);
 console.log('MANAGER: individual invite, academy filters, employee results, logout OK');
 input('#auth-form [name=login]','ui.owner');input('#auth-form [name=password]','audit-owner-password');submit('#auth-form');
 await until(()=>core.state.me?.account?.role==='owner'&&document.querySelector('[data-enter-venue]'),'Owner returns');click('[data-enter-venue]');await until(()=>document.querySelector('[data-create]'),'Owner remote dashboard returns');
-core.go('/app/ai');await until(()=>document.querySelector('#ai-budget [data-ai-budget-detail=setup]'),'Owner AI instructions');const setupDetails=element('#ai-budget [data-ai-budget-detail=setup]');setupDetails.open=true;click('[data-refresh-jobs]');await until(()=>!element('[data-refresh-jobs]').disabled,'Owner refresh completes');assert.equal(element('#ai-budget [data-ai-budget-detail=setup]'),setupDetails);assert(setupDetails.open,'AI instructions stay open while history refreshes');
-console.log('AI: owner instructions remain open and retain focusable DOM while history refreshes OK');
+core.go('/app/ai');await until(()=>document.querySelector('[data-draft-import]'),'Owner manual workspace');assert(!document.querySelector('#ai-budget'));
 dom.window.innerWidth=390;
 core.go('/app');await until(()=>document.querySelector('[data-create]')&&document.querySelector('#app')?.getAttribute('aria-busy')==='false','Mobile owner shell');
 click('#mobile-menu');assert(element('#sidebar').classList.contains('open'));assert(element('.shell-main').inert,'Background is inert while the mobile menu is open');

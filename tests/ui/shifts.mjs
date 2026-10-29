@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 const base=process.env.BAROS_AUDIT_URL||'http://127.0.0.1:8147';
 const dom=new JSDOM('<div id="app"></div><div id="modal-root"></div><div id="toast-root"></div>',{url:base+'/app',pretendToBeVisual:true});
-for(const key of ['window','document','location','history','localStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
+for(const key of ['window','document','location','history','localStorage','sessionStorage','FormData','Event','CustomEvent','MouseEvent','HTMLElement'])globalThis[key]=dom.window[key];
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});globalThis.confirm=()=>true;dom.window.scrollTo=()=>{};dom.window.print=()=>{};dom.window.HTMLElement.prototype.scrollIntoView=function(){};
 const nativeFetch=globalThis.fetch,requests=[];
 globalThis.fetch=async(path,options={})=>{const url=new URL(path,base).href,headers=new Headers(options.headers||{}),cookie=dom.cookieJar.getCookieStringSync(base);if(cookie)headers.set('cookie',cookie);const res=await nativeFetch(url,{...options,headers});for(const c of res.headers.getSetCookie())dom.cookieJar.setCookieSync(c,base);requests.push({path:new URL(url).pathname,method:options.method||'GET',status:res.status});return res};

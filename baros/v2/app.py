@@ -237,7 +237,7 @@ def me(request:Request,a=Depends(actor),db=Depends(get_db)):
     org=db.get(Organization,a.organization_id) if a.organization_id else None
     unread=db.scalar(select(func.count(Notice.id)).where(Notice.account_id==a.id,Notice.read==False)) or 0
     return {'account':account_data(a),'venue':venue_data(db,org) if org else None,'csrf':request.state.csrf,
-            'positions':POSITIONS,'permissions':PERMISSIONS,'question_types':QTYPES,'unread':unread,'ai':ai.status() if a.role!='employee' else None}
+            'positions':POSITIONS,'permissions':{k:v for k,v in PERMISSIONS.items() if not k.startswith('ai') or os.getenv('BAROS_AI_ENABLED','0')=='1'},'question_types':QTYPES,'unread':unread,'ai':ai.status() if a.role!='employee' else None}
 
 
 @app.put('/api/profile')
@@ -400,12 +400,12 @@ def export(request:Request,a=Depends(actor),db=Depends(get_db)):
     import csv,io
     oid=manager(request,db,a)
     out=io.StringIO();writer=csv.writer(out,delimiter=';')
-    writer.writerow(['Сотрудник','Логин','Должности','Назначено','Пройдено тестов','Успешных курсов','Попыток','Средний балл','Среднее время (сек)','Просрочено'])
+    writer.writerow(['Сотрудник','Логин','Должности','Назначено','Пройдено тестов','Успешных курсов','Попыток','Средний балл','Среднее время (сек)','Просрочено','Назначений обучения','Завершено обучения','Готовность, %','Письменных тестов назначено','Письменных тестов проверено','Письменных тестов на проверке'])
     employees=db.scalars(select(Account).where(Account.organization_id==oid,Account.role=='employee')).all()
     stats=learner_stats_many(db,employees)
     for e in employees:
         s=stats[e.id]
-        values=[e.name,e.login,', '.join(POSITIONS.get(p,p) for p in parse(e.positions_json,[])),s['assigned'],s['completed'],s['passed'],s['attempts'],s['average_score'],s['average_seconds'],s['overdue']]
+        values=[e.name,e.login,', '.join(POSITIONS.get(p,p) for p in parse(e.positions_json,[])),s['assigned'],s['completed'],s['passed'],s['attempts'],s['average_score'],s['average_seconds'],s['overdue'],s['learning_total'],s['learning_completed'],s['learning_percent'],s['written_assigned'],s['written_completed'],s['written_pending_review']]
         writer.writerow([("'"+str(v)) if str(v).lstrip().startswith(('=','+','-','@')) else v for v in values])
     log(db,a,oid,'Экспортирован отчёт сотрудников');db.commit()
     return Response(out.getvalue().encode('utf-8-sig'),media_type='text/csv',headers={'Content-Disposition':'attachment; filename="baros-report.csv"'})
@@ -422,6 +422,8 @@ from .games import router as games_router
 from .growth import router as growth_router
 from .mentor import router as mentor_router
 from .packages import router as packages_router
+from .analytics import router as analytics_router
+app.include_router(analytics_router)
 from .reports import router as reports_router
 from .catalog import router as catalog_router
 app.include_router(catalog_router)
