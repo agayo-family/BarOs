@@ -38,6 +38,7 @@ def count_limit(name, default):
 
 
 def provider(name, purpose='authoring'):
+    if not enabled('BAROS_AI_ENABLED'):return None
     if name == 'qwen':
         key = os.getenv('QWEN_API_KEY', '')
         base = os.getenv('QWEN_BASE_URL', '').rstrip('/')

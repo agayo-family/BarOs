@@ -88,13 +88,14 @@ class PackageIn(Strict):
     def check(self):
         if (self.kind=='course') != bool(self.course) or (self.kind=='assessment') != bool(self.assessment):raise ValueError('Укажите ровно один тип материала')
         if self.course:
-            if not self.course.lessons or not self.course.questions:raise ValueError('Для полного обучения нужны теория и вопросы')
+            if not self.course.lessons or (self.course.quiz_size>0 and not self.course.questions):raise ValueError('Для полного обучения нужны теория и вопросы')
             if self.course.quiz_size>len(self.course.questions):raise ValueError('Размер теста больше банка вопросов')
             if any(p not in {'all',*POSITIONS} for p in self.course.positions):raise ValueError('Неизвестная должность')
         return self
 
 class ImportIn(Strict):
     package: PackageIn
+    source_ids: list[StrictInt] = Field(default_factory=list,max_length=50)
 
 class AssessmentEditIn(Strict):
     revision: str = Field(pattern=r'^[a-f0-9]{64}$')
@@ -145,6 +146,8 @@ def preview(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get_db)):
 def import_package(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'courses_manage',True);p=data.package;fp=fingerprint(p)
     old=db.scalar(select(PackageReceipt).where(PackageReceipt.organization_id==oid,PackageReceipt.fingerprint==fp))
+    from .drafts import selected_sources,record_origin
+    sources=selected_sources(db,oid,data.source_ids)
     if old:return import_info(old,True)
     receipt=PackageReceipt(organization_id=oid,fingerprint=fp)
     if p.course:
@@ -152,6 +155,7 @@ def import_package(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get
         c=Course(organization_id=oid,title=p.course.title,published=False);db.add(c);db.flush();save_course(db,c,p.course);receipt.course_id=c.id
     else:
         test=ImportedAssessment(organization_id=oid,title=p.assessment.title,payload=dump(p.assessment.model_dump(mode='json')));db.add(test);db.flush();receipt.assessment_id=test.id
+    record_origin(db,oid,p.kind,receipt.course_id or receipt.assessment_id,sources)
     db.add(receipt);log(db,a,oid,'Импортирован учебный пакет',kind=p.kind,title=(p.course or p.assessment).title)
     try:db.commit()
     except IntegrityError:
@@ -237,6 +241,7 @@ def edit_assessment(aid:int,data:AssessmentEditIn,request:Request,a=Depends(acto
     test,p=accessible(request,db,a,aid,True,lock=True)
     require(data.revision==assessment_revision(test.payload),'Тест изменён в другом окне. Обновите редактор.',409)
     require(not test.published or data.reviewed,'Подтвердите проверку изменений опубликованного теста')
+    protect_linked_courses(db,test,data.assessment.positions)
     payload=dump(data.assessment.model_dump(mode='json'))
     require(len(payload.encode('utf-8'))<=2*1024*1024,'Пакет превышает 2 МБ',413)
     test.title=data.assessment.title;test.payload=payload
@@ -257,7 +262,9 @@ def publish(aid:int,data:ConfirmIn,request:Request,a=Depends(actor),db=Depends(g
 
 @router.post('/api/assessments/{aid}/archive')
 def archive(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
-    test,p=accessible(request,db,a,aid,True,lock=True);test.archived=not test.archived;db.commit();return {'archived':test.archived}
+    test,p=accessible(request,db,a,aid,True,lock=True)
+    if not test.archived:protect_linked_courses(db,test)
+    test.archived=not test.archived;db.commit();return {'archived':test.archived}
 
 def submit_attempt(attempt):
     if attempt.status!='in_progress':return
@@ -396,3 +403,14 @@ def review(rid:str,data:ReviewIn,request:Request,a=Depends(actor),db=Depends(get
         require(not cap or bool(feedback.strip()),'Укажите в комментарии причину ограничения балла')
         grades[t['id']]={'scores':scores,'feedback':feedback,'cap_applied':cap}
     row.grades=dump(grades);row.status='graded';row.graded_at=now();row.version+=1;log(db,a,row.organization_id,'Проверен письменный тест',attempt_id=rid);db.commit();return attempt_data(row,keys=True)
+
+
+def protect_linked_courses(db,test,positions=None):
+    from .models import CourseSettings,CourseRevision
+    rows=db.execute(select(CourseRevision.payload,Course.title).join(CourseSettings,(CourseSettings.course_id==CourseRevision.course_id)&(CourseSettings.version==CourseRevision.version)).join(Course,Course.id==CourseRevision.course_id).where(Course.organization_id==test.organization_id,Course.published==True,CourseSettings.archived==False)).all()
+    for raw,title in rows:
+        p=parse(raw)
+        if (p.get('program') or {}).get('written_assessment_id')!=test.id:continue
+        require(positions is not None,'Тест нужен опубликованному курсу «'+title+'». Сначала измените связь и опубликуйте курс либо архивируйте его.',409)
+        roles=set(p['positions']);target=set(positions)
+        require('all' in target or 'all' not in roles and roles<=target,'Тест должен быть доступен всем должностям курса «'+title+'»',409)

@@ -8,6 +8,7 @@ from datetime import timedelta
 from functools import lru_cache
 import json
 import math
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -109,7 +110,7 @@ def install_snapshot(db, organization_id, approved, by=None, previous=None):
         .where(CourseSettings.course_id.in_(ids)).order_by(CourseSettings.course_id)
         .with_for_update().execution_options(populate_existing=True)).all()} if ids else {}
     busy = set(db.scalars(select(Job.course_id).where(Job.course_id.in_(ids),
-        Job.status.in_(['queued', 'running']))).all()) if ids else set()
+        Job.status.in_(['queued', 'running']))).all()) if ids and os.getenv('BAROS_AI_ENABLED','0')=='1' else set()
     previous_courses = {x['key']: x for x in (previous or {}).get('courses', [])}
     venue = settings(db, organization_id)
     active = venue.status == 'active' and venue.subscription_status in {'active', 'trial'} and (

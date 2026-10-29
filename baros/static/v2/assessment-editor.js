@@ -1,4 +1,4 @@
-import {$,$$,state,api,go,esc,btn,notice,pageHead,toast,pageCleanup} from './core.js?v=2.9.0';
+import {$,$$,state,api,go,esc,btn,notice,pageHead,toast,pageCleanup} from './core.js?v=2.10.0';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 let sequence=0;

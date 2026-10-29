@@ -44,10 +44,7 @@ services:
       - key: FIRST_RUN_TOKEN
         sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: baros-staging-db
-          property: connectionString
+        sync: false
 
-databases:
-  - name: baros-staging-db
-    plan: free
+      - key: BAROS_AI_ENABLED
+        value: "0"

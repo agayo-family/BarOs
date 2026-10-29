@@ -1,5 +1,6 @@
 import asyncio
 import math
+import os
 import secrets
 from datetime import timedelta
 from pathlib import Path
@@ -82,7 +83,8 @@ def update_course(cid:int,data:CourseIn,request:Request,a=Depends(actor),db=Depe
     oid=manager(request,db,a,'courses_manage',True);c=get_course(db,oid,cid)
     s=db.scalar(select(CourseSettings).where(CourseSettings.course_id==cid).with_for_update())
     require(data.edit_version==s.edit_version,'Курс изменён в другом окне. Обновите страницу перед сохранением.',409)
-    require(not db.scalar(select(Job.id).where(Job.course_id==cid,Job.status.in_(['queued','running']))),'Дождитесь окончания генерации',409)
+    if os.getenv('BAROS_AI_ENABLED','0')=='1':
+        require(not db.scalar(select(Job.id).where(Job.course_id==cid,Job.status.in_(['queued','running']))),'Дождитесь окончания генерации',409)
     save_course(db,c,data);log(db,a,oid,'Обновлён черновик курса',course_id=c.id);db.commit()
     return {'ok':True,'edit_version':s.edit_version}
 
@@ -95,6 +97,9 @@ def publish(cid:int,data:PublishIn,request:Request,a=Depends(actor),db=Depends(g
     require(data.reviewed,'Подтвердите проверку фактов, теории и ответов')
     require(c.lessons,'Добавьте хотя бы один теоретический урок')
     needed=s.quiz_size
+    program=db.get(CourseProgram,cid);aid=(parse(program.payload) if program else {}).get('written_assessment_id')
+    require(needed>0 or aid,'Для курса без автотеста привяжите отдельную проверку',409)
+    if aid:validate_final(db,oid,aid,parse(s.positions_json,['all']))
     require(len(c.questions)>=needed,f'Нужно минимум {needed} вопросов. Сейчас {len(c.questions)}.')
     normalized={ai.norm(q.prompt) for q in c.questions}
     require(len(normalized)==len(c.questions),'В банке есть одинаковые вопросы. Удалите повторы.')
@@ -104,6 +109,8 @@ def publish(cid:int,data:PublishIn,request:Request,a=Depends(actor),db=Depends(g
     except ValidationError:
         require(False,'В черновике есть некорректный урок или вопрос. Проверьте текст, четыре разных ответа и объяснение.',409)
     require(not s.due_at or s.due_at>now(),'Срок прохождения уже истёк. Укажите новую дату.')
+    from .drafts import acknowledge_origin
+    acknowledge_origin(db,oid,'course',cid)
     source_review.acknowledge(db,cid)
     data_payload=payload(db,c)
     previous=revision(db,c)
@@ -122,7 +129,11 @@ def publish(cid:int,data:PublishIn,request:Request,a=Depends(actor),db=Depends(g
 @router.post('/api/courses/{cid}/archive')
 def archive_course(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'courses_manage',True);c=get_course(db,oid,cid)
-    s=course_settings(db,c);s.archived=not s.archived
+    s=db.scalar(select(CourseSettings).where(CourseSettings.course_id==cid).with_for_update())
+    if s.archived and c.published:
+        rev=revision(db,c);published=parse(rev.payload) if rev else {};aid=(published.get('program') or {}).get('written_assessment_id')
+        if aid:validate_final(db,oid,aid,published['positions'])
+    s.archived=not s.archived
     log(db,a,oid,'Курс архивирован' if s.archived else 'Курс восстановлен',course_id=cid);db.commit();return {'archived':s.archived}
 
 
@@ -138,35 +149,17 @@ def edit_interview(data:InterviewIn,request:Request,a=Depends(actor),db=Depends(
     org.interview_json=dump(data.model_dump());log(db,a,oid,'Сохранено интервью заведения');db.commit();return {'ok':True}
 
 
-def intro_questions(data):
-    """Build a source-limited starter test from the manager interview."""
-    def short(value, fallback, limit=360):
-        value=' '.join(str(value or '').split()) or fallback
-        return value if len(value)<=limit else value[:limit-1].rstrip()+'…'
-    concept=short(data.get('concept'),'описание концепции из интервью')
-    guest=short(data.get('guest_profile'),'гостевой профиль из интервью')
-    service=short(data.get('service_style'),'описанный стиль сервиса')
-    must=short(data.get('must_know'),'обязательные знания перед самостоятельной сменой')
-    rules=short(data.get('special_rules'),'действовать по утверждённому стандарту и уточнять спорные случаи у менеджера')
-    tone=short(data.get('tone'),'тон общения, описанный управляющим')
-    return [
-        {'prompt':'Какой вариант точнее всего передаёт концепцию заведения?', 'correct':concept,
-         'wrong':['Основной ориентир — только скорость выдачи, даже если меняется впечатление гостя.', 'Концепция определяется ассортиментом, а единый опыт гостя не является отдельной задачей.', 'Единого характера у заведения нет: каждый сотрудник выбирает подачу самостоятельно.'], 'type':'understanding', 'explanation':'Правильный ответ дословно опирается на описание концепции из интервью.'},
-        {'prompt':'На какого гостя в первую очередь рассчитаны сервис и коммуникация?', 'correct':guest,
-         'wrong':['На любого гостя без учёта его ожиданий и повода визита.', 'Только на гостя с самым высоким чеком в конкретной смене.', 'На постоянных гостей; новым посетителям достаточно нейтрального шаблона.'], 'type':'understanding', 'explanation':'Профиль гостя берётся из интервью и задаёт контекст персонального сервиса.'},
-        {'prompt':'Как должен выглядеть стиль сервиса в этом заведении?', 'correct':service,
-         'wrong':['Единый нейтральный стиль без связи с характером заведения.', 'Максимально быстрый сервис; способ общения каждый сотрудник выбирает сам.', 'Только дословное чтение скрипта независимо от ситуации гостя.'], 'type':'understanding', 'explanation':'Ориентиром служит описание стандарта сервиса, которое дал управляющий.'},
-        {'prompt':'Что сотрудник обязан знать до первой самостоятельной смены?', 'correct':must,
-         'wrong':['Только расположение своего рабочего места; остальные стандарты можно узнать позже.', 'Лишь список популярных позиций, без критериев действий и качества.', 'Достаточно один раз услышать инструктаж, даже если материал не изучен.'], 'type':'knowledge', 'explanation':'Правильный ответ повторяет обязательный минимум из интервью заведения.'},
-        {'prompt':'Гость просит исключение, а сотрудник не уверен, как применить локальное правило. Как поступить?', 'correct':rules,
-         'wrong':['Сразу согласиться, если просьба кажется разумной, а менеджеру сообщить после обслуживания.', 'Придумать компромисс самостоятельно, чтобы не задерживать гостя.', 'Игнорировать правило и ориентироваться только на личный опыт сотрудника.'], 'type':'scenario', 'explanation':'В тесте нужно выбрать локальное правило заведения, а не догадку сотрудника.'},
-        {'prompt':'Каким должен быть тон общения с гостем?', 'correct':tone,
-         'wrong':['Одинаково формальным на любой ситуации и для любой аудитории.', 'Полностью зависеть от личного настроения сотрудника.', 'Сводиться только к скорости принятия заказа без атмосферы заведения.'], 'type':'sales', 'explanation':'Тон общения определяется тем, как его описали в интервью.'},
-        {'prompt':'Какой порядок подготовки нового сотрудника соответствует интервью?', 'correct':f'Сначала изучить: {must}; затем подтвердить понимание материала перед самостоятельной сменой.',
-         'wrong':['Сначала допустить к самостоятельной смене, а стандарты выдать после первой ошибки.', 'Ограничиться знакомством с коллегами и не проверять рабочие знания.', 'Попросить сотрудника выбрать собственные правила под свой стиль.'], 'type':'scenario', 'explanation':'Проверяется конкретный минимум, который управляющий указал для допуска к работе.'},
-        {'prompt':'Что делать, если личная привычка сотрудника расходится со стандартом заведения?', 'correct':'Сохранить утверждённый стандарт, а личную подачу менять только в допустимых границах.',
-         'wrong':['Использовать личную привычку, если она кажется быстрее.', 'Смешивать оба подхода поровну, не уточняя приоритет.', 'Отложить решение и продолжить смену без единого правила.'], 'type':'scenario', 'explanation':'Материалы заведения задают обязательную основу, которую нельзя заменять личной догадкой.'},
-    ]
+def validate_final(db,oid,aid,roles):
+    t=db.scalar(select(ImportedAssessment).where(ImportedAssessment.id==aid).with_for_update())
+    require(t and t.organization_id==oid and t.published and not t.archived,'Сначала проверьте и опубликуйте связанный тест',409)
+    target=set(parse(t.payload)['positions']);roles=set(roles)
+    require('all' in target or 'all' not in roles and roles<=target,'Назначьте итоговый тест всем должностям курса',409)
+
+
+def intro_assessment(data):
+    prompts={'concept':'Объясните новому гостю идею и характер заведения своими словами.','guest_profile':'Как учесть ожидания основного гостя при рекомендации? Приведите пример.','service_style':'Один гость спешит, другой хочет обсудить меню. Как обслужить каждого по нашему стандарту?','must_know':'Что нужно знать перед самостоятельной сменой и как проверить свою готовность?','special_rules':'Гость просит исключение из правила. Опишите действия и объясните решение.','tone':'Напишите приветствие и объяснение отказа в принятом у нас тоне.','common_mistakes':'Вы заметили одну из описанных ошибок. Как исправить ситуацию и предотвратить повторение?'}
+    tasks=[{'id':key,'section_id':'intro','kind':'written','prompt':prompt,'points':10,'rubric':[{'id':'source','label':'Соответствие стандарту заведения','points':7,'guidance':'Ориентир из интервью: '+data[key]+'. Принимайте разные формулировки с тем же смыслом; не требуйте дословного совпадения.'},{'id':'reason','label':'Понятное объяснение и применимость','points':3,'guidance':'Обоснованное решение и выполнимые действия в рамках стандарта.'}]} for key,prompt in prompts.items() if data.get(key)]
+    return {'title':'Знакомство с заведением: ситуации','description':'Понимание концепции, сервиса и правил команды.','instructions':'Отвечайте своими словами. Если данных недостаточно, укажите, что нужно уточнить.','positions':['all'],'sections':[{'id':'intro','title':'Наши стандарты'}],'tasks':tasks,'time_limit_minutes':60,'max_attempts':3,'passing_score':80,'sequential_sections':True}
 
 
 @router.post('/api/interview/draft')
@@ -178,10 +171,10 @@ def interview_draft(request:Request,a=Depends(actor),db=Depends(get_db)):
     db.add(c);db.flush()
     for i,(key,label) in enumerate(labels.items()):
         if data.get(key):db.add(Lesson(course_id=c.id,title=label,body=data[key],sort_order=i))
-    for item in intro_questions(data):
-        db.add(Question(course_id=c.id,prompt=item['prompt'],choices_json=dump([item['correct'],*item['wrong']]),correct_index=0,
-                        explanation=item['explanation'],question_type=item['type']))
-    db.add(CourseSettings(course_id=c.id,is_intro=True,quiz_size=8,positions_json='["all"]'))
+    test=ImportedAssessment(organization_id=oid,title='Знакомство с '+org.name,payload=dump(intro_assessment(data)))
+    db.add(test);db.flush()
+    db.add(CourseSettings(course_id=c.id,is_intro=True,quiz_size=0,positions_json='["all"]'))
+    db.add(CourseProgram(course_id=c.id,payload=dump({'written_assessment_id':test.id})))
     log(db,a,oid,'Создан вводный черновик из интервью',course_id=c.id);db.commit();return {'id':c.id}
 
 
@@ -253,7 +246,7 @@ def update_source(sid:int,data:SourceUpdate,request:Request,a=Depends(actor),db=
 @router.delete('/api/sources/{sid}')
 def delete_source(sid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'uploads_manage',True);s=get_source(db,oid,sid)
-    pending=db.scalars(select(Job).where(Job.organization_id==oid,Job.status.in_(['queued','running']))).all()
+    pending=db.scalars(select(Job).where(Job.organization_id==oid,Job.status.in_(['queued','running']))).all() if os.getenv('BAROS_AI_ENABLED','0')=='1' else []
     require(not any(sid in parse(j.source_ids_json,[]) for j in pending),'Материал используется в текущей генерации. Дождитесь её завершения.',409)
     affected=source_review.mark_changed(db,oid,sid,'deleted')
     db.delete(s);log(db,a,oid,'Удалён исходный файл',source_id=sid,courses_to_review=affected);db.commit();return {'ok':True,'courses_to_review':affected}
@@ -280,6 +273,7 @@ def jobs(request:Request,a=Depends(actor),db=Depends(get_db)):
 
 @router.post('/api/jobs')
 def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)):
+    require(os.getenv('BAROS_AI_ENABLED','0')=='1','Встроенная генерация отключена. Загрузите готовое обучение в черновики.',409)
     oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True)
     try: configured=ai.provider()
     except ValueError as error: require(False,str(error),503)

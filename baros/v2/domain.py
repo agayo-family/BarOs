@@ -62,10 +62,10 @@ def course_settings(db, c):
     return s
 
 
-def payload(db, c):
+def payload(db, c, *, program=...):
     s = course_settings(db, c)
     from .models import CourseProgram
-    program=db.get(CourseProgram,c.id)
+    if program is ...:program=db.get(CourseProgram,c.id)
     program_data=parse(program.payload) if program else None
     if program_data is not None:
         program_data['steps']=[{'lesson_index':i,'title':l.title,'minutes':max(1,math.ceil(len(l.body.split())/180))} for i,l in enumerate(c.lessons)]
@@ -162,14 +162,17 @@ def learner_stats_many(db, accounts, ensure=False, bundle=None):
     reads = {(aid, rid): count for aid, rid, count in db.execute(select(LessonRead.account_id, LessonRead.revision_id, func.count(LessonRead.id))
         .where(LessonRead.account_id.in_(aids), LessonRead.completed_at.is_not(None))
         .group_by(LessonRead.account_id, LessonRead.revision_id)).all()}
-    return {a.id: _learner_stats(a, accessible_courses(db, a, bundles[a.organization_id]), enrolled, exams[a.id], reads) for a in accounts}
+    from .readiness import assessment_stats
+    written=assessment_stats(db,accounts)
+    return {a.id: _learner_stats(a, accessible_courses(db, a, bundles[a.organization_id]), enrolled, exams[a.id], reads,written.get(a.id,[])) for a in accounts}
 
 
 def learner_stats(db, account):
     return learner_stats_many(db, [account])[account.id]
 
 
-def _learner_stats(account, visible, enrolled, all_exams, reads):
+def _learner_stats(account, visible, enrolled, all_exams, reads, assessments=None):
+    assessments=assessments or [];written={x['id']:x for x in assessments};linked=set()
     cards = []
     by_revision = defaultdict(list)
     for exam in all_exams: by_revision[exam.revision_id].append(exam)
@@ -179,16 +182,23 @@ def _learner_stats(account, visible, enrolled, all_exams, reads):
         done = [x for x in exams if x.finished_at]
         results = [parse(x.result_json) for x in done]
         read_count = reads.get((account.id, rev.id), 0)
-        passed = any(x.get('passed') for x in results)
-        cards.append({'id': c.id, 'title': data['title'], 'description': data['description'], 'positions': data['positions'],
+        auto_passed=any(x.get('passed') for x in results)
+        aid=(data.get('program') or {}).get('written_assessment_id');w=written.get(aid)
+        if aid:linked.add(aid)
+        written_done=not aid or bool(w and w['passed'])
+        complete=read_count>=len(data['lessons']) and (auto_passed or not data['quiz_size']) and written_done
+        passed=auto_passed if data['quiz_size'] else complete
+        components=len(data['lessons'])+int(data['quiz_size']>0)+int(bool(aid))
+        progress=round(100*(read_count+int(auto_passed and data['quiz_size']>0)+int(bool(aid) and written_done))/max(1,components))
+        cards.append({'id': c.id, 'revision_id':rev.id, 'title': data['title'], 'description': data['description'], 'positions': data['positions'],
                       'required': data['required'], 'is_intro': data.get('is_intro', False), 'version': rev.version,
                       'lesson_count': len(data['lessons']), 'read_count': read_count, 'question_count': data['quiz_size'], 'card_count': len(data['questions']),
                       'bank_size': len(data['questions']), 'passing_score': data['passing_score'],
                       'due_at': iso(e.due_at) if e else None, 'passed': passed, 'attempts': len(exams),
-                      'overdue': bool(e and e.due_at and e.due_at < now() and not passed),
+                      'overdue': bool(e and e.due_at and e.due_at < now() and not complete),
                       'best_score': max([r.get('score', 0) for r in results], default=None),
                       'latest_score': results[0].get('score') if results else None,
-                      'progress': round(100*(read_count + int(passed))/(len(data['lessons'])+1))})
+                      'learning_complete':complete,'written_assessment_id':aid,'written_status':w['status'] if w else 'not_assigned' if aid else None,'progress':progress})
     done = [parse(x.result_json) for x in all_exams if x.finished_at]
     durations = [r['duration_seconds'] for r in done if r.get('duration_seconds') is not None]
     weak = {}
@@ -197,7 +207,9 @@ def _learner_stats(account, visible, enrolled, all_exams, reads):
             if not q.get('correct'): weak[q.get('type', 'knowledge')] = weak.get(q.get('type', 'knowledge'), 0)+1
     passed = sum(c['passed'] for c in cards)
     completed = sum(c['attempts'] > 0 and c['latest_score'] is not None for c in cards)
-    return {'assigned': len(cards), 'passed': passed, 'completed': completed,
+    standalone=[x for x in assessments if x['id'] not in linked]
+    total=len(cards)+len(standalone);finished=sum(c['learning_complete'] for c in cards)+sum(x['passed'] for x in standalone)
+    return {'assessments':assessments,'written_assigned':len(assessments),'written_completed':sum(x['status']=='graded' for x in assessments),'written_pending_review':sum(x['status']=='submitted' for x in assessments),'learning_total':total,'learning_completed':finished,'learning_percent':round(100*finished/total) if total else 0,'learning_complete':bool(total and finished==total),'assigned': len(cards), 'passed': passed, 'completed': completed,
             'completion_percent': round(completed/len(cards)*100) if cards else 0,
             'success_percent': round(passed/len(cards)*100) if cards else 0,
             'attempt_pass_percent': round(sum(bool(r.get('passed')) for r in done)/len(done)*100) if done else None,

@@ -15,13 +15,13 @@ globalThis.fetch=async(path,options={})=>{
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));async function until(test,message){for(let i=0;i<250;i++){if(test())return;await sleep(20)}throw new Error(message+' '+document.body.textContent.slice(-1000))}
 async function unauth(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.text())}
 await unauth('/auth/setup',{token:'baros-ui-audit-only',name:'Exam owner',login:'exam.owner',password:'exam-audit-password'});
-const core=await import('./ui/core.js?v=2.9.0');await core.reloadMe();
+const core=await import('./ui/core.js?v=2.10.0');await core.reloadMe();
 const venue=await core.api('/venues','POST',{name:'Isolated exam audit'});core.setOrg(venue.id);
 const course=await core.api('/courses','POST',{title:'Проверка сохранения',positions:['bartender'],quiz_size:2,lessons:[{title:'Стандарт подачи',body:'Лимонад подают в высоком стакане со льдом.'}],questions:[{prompt:'В какой посуде подают лимонад?',choices:['Высокий стакан','Чашка','Кружка','Рюмка'],correct_index:0,explanation:'В материале указан высокий стакан.',type:'knowledge'},{prompt:'С чем подают лимонад по стандарту?',choices:['Со льдом','С молоком','С кофе','С солью'],correct_index:0,explanation:'В материале указан лёд.',type:'knowledge'}]});
 await core.api('/courses/'+course.id+'/publish','POST',{edit_version:course.edit_version,reviewed:true});await core.api('/auth/logout','POST',{});core.state.me=null;core.setOrg('');
 await unauth('/auth/join',{code:venue.join_code,name:'Exam learner',login:'exam.worker',password:'exam-audit-password',positions:['bartender']});await core.reloadMe();
 await core.api(`/learning/${course.id}/lessons/0`,'POST',{complete:false});await sleep(10500);await core.api(`/learning/${course.id}/lessons/0`,'POST',{complete:true});
-const {examPage}=await import('./ui/learn.js?v=2.9.0');const root=document.querySelector('#app');
+const {examPage}=await import('./ui/learn.js?v=2.10.0');const root=document.querySelector('#app');
 let exam=await core.api('/learning/'+course.id+'/exam','POST',{});await examPage(root,exam.id);
 const choose=value=>{const e=root.querySelector(`[name=answer][value="${value}"]`);assert(e);e.checked=true;e.dispatchEvent(new Event('change',{bubbles:true}))};
 let firstRelease,secondRelease;gates=[new Promise(r=>firstRelease=r),new Promise(r=>secondRelease=r)];

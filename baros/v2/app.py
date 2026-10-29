@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.9.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.10.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -92,13 +92,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.9.0'}
+    return {'status':'ok','service':'baros','version':'2.10.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.9.0'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.10.0'}
 
 
 @app.post('/api/auth/setup')
@@ -412,6 +412,8 @@ def export(request:Request,a=Depends(actor),db=Depends(get_db)):
 
 
 # Register only the new API. Legacy vulnerable assessment routes are not mounted.
+from .drafts import router as drafts_router
+app.include_router(drafts_router)
 from .content import router as content_router
 from .learning import router as learning_router
 from .notifications import router as push_router

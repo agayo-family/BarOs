@@ -1,6 +1,6 @@
 import base64
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, delete
@@ -10,7 +10,7 @@ from py_vapid import Vapid
 from pywebpush import webpush, WebPushException
 from ..db import SessionLocal, get_db
 from .models import Setting, Account, Notice, PushSubscription, Enrollment, CourseRevision, Exam, VenueSettings
-from .domain import now, iso, dump, parse, digest, require, add_notice, accessible_courses
+from .domain import now, iso, dump, parse, digest, require, add_notice, learner_stats_many
 from .auth import actor, tenant
 
 router=APIRouter()
@@ -70,37 +70,23 @@ def deliver_and_remind():
         for exam in db.scalars(select(Exam).where(Exam.finished_at.is_(None),Exam.expires_at<=now()).limit(100)).all():
             rev=db.get(CourseRevision,exam.revision_id)
             finish(db,exam,parse(rev.payload))
-        for a in db.scalars(select(Account).where(Account.role=='employee',Account.active==True)).all():
+        from .models import WrittenAttempt
+        from .packages import submit_attempt
+        for x in db.scalars(select(WrittenAttempt).where(WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at<=now()).with_for_update(skip_locked=True).limit(100)).all():submit_attempt(x)
+        employees=db.scalars(select(Account).where(Account.role=='employee',Account.active==True)).all()
+        progress=learner_stats_many(db,employees)
+        for a in employees:
             venue=db.get(VenueSettings,a.organization_id)
             if not venue or venue.status in {'suspended','archived'}:continue
-            for c,s,rev,data in accessible_courses(db,a):
-                e=db.scalar(select(Enrollment).where(Enrollment.account_id==a.id,Enrollment.revision_id==rev.id))
-                if not e or not e.due_at:continue
-                completed=db.scalars(select(Exam).where(Exam.account_id==a.id,Exam.revision_id==rev.id,Exam.finished_at.is_not(None))).all()
-                if any(parse(x.result_json).get('passed') for x in completed):continue
-                remaining=(e.due_at-now()).total_seconds()
-                if remaining<0:
-                    add_notice(db,a.id,f'overdue:{rev.id}','Срок обучения прошёл',f'Завершите «{data["title"]}». Управляющий увидит обновлённый результат.',f'/app/learn/{c.id}')
-                elif remaining<86400:
-                    add_notice(db,a.id,f'due:{rev.id}','До дедлайна меньше суток',f'Не забудьте пройти «{data["title"]}».',f'/app/learn/{c.id}')
+            for c in progress[a.id]['courses']:
+                if c['learning_complete'] or not c['due_at']:continue
+                if c['written_status']=='submitted' and c['read_count']>=c['lesson_count'] and (not c['question_count'] or c['passed']):continue
+                remaining=(datetime.fromisoformat(c['due_at'].replace('Z','+00:00')).replace(tzinfo=None)-now()).total_seconds()
+                if remaining<86400:
+                    late=remaining<0;key=('overdue:' if late else 'due:')+str(c['revision_id'])
+                    add_notice(db,a.id,key,'Срок обучения прошёл' if late else 'До дедлайна меньше суток','Завершите «'+c['title']+'».',f'/app/learn/{c["id"]}')
         db.commit()
-        pending=db.scalars(select(Notice).where(Notice.push_sent==False).order_by(Notice.id).limit(50)).all()
         key=db.get(Setting,'vapid_private')
         if not key:return
-        vapid=Vapid.from_pem(key.value.encode())
-        for n in pending:
-            recipient=db.get(Account,n.account_id)
-            if not recipient or not recipient.active:n.push_sent=True;continue
-            subs=db.scalars(select(PushSubscription).where(PushSubscription.account_id==n.account_id,PushSubscription.failures<3)).all()
-            for sub in subs:
-                try:
-                    webpush(subscription_info=parse(sub.payload),data=dump({'title':n.title,'body':n.body,'url':n.url}),
-                            vapid_private_key=vapid,vapid_claims={'sub':os.getenv('VAPID_SUBJECT','https://baros-staging.onrender.com')},ttl=86400,timeout=10)
-                    sub.failures=0
-                except WebPushException as exc:
-                    if exc.response is not None and exc.response.status_code in {404,410}:db.delete(sub)
-                    else:sub.failures+=1
-                except Exception:sub.failures+=1
-            # In-app delivery is durable even when browser notifications were declined.
-            n.push_sent=True
-        db.commit()
+        from .push_delivery import deliver
+        deliver(db,webpush,Vapid.from_pem(key.value.encode()),os.getenv('VAPID_SUBJECT','https://baros-staging.onrender.com'))

@@ -38,6 +38,7 @@ def selected_model():
 
 
 def provider():
+    if os.getenv('BAROS_AI_ENABLED','0')!='1':return None
     if AI_PROVIDER in {'qwen','yandex'}:
         from .ai_providers import provider as compatible
         return compatible(AI_PROVIDER)
@@ -288,7 +289,7 @@ async def worker(stop):
         try:
             with SessionLocal() as db:
                 candidate = db.scalar(select(Job).where((Job.status=='queued') | ((Job.status=='running') & (Job.lease_until < now()))).order_by(Job.created_at).limit(1))
-                jid = candidate.id if candidate else None
+                jid = candidate.id if candidate and os.getenv('BAROS_AI_ENABLED','0')=='1' else None
                 token = secrets.token_hex(20)
                 if jid:
                     result=db.execute(update(Job).where(Job.id==jid, ((Job.status=='queued') | ((Job.status=='running') & (Job.lease_until < now())))).values(status='running',lease_token=token,lease_until=now()+timedelta(minutes=5)))

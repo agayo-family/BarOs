@@ -107,6 +107,7 @@ def start_exam(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     db.execute(select(Account).where(Account.id==a.id).with_for_update()).first()
     require(not db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==a.id,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now())),'Сначала завершите письменный тест',409)
     c,s,rev,data,e=learning_course(request,db,a,cid)
+    require(data['quiz_size']>0,'Пройдите отдельную итоговую проверку этого курса',409)
     for exam in exams_for(db,a,rev.id):
         if not exam.finished_at:
             if exam.expires_at<=now():finish(db,exam,data)
