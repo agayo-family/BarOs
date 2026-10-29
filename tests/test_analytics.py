@@ -87,6 +87,13 @@ class AnalyticsTests(unittest.TestCase):
   self.assertEqual(self.client.get('/api/reports/analytics?account_id='+str(self.ids['stranger'])).status_code,404)
   self.login('one');self.assertEqual(self.client.get('/api/reports/analytics').status_code,403);self.assertEqual(self.client.get('/api/reports/analytics/export').status_code,403)
   self.login('stranger');self.assertEqual(self.client.get('/api/reports/analytics?course_id='+str(self.cid)).status_code,404);self.assertEqual(self.analytics()['summary']['employees'],0)
+ def test_expired_choice_only_test_never_enters_manual_review_queue(self):
+  p=copy.deepcopy(self.payload);p['tasks']=[{'id':'t','section_id':'s','kind':'single_choice','prompt':'Сколько сиропа по карте?','choices':['20 мл','25 мл','30 мл','35 мл'],'correct_index':0,'points':10,'rubric':[],'explanation':'По карте 20 мл.','score_cap':None}]
+  with SessionLocal() as db:
+   db.get(ImportedAssessment,self.aid).payload=dump(p)
+   db.add(WrittenAttempt(id='expired-auto',organization_id=self.oid,assessment_id=self.aid,account_id=self.ids['one'],snapshot=dump(p),answers=dump({'t':0}),status='in_progress',started_at=STAMP-timedelta(hours=2),expires_at=STAMP-timedelta(hours=1)));db.commit()
+  r=self.analytics();self.assertEqual(r['summary']['pending_review'],0);self.assertEqual(r['summary']['written_graded'],1);self.assertTrue(r['attempts'][0]['passed'])
+  row=next(x for x in r['team'] if x['id']==self.ids['one']);self.assertEqual(row['assessments'][0]['status'],'graded');self.assertTrue(row['assessments'][0]['passed'])
  def test_query_count_does_not_grow_per_employee(self):
   counts=[]
   def counter(*args):counts.append(1)

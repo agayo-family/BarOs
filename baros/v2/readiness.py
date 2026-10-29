@@ -24,7 +24,7 @@ def assessment_stats(db,accounts):
         for t,p in tests:
             if t.organization_id!=a.organization_id or not applies(a,p):continue
             x=latest.get((a.id,t.id));status=x.status if x else 'not_started';passed=False
-            if x and status=='in_progress' and x.expires_at<=now():status='submitted'
+            if x and status=='in_progress' and x.expires_at<=now():status='submitted' if any(t['kind']=='written' for t in parse(x.snapshot)['tasks']) else 'graded'
             if x and status=='graded':
                 from .packages import score_result
                 passed=score_result(x)['passed'] is not False

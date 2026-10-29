@@ -68,7 +68,7 @@ def build(db,oid,days=30,start=None,end=None,position='',account_id=None,course_
         assigned=[a for a in staff if applies(a,p)]
         current_cards=[c for row in rows.values() for c in row['courses'] if c['revision_id']==rid]
         per_course[rid]={'id':r.course_id,'revision_id':rid,'version':r.version,'title':p['title'],'current':rid in current,'assigned':len(assigned) if rid in current else None,'complete':sum(c['learning_complete'] for c in current_cards) if rid in current else None,'overdue':sum(c['overdue'] for c in current_cards),'started':set(),'passed_people':set(),'attempts':0,'scores':[],'durations':[],'passing_score':p['passing_score']}
-    per_test={t.id:{'id':t.id,'title':t.title,'published':t.published,'archived':t.archived,'assigned':sum(any(x['id']==t.id for x in r['assessments']) for r in rows.values()),'graded':0,'submitted':0,'scores':[],'durations':[]} for t in all_tests if (not assessment_id or t.id==assessment_id) and (not course_id or t.id in linked)}
+    per_test={t.id:{'id':t.id,'title':t.title,'published':t.published,'archived':t.archived,'assigned':sum(any(x['id']==t.id for x in r['assessments']) for r in rows.values()),'graded':0,'submitted':0,'scores':[],'durations':[]} for t in all_tests if (history or t.published and not t.archived) and (not assessment_id or t.id==assessment_id) and (not course_id or t.id in linked)}
     daily=defaultdict(lambda:{'auto':0,'written':0,'passed':0,'scores':[]})
     attempts=[];question_last={};progressions=defaultdict(list);timed_out=0
     q=select(Exam).options(defer(Exam.questions_json),defer(Exam.answers_json)).where(Exam.account_id.in_(aids),Exam.revision_id.in_(selected_revisions),Exam.finished_at.is_not(None),Exam.finished_at<high)
@@ -106,17 +106,19 @@ def build(db,oid,days=30,start=None,end=None,position='',account_id=None,course_
         if not history and not applies(people[x.account_id],p):continue
         if not history and (not is_current or not tests[x.assessment_id].published or tests[x.assessment_id].archived):continue
         status=x.status
-        if status=='in_progress' and x.expires_at<=now():status='submitted'
+        expired=status=='in_progress' and x.expires_at<=now()
+        if expired:status='submitted' if any(t['kind']=='written' for t in p['tasks']) else 'graded'
+        graded_at=x.graded_at or (x.expires_at if expired and status=='graded' else None)
         if status=='submitted':
             at=x.submitted_at or x.expires_at
             queue.append({'id':x.id,'assessment_id':x.assessment_id,'account_id':x.account_id,'name':people[x.account_id].name,'title':p['title'],'submitted_at':iso(at),'waiting_hours':round(max(0,(now()-at).total_seconds()/3600),1),'current':is_current,'url':'/app/assessment-attempts/'+x.id});per_test[x.assessment_id]['submitted']+=1
-        if status!='graded' or not x.graded_at or x.graded_at>=high or low and x.graded_at<low:continue
+        if status!='graded' or not graded_at or graded_at>=high or low and graded_at<low:continue
         result=score_result(x);score=result['percent'];seconds=max(0,((x.submitted_at or x.expires_at)-x.started_at).total_seconds())
         row=rows[x.account_id];row['written_graded']+=1;row['written_scores'].append(score)
         signature=content_key(p)
         t=test_versions.setdefault((x.assessment_id,signature),{'id':x.assessment_id,'title':p['title'],'revision':signature[:12],'current':is_current,'published':tests[x.assessment_id].published,'archived':tests[x.assessment_id].archived,'assigned':None,'graded':0,'submitted':0,'scores':[],'durations':[]});t['graded']+=1;t['scores'].append(score);t['durations'].append(seconds)
-        day=daily[local_day(x.graded_at)];day['written']+=1
-        attempts.append({'id':x.id,'kind':'written','account_id':x.account_id,'name':row['name'],'title':p['title'],'assessment_id':x.assessment_id,'current':is_current,'at':iso(x.graded_at),'score':score,'passed':result['passed'],'seconds':seconds,'url':'/app/assessment-attempts/'+x.id})
+        day=daily[local_day(graded_at)];day['written']+=1
+        attempts.append({'id':x.id,'kind':'written','account_id':x.account_id,'name':row['name'],'title':p['title'],'assessment_id':x.assessment_id,'current':is_current,'at':iso(graded_at),'score':score,'passed':result['passed'],'seconds':seconds,'url':'/app/assessment-attempts/'+x.id})
         grades=parse(x.grades)
         # Different rubric revisions remain separate even when a title is reused.
         signature=signature[:12]

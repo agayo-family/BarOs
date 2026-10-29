@@ -19,7 +19,9 @@ from baros.db import SessionLocal, engine
 from baros.models import Organization, Course, Lesson, Question
 from baros.security import hash_password
 from baros.v2.domain import dump
-from baros.v2.models import Account, CourseSettings, CourseRevision, SourceFile, VenueSettings
+from baros.v2.models import Account, CourseSettings, CourseRevision, SourceFile, VenueSettings, Exam
+from baros.v2.domain import now
+from datetime import timedelta
 
 app = importlib.import_module('baros.v2.app').app
 queries = []
@@ -35,7 +37,7 @@ with TestClient(app) as client:
         password=hash_password('local-audit-password')
         db.add(Account(name='Тестовый владелец',login='perf.owner',role='owner',password_hash=password))
         db.add_all([Account(name='Тестовый сотрудник '+str(i),login='perf.staff.'+str(i),role='employee',
-                            organization_id=oid,password_hash=password,positions_json='["bartender"]') for i in range(15)])
+                            organization_id=oid,password_hash=password,positions_json='["bartender"]') for i in range(100)])
         for i in range(20):
             c=Course(organization_id=oid,title='Тестовый курс '+str(i),published=True)
             db.add(c); db.flush(); db.add(CourseSettings(course_id=c.id,version=1,quiz_size=10))
@@ -52,10 +54,24 @@ with TestClient(app) as client:
         db.add_all([SourceFile(organization_id=oid,name='Тестовый файл '+str(i)+'.txt',mime='text/plain',size=1024*1024,
                               content=b'x'*(1024*1024),text='Подтверждённый текст. '*1000) for i in range(5)])
         db.commit()
-    assert client.post('/api/auth/login',json={'login':'perf.owner','password':'local-audit-password'}).status_code==200
+    # Two completed attempts per employee/course: a populated history, not an empty dashboard.
+    with SessionLocal() as db:
+        from sqlalchemy import select
+        people=db.scalars(select(Account).where(Account.organization_id==oid,Account.role=='employee')).all()
+        versions=db.scalars(select(CourseRevision)).all();stamp=now()
+        for person in people:
+            for version in versions:
+                from baros.v2.domain import parse
+                payload=parse(version.payload)
+                review=[dict(q,selected=1,correct=False) for q in payload['questions'][:10]]
+                for attempt in range(2):
+                    at=stamp-timedelta(hours=2-attempt)
+                    db.add(Exam(id=f'perf-{person.id}-{version.id}-{attempt}',account_id=person.id,revision_id=version.id,questions_json=dump(payload['questions'][:10]),answers_json='{}',started_at=at-timedelta(seconds=120),expires_at=at+timedelta(minutes=5),finished_at=at,result_json=dump({'score':70+20*attempt,'passed':bool(attempt),'duration_seconds':120,'review':review})))
+        db.commit()
+    assert client.post('/api/auth/login' ,json={'login':'perf.owner','password':'local-audit-password'}).status_code==200
     headers={'x-organization-id':str(oid)}
     results={}
-    for path in ['/api/staff','/api/courses','/api/venues','/api/sources','/api/export','/api/owner/catalog','/api/owner/catalog/courses/bar-02-classics','/api/owner/onboarding']:
+    for path in ['/api/reports/analytics','/api/reports/analytics/export?section=questions','/api/drafts','/api/staff','/api/courses','/api/venues','/api/sources','/api/export','/api/owner/catalog','/api/owner/catalog/courses/bar-02-classics','/api/owner/onboarding']:
         assert client.get(path,headers=headers).status_code==200
         samples=[]; counts=[]; transferred=0
         for _ in range(3):
@@ -71,7 +87,7 @@ with TestClient(app) as client:
     client.get('/api/me'); queries.clear(); start=time.perf_counter(); response=client.get('/api/learning')
     assert response.status_code==200
     results['/api/learning']={'elapsed_ms':round((time.perf_counter()-start)*1000,2),'sql_queries':len(queries),'assigned':response.json()['assigned']}
-    print(json.dumps({'fixture':{'venues':5,'staff':15,'courses':20,'questions_per_course':30,'source_mb':5},'results':results},ensure_ascii=False,indent=2))
+    print(json.dumps({'fixture':{'venues':5,'staff':100,'courses':20,'questions_per_course':30,'source_mb':5,'completed_attempts':4000},'results':results},ensure_ascii=False,indent=2))
 
 event.remove(engine, 'before_cursor_execute', count_sql)
 engine.dispose(); workspace.cleanup()

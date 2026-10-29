@@ -64,6 +64,7 @@ async function shot(role,path,label,width,theme){
   assert.equal(await page.locator('[data-publish]').count(),0,'Shared draft does not expose publication');
  }
  if(label==='written-only-lesson'){assert.equal(await page.locator('[data-start-exam]').count(),0);assert.equal(await page.locator('a[href^="/app/cards/"]').count(),0)}
+ if(label.startsWith('reports')){for(const checkbox of await page.locator('.analytics-filters input[type=checkbox]').all()){const size=await checkbox.boundingBox();assert(size.width<=24&&size.height<=24,'Filter checkbox keeps a compact size')}for(const label of await page.locator('.analytics-filters .check-label').all()){const size=await label.boundingBox();assert(size.height<100,'Filter labels remain readable on mobile')}}
  if(label==='exam')assert.equal(await page.locator('[data-retry-answer]').isVisible(),false,'Retry saving is hidden until a save fails');
  if(width<431)for(const action of await page.locator('.page-head .actions .btn').all()){
   const box=await action.boundingBox();assert(!box||box.width>=140,`Readable action width on ${role}/${label}: ${box?.width}`);
@@ -87,7 +88,7 @@ written=await call('/assessment-attempts/'+written.id+'/submit','POST',{version:
 await sweep('employee',[['/app/assessment-attempts/'+written.id,'submitted']]);
 await shot('employee','/app/exam/'+exam.id,'result',1440,'light');
 // Check offline navigation's visible recovery state, then restore connectivity.
-await ctx.setOffline(true);await page.goto(base+'/app').catch(()=>{});await ctx.setOffline(false);
+await ctx.setOffline(true);await page.goto(base+'/app').catch(()=>{});await ctx.setOffline(false);await page.goto(base+'/app');
 await ctx.clearCookies();await ctx.addCookies(managerStorage.cookies);me=await call('/me');
 await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/assessments','assessments'],['/app/assessment-attempts/'+written.id,'written-review'],['/app/courses/'+c.id,'editor'],['/app/assessments/'+assessment.id,'assessment'],['/app/assessments/'+assessment.id+'/edit','assessment-editor'],['/app/staff','staff'],['/app/sources','sources'],['/app/reports','reports'],...['courses','questions','written','timeline','attempts'].map(tab=>['/app/reports?tab='+tab,'reports-'+tab]),['/app/drafts','drafts'],['/app/ai','legacy-drafts'],['/app/assessments/'+emptyTest.id+'/edit','empty-test-editor'],['/app/interview','interview'],['/app/venues','venue-settings'],['/app/settings','settings']]);
 await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/sources');await page.locator('[data-upload]').click();await page.screenshot({path:join(output,'manager-upload-modal-390.png'),fullPage:true});await page.keyboard.press('Escape');
