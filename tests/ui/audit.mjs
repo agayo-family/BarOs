@@ -184,7 +184,7 @@ document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key
 assert.equal(document.activeElement,element('#sidebar a'),'Tab wraps within mobile menu');
 document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
 assert(!element('#sidebar').classList.contains('open'));assert.equal(document.activeElement,element('#mobile-menu'));assert(element('#sidebar').inert,'Closed mobile sidebar cannot receive focus');
-click('[data-install]');assert(element('#app').inert,'Modal background is inert');
+click('[data-create]');assert(element('#app').inert,'Modal background is inert');
 click('[data-close]');assert(!element('#app').inert,'Closing modal restores background interaction');
 dom.window.innerWidth=1024;
 console.log('AUDIT CONTROLS: delayed save, newer unsaved edits, empty search/filter states, editor keyboard tabs, mobile focus trap/Escape and modal inert restoration OK');
