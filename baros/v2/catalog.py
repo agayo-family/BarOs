@@ -28,11 +28,31 @@ router = APIRouter()
 STATE_KEY = 'standard_catalog'
 DRAFT_KEY = 'standard_catalog_draft'
 DATA_FILE = Path(__file__).with_name('standard_courses.json')
+UPDATES_FILE = Path(__file__).with_name('standard_course_updates.json')
 
 
 @lru_cache(maxsize=1)
 def candidate():
     data = json.loads(DATA_FILE.read_text(encoding='utf-8'))
+    # Reviewed, versioned corrections extend the base library. Approved venue
+    # snapshots still change only through the existing explicit approval flow.
+    updates = json.loads(UPDATES_FILE.read_text(encoding='utf-8'))
+    require(data['version'] == updates['base_version'], 'Проверьте редакцию общей библиотеки', 500)
+    by_key = {item['key']: item for item in data['courses']}
+    updated = set()
+    for edit in updates['courses']:
+        item = by_key.get(edit['key'])
+        require(item and edit['key'] not in updated and edit['version'] > item['version'],
+                'Проверьте изменения общей библиотеки', 500)
+        updated.add(edit['key'])
+        for section, field in [('questions', 'explanation'), ('lessons', 'body')]:
+            rows = item['course'][section]
+            for index, value in edit.get(section, {}).items():
+                require(index.isdigit() and 0 <= int(index) < len(rows) and isinstance(value, str),
+                        'Проверьте содержание общей библиотеки', 500)
+                rows[int(index)][field] = value
+        item['version'] = edit['version']
+    data['version'] = updates['version']
     keys = set()
     for item in data['courses']:
         require(item['key'] not in keys, 'В библиотеке повторяется идентификатор курса', 500)

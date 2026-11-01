@@ -53,3 +53,9 @@ class SupportTests(unittest.TestCase):
   pattern=re.compile(r'(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей')
   for name in ['manage','drafts','editor','mentor','owner','catalog','packages','experience','support','auth','app']:
    source=Path('baros/static/v2/'+name+'.js').read_text();self.assertIsNone(pattern.search(source),name)
+  from baros.v2.catalog import candidate
+  for item in candidate()['courses']:
+   course=item['course'];texts=[course['title'],course['description']]
+   texts += [v for lesson in course['lessons'] for v in lesson.values() if isinstance(v,str)]
+   texts += [v for q in course['questions'] for v in [q['prompt'],q['explanation'],*q['choices']]]
+   self.assertIsNone(pattern.search('\n'.join(texts)),item['key'])
