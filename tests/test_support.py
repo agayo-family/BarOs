@@ -50,7 +50,7 @@ class SupportTests(unittest.TestCase):
   with SessionLocal() as db:self.assertEqual(len(db.scalars(select(SupportTicket)).all()),8)
  def test_current_customer_modules_have_no_creator_or_provider_copy(self):
   import re
-  pattern=re.compile(r'(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей')
+  pattern=re.compile(r'(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей|sergey|Render|FIRST_RUN_TOKEN|SESSION_SECRET')
   for name in ['manage','drafts','editor','mentor','owner','catalog','packages','experience','support','auth','app']:
    source=Path('baros/static/v2/'+name+'.js').read_text();self.assertIsNone(pattern.search(source),name)
   from baros.v2.catalog import candidate

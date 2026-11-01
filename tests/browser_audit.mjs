@@ -70,7 +70,7 @@ async function shot(role,path,label,width,theme){
   const box=await action.boundingBox();assert(!box||box.width>=140,`Readable action width on ${role}/${label}: ${box?.width}`);
  }
  if(label==='support'&&role!=='owner'){await page.locator('[data-new-support]').click();await page.screenshot({path:join(output,`${role}-support-dialog-${width}-${theme}.png`),fullPage:true});await page.keyboard.press('Escape')}
- const visibleCopy=await page.locator('body').innerText();assert(!/(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей|API[- ]?ключ|провайдер/iu.test(visibleCopy),`Neutral customer copy: ${role}/${label}`);
+ const visibleCopy=await page.locator('body').innerText();assert(!/(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей|sergey|Render|FIRST_RUN_TOKEN|SESSION_SECRET|API[- ]?ключ|провайдер/iu.test(visibleCopy),`Neutral customer copy: ${role}/${label}`);
  const info=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,title:document.querySelector('h1,h2')?.textContent||'',error:document.querySelector('#page-content .notice-box.error')?.textContent,overflow:[...document.querySelectorAll('#page-content *')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&(r.left< -1||r.right>innerWidth+1)&&!e.closest('.table-wrap,.tabs,.question-nav,.game-pair-list')}).slice(0,8).map(e=>({tag:e.tagName,cls:e.className,text:e.textContent.slice(0,60)}))}));
  const name=`${role}-${label}-${width}-${theme}`;await page.screenshot({path:join(output,name+'.png'),fullPage:true,animations:'disabled'});
  screens.push({name,path,...info});
