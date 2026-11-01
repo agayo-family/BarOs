@@ -438,3 +438,17 @@ class PushDelivery(Base):
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime,default=now,index=True)
     last_error: Mapped[str] = mapped_column(String(80),default='')
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class SupportTicket(Base):
+    __tablename__ = 'v2_support_tickets'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey('organizations.id'),index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'),index=True)
+    category: Mapped[str] = mapped_column(String(24))
+    message: Mapped[str] = mapped_column(Text)
+    response: Mapped[str] = mapped_column(Text,default='')
+    status: Mapped[str] = mapped_column(String(24),default='open',index=True)
+    version: Mapped[int] = mapped_column(Integer,default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime,default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime,default=now)

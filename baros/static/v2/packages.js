@@ -1,10 +1,10 @@
-import {badge,$,$$,state,api,go,esc,icon,btn,modal,on,toast,notice,empty,pageHead,bindForm,pageCleanup,field,positions,selected} from './core.js?v=2.10.0';
+import {badge,$,$$,state,api,go,esc,icon,btn,modal,on,toast,notice,empty,pageHead,bindForm,pageCleanup,field,positions,selected} from './core.js?v=2.11.0';
 const labels={in_progress:'В процессе',submitted:'Ожидает проверки',graded:'Проверено'};
 const canEditAssessment=()=>state.me.account.role==='owner'||(state.me.account.role==='manager'&&state.me.venue?.status!=='read_only'&&state.me.venue?.permissions?.courses_manage!==false&&state.me.account.permissions?.courses_manage!==false);
 const capInfo=t=>t.score_cap?notice('Ограничение результата: '+t.score_cap.points+' / '+t.points+'. '+t.score_cap.guidance,'warning'):'';
 export function importPackage(options={}){
  const sourceIds=options.sourceIds||[];
- const m=modal('Импорт из файла',`<p>Готовый файл BarOS создаёт черновик без обращения к AI. Полный курс включает теорию, тест, карточки и игры. Файл «только тест» создаёт отдельную проверочную работу.</p><label class="field"><span>Файл .baros.json или .json до 2 МБ</span><input type="file" accept=".json,.baros,application/json" data-package-file></label><div data-package-preview role="status"></div>`);
+ const m=modal('Импорт из файла',`<p>Загрузка файла создаёт черновик для проверки. Полный курс включает теорию, тест, карточки и игры. Файл «только тест» создаёт отдельную проверочную работу.</p><label class="field"><span>Файл .baros.json или .json до 2 МБ</span><input type="file" accept=".json,.baros,application/json" data-package-file></label><div data-package-preview role="status"></div>`);
  let payload=null;
  on('[data-package-file]','change',async(_,input)=>{payload=null;input.disabled=true;const area=$('[data-package-preview]',m.root);area.innerHTML='Проверяем файл…';try{
   const file=input.files?.[0];if(!file){area.innerHTML='';return}if(file.size>2*1024*1024)throw new Error('Максимальный размер пакета — 2 МБ');

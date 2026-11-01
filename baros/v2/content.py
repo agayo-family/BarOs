@@ -273,11 +273,11 @@ def jobs(request:Request,a=Depends(actor),db=Depends(get_db)):
 
 @router.post('/api/jobs')
 def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)):
-    require(os.getenv('BAROS_AI_ENABLED','0')=='1','Встроенная генерация отключена. Загрузите готовое обучение в черновики.',409)
+    require(os.getenv('BAROS_AI_ENABLED','0')=='1','Создайте курс вручную или загрузите готовый файл обучения.',409)
     oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True)
     try: configured=ai.provider()
     except ValueError as error: require(False,str(error),503)
-    require(configured,'AI не подключён. Владелец должен настроить ключ и провайдера в Render → Environment.',503)
+    require(configured,'Сейчас не удалось создать обучение. Создайте курс вручную или загрузите файл.',503)
     pos=positions(data.positions)
     db.execute(select(Setting).where(Setting.key=='ai_quota_lock').with_for_update()).first()
     s=db.scalar(select(VenueSettings).where(VenueSettings.organization_id==oid).with_for_update())
@@ -316,7 +316,7 @@ def retry(jid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
         require(s.edit_version==1 and s.version==0,'Черновик уже редактировали. Дополните его вручную или создайте новое обучение.',409)
     try: configured=ai.provider()
     except ValueError as error: require(False,str(error),503)
-    require(configured,'AI не подключён',503)
+    require(configured,'Сейчас не удалось создать обучение. Попробуйте другой способ.',503)
     require(not db.scalar(select(Job.id).where(Job.organization_id==oid,Job.status.in_(['queued','running']))),'Уже создаётся обучение',409)
     j.status='queued';j.error='';j.phase='Продолжаем с сохранённого шага';j.lease_token=None;j.lease_until=None
     log(db,a,oid,'AI-генерация продолжена',job_id=j.id);db.commit();return job_card(j)

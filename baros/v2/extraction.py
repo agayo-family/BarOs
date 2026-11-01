@@ -38,7 +38,7 @@ def ocr(image):
     image.thumbnail((2800, 2800))
     langs = pytesseract.get_languages()
     lang = '+'.join(x for x in ['rus', 'eng'] if x in langs)
-    if 'rus' not in langs: raise ValueError('На сервере нет русского OCR. Установите tesseract-ocr-rus или вставьте распознанный текст вручную.')
+    if 'rus' not in langs: raise ValueError('Не удалось прочитать текст на изображении. Вставьте текст вручную или загрузите текстовую версию файла.')
     return pytesseract.image_to_string(image, lang=lang, timeout=45)
 
 
@@ -92,10 +92,10 @@ def extract(name, data):
             text = '\n\n'.join(chunks)
         finally:
             if renderer: renderer.close()
-        if scanned: note = 'Использовано распознавание сканов. Проверьте цифры, объёмы и названия перед генерацией.'
+        if scanned: note = 'Использовано распознавание сканов. Проверьте цифры, объёмы и названия перед использованием в обучении.'
     else:
         with Image.open(BytesIO(data)) as im: text = ocr(im)
-        note = 'Текст распознан с фотографии. Проверьте цифры, объёмы и названия перед генерацией.'
+        note = 'Текст распознан с фотографии. Проверьте цифры, объёмы и названия перед использованием в обучении.'
     if len(text) > MAX_TEXT: note += ' Достигнут лимит 180 000 символов. Разделите файл для полного обучения.'
     text = text[:MAX_TEXT].replace('\x00', '').strip()
     if len(text) < 20: raise ValueError('Не удалось распознать достаточно текста. Вставьте текст вручную или загрузите более чёткий файл.')

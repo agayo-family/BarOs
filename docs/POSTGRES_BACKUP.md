@@ -2,7 +2,7 @@
 
 Это инструмент оператора. Он не означает, что рабочая база уже скопирована или автоматическое хранение настроено. CSV-отчёт сотрудников и копия кода не заменяют резервную копию БД.
 
-Нужны Python с зависимостями проекта и PostgreSQL client tools подходящей версии. Для текущего PostgreSQL 16 используйте `pg_dump` и `pg_restore` версии 16; каталог можно указать в `PG_BIN`. Строка подключения задаётся в окружении `DATABASE_URL`, без передачи пароля в аргументах команды или в чат.
+Нужны Python с зависимостями проекта и PostgreSQL client tools подходящей версии. Версия `pg_dump` должна быть не ниже основной версии исходного сервера, а `pg_restore` — поддерживать формат созданного архива. Рабочий восстановленный стенд использует PostgreSQL 18: для его резервирования используйте клиентские инструменты PostgreSQL 18. В CI отдельно проверяется совместимость с PostgreSQL 16. Каталог инструментов можно указать в `PG_BIN`. Строка подключения задаётся в окружении `DATABASE_URL`, без передачи пароля в аргументах команды или в чат.
 
 ```bash
 python ops/postgres_backup.py backup /private/backups/baros-20261026
@@ -22,4 +22,4 @@ python ops/postgres_backup.py verify /private/backups/baros-20261026
 
 Для продаж остаётся настроить регулярный запуск, внешнее хранение, срок хранения, контроль неудачных копий и периодическую проверку восстановления. В production также проверяются роли/права и внешние файлы, если они появятся: `pg_dump` одной базы не копирует глобальные роли кластера или внешнее объектное хранилище.
 
-Основание: [pg_dump](https://www.postgresql.org/docs/16/app-pgdump.html), [pg_restore](https://www.postgresql.org/docs/16/app-pgrestore.html), [синхронизация снимков](https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-SNAPSHOT-SYNCHRONIZATION).
+Основание: [pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html), [pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html), [синхронизация снимков](https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-SNAPSHOT-SYNCHRONIZATION).
