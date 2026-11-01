@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.10.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.11.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -85,20 +85,25 @@ async def guard(request, call_next):
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc):
     fields=[]
-    for e in exc.errors()[:8]: fields.append('.'.join(str(x) for x in e['loc'][1:])+': '+e['msg'])
+    labels={'name':'Имя','title':'Название','login':'Логин','password':'Пароль','message':'Сообщение','response':'Ответ','code':'Код','description':'Описание','body':'Текст урока','prompt':'Вопрос','passing_score':'Проходной балл','quiz_size':'Количество вопросов','seat_limit':'Количество мест','days':'Срок доступа'}
+    for e in exc.errors()[:8]:
+        label=next((labels[x] for x in reversed(e['loc']) if x in labels),'Поле формы')
+        kind=e['type'];ctx=e.get('ctx',{})
+        reason=('не менее '+str(ctx['min_length'])+' символов') if kind=='string_too_short' else ('не более '+str(ctx['max_length'])+' символов') if kind=='string_too_long' else 'заполните поле' if kind=='missing' else 'проверьте значение'
+        fields.append(label+': '+reason)
     return JSONResponse({'detail':'Проверьте заполнение полей', 'fields':fields},status_code=422)
 
 
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.10.0'}
+    return {'status':'ok','service':'baros','version':'2.11.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.10.0'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.11.0'}
 
 
 @app.post('/api/auth/setup')
@@ -126,9 +131,9 @@ def login(data:LoginIn,request:Request,db=Depends(get_db)):
 def recover_owner(data:OwnerRecoveryIn,request:Request,db=Depends(get_db)):
     rate(db,'owner-recovery:'+ip(request),5)
     require(len(FIRST_RUN_TOKEN)>=24,
-            'В Render задайте FIRST_RUN_TOKEN длиной не менее 24 символов и перезапустите сервис.',503)
+            'Самостоятельное восстановление сейчас недоступно. Используйте другой способ восстановления доступа.',503)
     require(secrets.compare_digest(digest(data.token),digest(FIRST_RUN_TOKEN)),
-            'Неверный ключ восстановления из Render',403)
+            'Неверный ключ восстановления',403)
     # Lock the existing owner; an unauthenticated caller cannot choose a role or
     # account ID, and recovery never creates a new owner or replaces venue data.
     owners=db.scalars(select(Account).where(Account.role=='owner').order_by(Account.id).with_for_update()).all()
@@ -138,7 +143,7 @@ def recover_owner(data:OwnerRecoveryIn,request:Request,db=Depends(get_db)):
     used=db.get(Setting,'owner_recovery_token_used')
     fingerprint=digest(FIRST_RUN_TOKEN)
     require(not used or not secrets.compare_digest(used.value,fingerprint),
-            'Этот ключ уже использован. Для нового восстановления замените FIRST_RUN_TOKEN в Render.',409)
+            'Этот ключ уже использован. Для восстановления нужен новый ключ.',409)
     conflict=db.scalar(select(Account.id).where(Account.login==data.login.lower(),Account.id!=account.id))
     require(not conflict,'Этот логин занят. Придумайте другой.',409)
     account.login=data.login.lower()
@@ -448,6 +453,9 @@ def sw():return FileResponse(STATIC/'sw.js',media_type='application/javascript',
 def favicon():return FileResponse(STATIC/'icon-192.png')
 @app.get('/robots.txt')
 def robots():return Response('User-agent: *\nDisallow: /\n',media_type='text/plain')
+from .support import router as support_router
+app.include_router(support_router)
+
 @app.get('/api/{path:path}')
 def missing_api(path:str):raise HTTPException(404,'Метод не найден')
 @app.get('/{path:path}')

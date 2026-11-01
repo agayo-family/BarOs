@@ -38,7 +38,7 @@ def ocr(image):
     image.thumbnail((2800, 2800))
     langs = pytesseract.get_languages()
     lang = '+'.join(x for x in ['rus', 'eng'] if x in langs)
-    if 'rus' not in langs: raise ValueError('На сервере нет русского OCR. Установите tesseract-ocr-rus или вставьте распознанный текст вручную.')
+    if 'rus' not in langs: raise ValueError('Не удалось прочитать текст на изображении. Вставьте текст вручную или загрузите текстовую версию файла.')
     return pytesseract.image_to_string(image, lang=lang, timeout=45)
 
 

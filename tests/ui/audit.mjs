@@ -29,7 +29,7 @@ function submit(selector){element(selector).dispatchEvent(new Event('submit',{bu
 async function request(path,method='GET',body){const r=await fetch('/api'+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});const data=await r.json();assert(r.ok,JSON.stringify(data));return data;}
 await request('/auth/setup','POST',{token:'baros-ui-audit-only',name:'Тестовый владелец',login:'ui.owner',password:'audit-owner-password'});
 await import('./ui/app.js');
-const core=await import('./ui/core.js?v=2.10.0');
+const core=await import('./ui/core.js?v=2.11.0');
 await until(()=>document.querySelector('[data-new-venue]'),'Owner screen');
 click('[data-new-venue]');
 assert(document.querySelector('#venue-form'),'Owner button must retain its handler after shell mounting');
@@ -132,7 +132,7 @@ assert.equal(element('[data-flip]').getAttribute('aria-pressed'),'false');const 
 assert.equal(element('[data-flip]'),originalFace,'Flip keeps the same DOM for the CSS animation');assert.equal(element('[data-flip]').getAttribute('aria-pressed'),'true');
 assert.equal(element('.flashcard-answer').textContent,'Высокий стакан');click('[data-remember=yes]');
 await until(()=>/1 \/ 1/.test(element('.practice-progress').textContent),'Card mark persisted');assert.equal((await core.api('/learning')).attempts,1);
-const {mountDeck}=await import('./ui/cards.js?v=2.10.0');const fixture=document.createElement('section');document.body.append(fixture);
+const {mountDeck}=await import('./ui/cards.js?v=2.11.0');const fixture=document.createElement('section');document.body.append(fixture);
 mountDeck(fixture,{revision_id:'gesture-test',cards:[{id:0,question:'First?',answer:'First answer'},{id:1,question:'Second?',answer:'Second answer'}]});
 function pointer(target,type,x,y){target.dispatchEvent(new MouseEvent(type,{bubbles:true,clientX:x,clientY:y,button:0}))}
 let gesture=fixture.querySelector('[data-flip]');pointer(gesture,'pointerdown',250,100);pointer(gesture,'pointerup',80,108);
@@ -142,12 +142,12 @@ pointer(gesture,'pointerdown',70,100);pointer(gesture,'pointerup',240,106);await
 gesture=fixture.querySelector('[data-flip]');pointer(gesture,'pointerdown',180,70);pointer(gesture,'pointerup',200,250);assert.equal(fixture.querySelector('.flashcard-question').textContent,'First?','Vertical scrolling does not change cards');
 gesture.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await until(()=>fixture.querySelector('.flashcard-question')?.textContent==='Second?','Keyboard advances');
 core.state.cleanup?.();core.state.cleanup=null;fixture.remove();
-const {renderLesson}=await import('./ui/learning-ui.js?v=2.10.0');const safe=renderLesson('## Факты\nВ напитке 2.5 мл сиропа. <img src=x onerror=alert(1)>\n\n4. Налейте 20 мл.\n> Важно: **90 °C**');const parsed=new JSDOM(safe).window.document;
+const {renderLesson}=await import('./ui/learning-ui.js?v=2.11.0');const safe=renderLesson('## Факты\nВ напитке 2.5 мл сиропа. <img src=x onerror=alert(1)>\n\n4. Налейте 20 мл.\n> Важно: **90 °C**');const parsed=new JSDOM(safe).window.document;
 assert(!parsed.querySelector('img'),'Lesson renderer escapes source HTML');assert(safe.includes('2.5 мл'));assert.equal(parsed.querySelector('li').value,4);assert(parsed.querySelector('.learning-fact strong'));
 console.log('CARDS: published API, flip DOM animation, remembered state, left/right pointer swipes, vertical-scroll guard, keyboard and XSS-safe lesson blocks OK');
 core.go('/app/settings');await until(()=>document.querySelector('[data-logout]'),'Employee profile');
 click('[data-theme-toggle]');assert.equal(document.documentElement.dataset.theme,'dark');assert.equal(localStorage.getItem('baros:theme'),'dark');
-click('[data-support]');assert.equal(element('.contact-option[href^="mailto:"]').getAttribute('href'),'mailto:ergin.sergey2002@yandex.ru');assert.equal(element('.contact-option[target="_blank"]').getAttribute('href'),'https://t.me/frooppe');click('[data-close]');
+click('[data-support]');await until(()=>document.querySelector('[data-new-support]'),'Private support page');assert(!document.body.textContent.includes('ergin'));core.go('/app/settings');await until(()=>document.querySelector('[data-logout]'),'Back from support');
 click('[data-install]');assert(document.querySelector('.install-steps'));click('[data-close]');
 click('[data-logout]');await until(()=>location.pathname==='/'&&document.querySelector('#auth-form'),'Employee logout');
 assert.equal((await fetch('/api/me')).status,401);
@@ -184,7 +184,7 @@ document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key
 assert.equal(document.activeElement,element('#sidebar a'),'Tab wraps within mobile menu');
 document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
 assert(!element('#sidebar').classList.contains('open'));assert.equal(document.activeElement,element('#mobile-menu'));assert(element('#sidebar').inert,'Closed mobile sidebar cannot receive focus');
-click('[data-support]');assert(element('#app').inert,'Modal background is inert');
+click('[data-install]');assert(element('#app').inert,'Modal background is inert');
 click('[data-close]');assert(!element('#app').inert,'Closing modal restores background interaction');
 dom.window.innerWidth=1024;
 console.log('AUDIT CONTROLS: delayed save, newer unsaved edits, empty search/filter states, editor keyboard tabs, mobile focus trap/Escape and modal inert restoration OK');

@@ -37,7 +37,7 @@ def actor(request: Request, db=Depends(get_db)):
 
 
 def owner(account):
-    require(account.role == 'owner', 'Только для владельца BarOS', 403)
+    require(account.role == 'owner', 'Только для администратора платформы', 403)
 
 
 def tenant(request, db, account, capability=None, write=False, learning=False):
@@ -54,13 +54,13 @@ def tenant(request, db, account, capability=None, write=False, learning=False):
         require(request.headers['x-organization-id'] == str(org_id), 'Нет доступа к этому заведению', 403)
     s = settings(db, org_id)
     perms = parse(s.permissions_json)
-    require(s.status not in {'suspended', 'archived'}, 'Доступ к заведению приостановлен. Обратитесь к владельцу BarOS.', 403)
-    require(perms.get('employee_access' if learning else 'manager_access', True), 'Доступ временно ограничен владельцем', 403)
+    require(s.status not in {'suspended', 'archived'}, 'Доступ к заведению приостановлен. Обратитесь в поддержку.', 403)
+    require(perms.get('employee_access' if learning else 'manager_access', True), 'Доступ временно ограничен. Обратитесь в поддержку.', 403)
     if learning or write:
-        require(s.subscription_status not in {'past_due', 'suspended'} and (not s.paid_until or s.paid_until > now()), 'Подписка закончилась. Продлите доступ у владельца BarOS.', 402)
+        require(s.subscription_status not in {'past_due', 'suspended'} and (not s.paid_until or s.paid_until > now()), 'Подписка закончилась. Обратитесь в поддержку для продления.', 402)
     if capability:
         require(account.role == 'manager', 'Это действие доступно управляющему', 403)
-        require(s.status != 'read_only' and perms.get(capability, True) and parse(account.permissions_json).get(capability, True), 'Это действие ограничено владельцем BarOS', 403)
+        require(s.status != 'read_only' and perms.get(capability, True) and parse(account.permissions_json).get(capability, True), 'Это действие ограничено. Обратитесь в поддержку.', 403)
     return org_id
 
 
