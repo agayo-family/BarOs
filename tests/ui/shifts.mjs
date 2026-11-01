@@ -11,6 +11,7 @@ async function until(test,desc){for(let i=0;i<250;i++){if(test())return;await sl
 const e=s=>{const x=document.querySelector(s);assert(x,'Missing '+s);return x};
 const click=s=>e(s).click();
 function input(s,value){const x=e(s);x.value=value;x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}))}
+async function fixtureMonth(){input('[name=month]','2026-10');await until(()=>document.querySelector('[data-day="2026-10-01"]'),'Fixture month selected')}
 const submit=s=>e(s).dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
 async function raw(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.clone().text());return r.json()}
 await raw('/auth/setup',{token:'baros-ui-audit-only',name:'Audit owner',login:'shift.owner',password:'audit-owner-password'});
@@ -21,7 +22,7 @@ await raw('/auth/join',{code:venue.join_code,name:'Shift worker',login:'shift.wo
 await import('./ui/app.js');await until(()=>core.state.me?.account.role==='employee','Login employee');const aid=core.state.me.account.id;
 core.go('/app/shifts');await until(()=>document.querySelector('[data-new-shift]'),'Shifts route');
 assert(document.querySelector('.sidebar a[href="/app/cards"]'),'Cards sidebar remains available');
-assert(document.querySelector('.bottom-nav a[href="/app/shifts"]'),'Mobile shifts navigation');
+assert(document.querySelector('.bottom-nav a[href="/app/shifts"]'),'Mobile shifts navigation');await fixtureMonth();
 click('[data-shift-settings]');input('#shift-settings-form [name=hourly_rate]','300');input('#shift-settings-form [name=overtime_after]','360');input('#shift-settings-form [name=overtime_percent]','150');submit('#shift-settings-form');await until(()=>!document.querySelector('#shift-settings-form'),'Persist preferences');
 click('[data-new-template]');input('#shift-template-form [name=title]','Night UI');input('#shift-template-form [name=start_time]','22:00');input('#shift-template-form [name=end_time]','06:00');input('#shift-template-form [name=end_day_offset]','1');input('#shift-template-form [name=allowance]','50');submit('#shift-template-form');await until(()=>document.querySelector('[data-use-template]'),'Persist template');
 click('[data-use-template]');input('#shift-form [name=day]','2026-10-08');assert.match(e('#shift-estimate').textContent,/2\s?525/);submit('#shift-form');await until(()=>!document.querySelector('#shift-form'),'Create night shift');
@@ -38,10 +39,10 @@ click('[data-shift-export]');assert(e('[data-export=csv]'));assert(e('[data-expo
 const {wallISO,hours}=await import('./ui/shifts.js?v=2.11.0');assert.equal(wallISO('2026-10-08T22:00','Europe/Moscow'),'2026-10-08T19:00:00.000Z');assert.throws(()=>wallISO('2026-03-29T02:30','Europe/Berlin'));assert.equal(hours(510),'8 ч 30 мин');
 await core.api('/auth/logout','POST',{});core.state.me=null;
 await raw('/invites/'+invite.url.split('/').at(-1),{name:'Shift manager',organization:'Shift UI venue'});await core.reloadMe();core.go('/app/shifts');await until(()=>document.querySelector('[name=account]')?.textContent.includes('Вся команда')&&core.state.me.account.role==='manager','Manager shifts');
-assert(e('[name=account]').textContent.includes('Вся команда'));assert(e('.shift-calendar').textContent.includes('Night UI'));
+await fixtureMonth();assert(e('[name=account]').textContent.includes('Вся команда'));assert(e('.shift-calendar').textContent.includes('Night UI'));
 click('[data-new-shift]');input('#shift-form [name=day]','2026-10-22');input('#shift-form [name=account_id]',String(aid));input('#shift-form [name=title]','Assigned UI');submit('#shift-form');await until(()=>!document.querySelector('#shift-form'),'Assign employee shift');
 const assigned=(await core.api('/shifts?start=2026-10-01&end=2026-10-31&account_id=0')).shifts.find(r=>r.title==='Assigned UI');assert(assigned);
-await core.api('/auth/logout','POST',{});core.state.me=null;await raw('/auth/login',{login:'shift.worker',password:'audit-worker-password'});await core.reloadMe();core.go('/app/shifts');await until(()=>document.querySelector('[data-shift="'+assigned.id+'"]')&&document.querySelector('.sidebar .nav-caption')?.textContent==='МОЁ ОБУЧЕНИЕ','Employee assigned calendar');
+await core.api('/auth/logout','POST',{});core.state.me=null;await raw('/auth/login',{login:'shift.worker',password:'audit-worker-password'});await core.reloadMe();core.go('/app/shifts');await until(()=>document.querySelector('[name=month]')&&document.querySelector('.sidebar .nav-caption')?.textContent==='МОЁ ОБУЧЕНИЕ','Employee calendar ready');await fixtureMonth();await until(()=>document.querySelector('[data-shift="'+assigned.id+'"]'),'Employee assigned calendar');
 click('[data-shift="'+assigned.id+'"]');assert(!document.querySelector('#shift-form [name=title]'));assert(!document.querySelector('[data-delete-shift]'));input('#shift-form [name=status]','completed');input('#shift-form [name=tips]','25');submit('#shift-form');await until(()=>!document.querySelector('#shift-form'),'Employee fact protected plan');
 assert.equal((await core.api(`/shifts?start=2026-10-01&end=2026-10-31&account_id=${aid}`)).shifts.find(r=>r.id===assigned.id).status,'completed');
 assert(!requests.some(r=>r.status>=500));console.log('SHIFTS REAL API + DOM PASS: preferences, template, overnight estimate, actual hours/tips, all views, calendar day, cycle preview/conflicts/apply, refresh, exports UI, year report, timezone/DST, manager assignment, employee protected fact; requests='+requests.length);
