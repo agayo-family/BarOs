@@ -80,6 +80,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_review_workspace.py' -v
           python -m unittest discover -s tests -p 'test_analytics.py' -v
           python -m unittest discover -s tests -p 'test_support.py' -v
+          python -m unittest discover -s tests -p 'test_public_home.py' -v
           python -m unittest discover -s tests -p 'test_catalog.py' -v
           python -m unittest discover -s tests -p 'test_catalog_upgrades.py' -v
           python -m unittest discover -s tests -p 'test_catalog_editor.py' -v
@@ -127,5 +128,8 @@ jobs:
             test-results/browser/manager-drafts-*.png
             test-results/browser/*-support*.png
             test-results/browser/*-reconnect-*.png
+            test-results/browser/public-landing-*.png
+            test-results/browser/public-landing-custom-390-*.png
+            test-results/browser/owner-pricing-editor-390-*.png
             test-results/browser/manager-empty-test-editor-*.png
           retention-days: 1

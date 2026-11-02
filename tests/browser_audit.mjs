@@ -65,6 +65,7 @@ async function shot(role,path,label,width,theme){
  }
  if(label==='written-only-lesson'){assert.equal(await page.locator('[data-start-exam]').count(),0);assert.equal(await page.locator('a[href^="/app/cards/"]').count(),0)}
  if(label.startsWith('reports')){for(const checkbox of await page.locator('.analytics-filters input[type=checkbox]').all()){const size=await checkbox.boundingBox();assert(size.width<=24&&size.height<=24,'Filter checkbox keeps a compact size')}for(const label of await page.locator('.analytics-filters .check-label').all()){const size=await label.boundingBox();assert(size.height<100,'Filter labels remain readable on mobile')}}
+ if(role==='public'&&label.startsWith('landing')){assert.equal(await page.locator('.site-login').getAttribute('href'),'/login');assert.equal(await page.locator('#auth-form').count(),0);assert(await page.locator('#price-result').innerText().then(s=>s.replace(/\s/g,'').includes(label==='landing-custom'?'Индивидуально':'9900')))}
  if(label==='exam')assert.equal(await page.locator('[data-retry-answer]').isVisible(),false,'Retry saving is hidden until a save fails');
  if(width<431)for(const action of await page.locator('.page-head .actions .btn').all()){
   const box=await action.boundingBox();assert(!box||box.width>=140,`Readable action width on ${role}/${label}: ${box?.width}`);
@@ -108,7 +109,15 @@ await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/ass
 await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/sources');await page.locator('[data-upload]').click();await page.screenshot({path:join(output,'manager-upload-modal-390.png'),fullPage:true});await page.keyboard.press('Escape');
 await page.locator('#mobile-menu').click();assert.equal(await page.locator('#mobile-menu').getAttribute('aria-expanded'),'true');await page.screenshot({path:join(output,'manager-mobile-menu-390.png')});await page.keyboard.press('Escape');
 await login('browser.owner');
-await sweep('owner',[['/app','platform'],['/app/venues','venues'],['/app/audit','audit'],['/app/settings','settings'],['/app/support','support'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
+await page.goto(base+'/app/pricing');await page.locator('#pricing-form').waitFor();
+await page.locator('[name=price_50]').fill('10000');await page.locator('#pricing-form button[type=submit]').click();
+await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Тарифы на сайте обновлены'));
+assert.equal((await call('/pricing')).tiers[0].monthly,10000);
+await page.goto(base+'/about?employees=50');await page.locator('#price-result').waitFor();assert((await page.locator('#price-result').innerText()).replace(/\s/g,'').includes('10000'));
+await page.goto(base+'/app/pricing');await page.locator('#pricing-form').waitFor();await page.locator('[name=price_50]').fill('9900');await page.locator('#pricing-form button[type=submit]').click();
+await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Тарифы на сайте обновлены'));
+assert.equal((await call('/pricing')).tiers[0].monthly,9900);
+await sweep('owner',[['/app','platform'],['/app/venues','venues'],['/app/audit','audit'],['/app/pricing','pricing-editor'],['/app/settings','settings'],['/app/support','support'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
 await sweep('owner',['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].flatMap(key=>['theory','questions','settings'].map(section=>['/app/catalog/'+key+'/edit','library-editor-'+key+'-'+section])));
 for(const item of (await call('/owner/catalog')).courses)for(const width of sizes)for(const theme of themes)await shot('owner','/app/catalog/'+item.key,'full-'+item.key,width,theme);
 await page.goto(base+'/app/catalog');await page.locator('[data-catalog-activate]').click();await page.screenshot({path:join(output,'catalog-approval-modal-1440.png'),fullPage:true});await page.keyboard.press('Escape');
@@ -123,7 +132,32 @@ assert.equal(await page.locator('.written-practice,.recall-tip').count(),0);
 await login('browser.owner');
 await shot('remote','/app','overview',390,'light');
 await call('/auth/logout','POST',{});me=null;
-await sweep('public',[['/','login'],['/join','join'],['/owner-recovery','recovery'],['/missing-page','missing']]);
+// Exercise the public page as an actual visitor, then all session redirects.
+await page.setViewportSize({width:390,height:844});await page.goto(base+'/');
+await page.locator('#team-size').waitFor();
+for(const [n,price] of [[1,'9 900'],[50,'9 900'],[51,'14 900'],[100,'14 900'],[101,'24 900'],[200,'24 900'],[201,'Индивидуально'],[10000,'Индивидуально']]){
+ await page.locator('#team-size').fill(String(n));assert((await page.locator('#price-result').innerText()).replace(/\s/g,'').includes(price.replace(/\s/g,'')));
+ assert.equal(new URL(page.url()).searchParams.get('employees'),String(n));
+}
+await page.locator('#team-size').fill('0');assert.equal(await page.locator('#team-size').getAttribute('aria-invalid'),'true');assert(await page.locator('[data-quote]').isDisabled());
+await page.locator('[data-team="100"]').click();assert((await page.locator('#price-result').innerText()).replace(/\s/g,'').includes('14900'));
+const downloadEvent=page.waitForEvent('download');await page.locator('[data-quote]').click();const download=await downloadEvent;assert.equal(download.suggestedFilename(),'BarOS-100-employees.txt');
+await page.locator('.site-login').click();await page.locator('#auth-form').waitFor();assert.equal(new URL(page.url()).pathname,'/login');
+for(const who of ['browser.worker0','browser.owner']){
+ await login(who);await page.goto(base+'/');await page.waitForURL(base+'/app');await page.locator('.site-return').waitFor();
+ await page.locator('.site-return').click();await page.locator('#team-size').waitFor();assert.equal(new URL(page.url()).pathname,'/about');
+ await page.reload();await page.locator('#team-size').waitFor();assert.equal(new URL(page.url()).pathname,'/about');
+ await page.locator('.site-login').click();await page.waitForURL(base+'/app');
+ await page.goto(base+'/login');await page.waitForURL(base+'/app');
+ await call('/auth/logout','POST',{});me=null;
+}
+await ctx.addCookies(managerStorage.cookies);me=await call('/me');
+await page.goto(base+'/');await page.waitForURL(base+'/app');
+await page.locator('.site-return').click();await page.locator('#team-size').waitFor();assert.equal(new URL(page.url()).pathname,'/about');
+await page.locator('.site-login').click();await page.waitForURL(base+'/app');
+await call('/auth/logout','POST',{});me=null;
+console.log('PUBLIC HOME PASS: tier boundaries, custom and invalid counts, quote download, login and role-specific session redirects, explicit home return without loops');
+await sweep('public',[['/','landing'],['/login','login'],['/about?employees=201','landing-custom'],['/join','join'],['/owner-recovery','recovery'],['/missing-page','missing']]);
 const result={screens:screens.length,errors,server_failures:failures,layout_issues:screens.filter(s=>s.scroll>s.width+1||s.error),details:screens};
 writeFileSync(join(output,'result.json'),JSON.stringify(result,null,2));
 console.log(JSON.stringify({screens:result.screens,errors,server_failures:failures,layout_issues:result.layout_issues.map(s=>({name:s.name,width:s.width,scroll:s.scroll,error:s.error}))},null,2));

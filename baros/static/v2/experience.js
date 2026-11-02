@@ -1,4 +1,4 @@
-import {$,$$,state,go,icon,modal,notice,toast} from './core.js?v=2.11.0';
+import {$,$$,state,go,icon,modal,notice,toast} from './core.js?v=2.12.0';
 
 let installPrompt=null,changing=false;
 export const themeButton=()=>`<button class="btn icon-only ghost" data-theme-toggle aria-label="Переключить цветовую тему">${icon('moon')}</button>`;

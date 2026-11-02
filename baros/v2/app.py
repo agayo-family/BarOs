@@ -33,7 +33,7 @@ async def lifespan(app):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         migrate(db)
-        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog','standard_catalog_draft']:
+        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog','standard_catalog_draft','public_pricing']:
             if not db.get(Setting,key): db.add(Setting(key=key,value=''))
         db.commit()
         from .notifications import ensure_vapid
@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.11.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.12.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -97,13 +97,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.11.0'}
+    return {'status':'ok','service':'baros','version':'2.12.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.11.0'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.12.0'}
 
 
 @app.post('/api/auth/setup')
@@ -455,6 +455,8 @@ def favicon():return FileResponse(STATIC/'icon-192.png')
 def robots():return Response('User-agent: *\nDisallow: /\n',media_type='text/plain')
 from .support import router as support_router
 app.include_router(support_router)
+from .pricing import router as pricing_router
+app.include_router(pricing_router)
 
 @app.get('/api/{path:path}')
 def missing_api(path:str):raise HTTPException(404,'Метод не найден')

@@ -1,6 +1,6 @@
-import {importPackage,createAssessment} from './packages.js?v=2.11.0';
-import {createCourse} from './manage.js?v=2.11.0';
-import {$,$$,state,api,go,esc,icon,btn,on,notice,empty,pageHead,badge,positionTags,toast,modal,copy,bindForm} from './core.js?v=2.11.0';
+import {importPackage,createAssessment} from './packages.js?v=2.12.0';
+import {createCourse} from './manage.js?v=2.12.0';
+import {$,$$,state,api,go,esc,icon,btn,on,notice,empty,pageHead,badge,positionTags,toast,modal,copy,bindForm} from './core.js?v=2.12.0';
 function saveFile(name,text,type='text/plain;charset=utf-8'){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 export async function draftsPage(root){
  const ticket=state.renderTicket,[data,sources]=await Promise.all([api('/drafts'),api('/sources')]);if(ticket!==state.renderTicket)return;
