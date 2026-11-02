@@ -1,5 +1,5 @@
-import {mediaText} from './media.js?v=2.13.0';
-import {$,$$,state,pageCleanup,api,esc,icon,btn,modal,notice,empty,pageHead,badge,positionTags,fmtDate,fmtTime,stat,download,on} from './core.js?v=2.13.0';
+import {mediaText} from './media.js?v=2.13.1';
+import {$,$$,state,pageCleanup,api,esc,icon,btn,modal,notice,empty,pageHead,badge,positionTags,fmtDate,fmtTime,stat,download,on} from './core.js?v=2.13.1';
 const number=v=>v==null?'—':Number(v).toLocaleString('ru-RU',{maximumFractionDigits:1});
 const percent=v=>v==null?'—':number(v)+'%';
 const delta=v=>v==null?'—':(v>0?'+':'')+number(v)+' п.п.';

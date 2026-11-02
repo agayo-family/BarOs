@@ -1,7 +1,7 @@
-import {mediaText,photoPicker} from './media.js?v=2.13.0';
-import {rewardNotice,companionName} from './growth.js?v=2.13.0';
-import {renderLesson} from './learning-ui.js?v=2.13.0';
-import {$,$$,state,pageCleanup,api,go,esc,icon,btn,on,modal,toast,notice,empty,pageHead,badge,avatar,positionTags,fmtDate,fmtTime,percent,progress,stat,ring,hero} from './core.js?v=2.13.0';
+import {mediaText,photoPicker} from './media.js?v=2.13.1';
+import {rewardNotice,companionName} from './growth.js?v=2.13.1';
+import {renderLesson} from './learning-ui.js?v=2.13.1';
+import {$,$$,state,pageCleanup,api,go,esc,icon,btn,on,modal,toast,notice,empty,pageHead,badge,avatar,positionTags,fmtDate,fmtTime,percent,progress,stat,ring,hero} from './core.js?v=2.13.1';
 function learnTile(c){const done=c.learning_complete,pending=c.written_status==='submitted';return `<article class="card course-card"><div class="row between"><div class="icon-box ${done?'green':c.is_intro?'orange':''}">${icon(done?'checkcircle':'book')}</div>${badge(done?'Завершён':pending?'На проверке':c.overdue?'Срок прошёл':c.progress?'В процессе':'Новый',done?'green':pending?'orange':c.overdue?'red':'purple')}</div><h3>${esc(c.title)}</h3><p>${esc(c.description||'Изучите материал и проверьте знания.')}</p><div class="course-meta"><span>${icon('book')}${c.lesson_count} разделов</span>${c.question_count?`<span>${icon('target')}${c.question_count} вопросов</span>`:''}${c.written_assessment_id?'<span>Письменная проверка</span>':''}</div><div class="row between tiny muted" style="margin-bottom:8px"><span>Изучено ${c.read_count} из ${c.lesson_count}</span><span>${c.progress}%</span></div>${progress(c.progress,done?'green':'')}<div class="course-footer"><span>${c.due_at?'До '+fmtDate(c.due_at):'Без срока'}</span><a href="/app/learn/${c.id}">${done?'Повторить':c.progress?'Продолжить':'Начать'} ${icon('arrow')}</a></div></article>`}
 export async function learningPage(root,all=false){
  const s=await api('/learning'),a=state.me.account;

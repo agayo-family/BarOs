@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {mkdirSync,writeFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES ? process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES+'/playwright' : 'playwright');
@@ -90,15 +90,22 @@ async function shot(role,path,label,width,theme){
  if(width<431)for(const action of await page.locator('.page-head .actions .btn').all()){
   const box=await action.boundingBox();assert(!box||box.width>=140,`Readable action width on ${role}/${label}: ${box?.width}`);
  }
+ if(label==='sales-contact'){
+  await page.locator('[data-sales-contact]').first().click();await page.getByRole('dialog').waitFor();
+  assert.equal(await page.locator('.sales-modal a[href^="https://t.me/"]').getAttribute('href'),'https://t.me/Frooppe');
+  assert((await page.locator('.sales-modal').innerText()).includes('100 сотрудников'));
+  assert.equal(await page.locator('#app').getAttribute('inert'),'');
+ }
  if(label==='login')assert.equal(await page.locator('a[href="/owner-recovery"]').count(),0);
  if(label==='landing-self'){assert((await page.locator('#price-result').innerText()).replace(/\s/g,'').includes('4900'));assert.equal(await page.locator('.site-setup-price').count(),0)}
  if(['lesson','cards','written'].includes(label)){const images=page.locator('.course-photo img');assert(await images.count()>0,'Private course photo rendered');await page.waitForFunction(()=>[...document.querySelectorAll('.course-photo img')].every(img=>img.complete&&img.naturalWidth>0));}
  if(label==='shifts-batch'){await page.locator('[data-toggle-multi]').click();await page.locator('[data-quick-template]').first().click();for(const d of [20,23])await page.locator(`[data-day="${shiftMonth}-${d}"]`).click();await page.locator('[data-preview-batch]').click();await page.locator('[data-apply-batch]:not([disabled])').waitFor()}
  if(label==='support'&&role!=='owner'){await page.locator('[data-new-support]').click();await page.screenshot({path:join(output,`${role}-support-dialog-${width}-${theme}.png`),fullPage:true});await page.keyboard.press('Escape')}
- const visibleCopy=await page.locator('body').innerText();if(['lesson','cards','written','reports-questions','assessment','written-review'].includes(label))assert(!/!\[[^\n]*\]\(\/api\/media\//.test(visibleCopy),'Private photo markup is rendered in '+role+'/'+label);assert(label.startsWith('legal')||!/(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей|sergey|Render|FIRST_RUN_TOKEN|SESSION_SECRET|API[- ]?ключ|провайдер/iu.test(visibleCopy),`Neutral customer copy: ${role}/${label}`);
+ const visibleCopy=await page.locator('body').innerText();if(['lesson','cards','written','reports-questions','assessment','written-review'].includes(label))assert(!/!\[[^\n]*\]\(\/api\/media\//.test(visibleCopy),'Private photo markup is rendered in '+role+'/'+label);assert(label.startsWith('legal')||label==='sales-contact'||!/(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей|sergey|Render|FIRST_RUN_TOKEN|SESSION_SECRET|API[- ]?ключ|провайдер/iu.test(visibleCopy),`Neutral customer copy: ${role}/${label}`);
  const info=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,title:document.querySelector('h1,h2')?.textContent||'',error:document.querySelector('#page-content .notice-box.error')?.textContent,overflow:[...document.querySelectorAll('#page-content *')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&(r.left< -1||r.right>innerWidth+1)&&!e.closest('.table-wrap,.tabs,.question-nav,.game-pair-list')}).slice(0,8).map(e=>({tag:e.tagName,cls:e.className,text:e.textContent.slice(0,60)}))}));
  const name=`${role}-${label}-${width}-${theme}`;await page.screenshot({path:join(output,name+'.png'),fullPage:true,animations:'disabled'});
  screens.push({name,path,...info});
+ if(label==='sales-contact'){await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator('#app').getAttribute('inert'),null)}
  writeFileSync(join(output,'progress.json'),JSON.stringify({screens:screens.length,last:name,errors,server_failures:failures}));
 }
 const sizes=process.env.BAROS_AUDIT_REVERSE?[1440,768,390,360]:[360,390,768,1440];
@@ -142,6 +149,19 @@ console.log('PHOTO UPLOAD PASS: lesson, course question and written assessment p
 await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/sources');await page.locator('[data-upload]').click();await page.screenshot({path:join(output,'manager-upload-modal-390.png'),fullPage:true});await page.keyboard.press('Escape');
 await page.locator('#mobile-menu').click();assert.equal(await page.locator('#mobile-menu').getAttribute('aria-expanded'),'true');await page.screenshot({path:join(output,'manager-mobile-menu-390.png')});await page.keyboard.press('Escape');
 await login('browser.owner');
+// Only disposable, explicitly selected venues are shown; no live customer is invented.
+const showcaseVenues=[venue];for(let i=2;i<=6;i++)showcaseVenues.push(await call('/venues','POST',{name:'Тестовое заведение '+i,days:30,seat_limit:50}));
+await page.goto(base+'/app/showcase');await page.locator('[data-showcase-add]').waitFor();
+for(let i=0;i<showcaseVenues.length;i++){await page.locator('[data-showcase-add]').click();const entry=page.locator('[data-showcase-entry="'+i+'"]');await entry.locator('[name=organization_id]').selectOption(String(showcaseVenues[i].id));await entry.locator('[name=name]').fill('Тестовое заведение '+(i+1));await entry.locator('[name=city]').fill('Йошкар-Ола')}
+await page.locator('[data-showcase-logo="0"]').setInputFiles({name:'venue-logo.png',mimeType:'image/png',buffer:photoBuffer});await page.locator('[data-showcase-entry="0"] img').waitFor();
+await page.locator('[name=permission_confirmed]').check();await page.locator('#showcase-form button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Заведения на главной обновлены'));
+assert.equal((await call('/showcase')).items.length,6);
+await page.goto(base+'/about');await page.locator('.venue-orbit').waitFor();
+const assertBackHidden=async()=>{const state=await page.locator('.venue-orbit-card').evaluateAll(nodes=>nodes.map(n=>({aria:n.getAttribute('aria-hidden'),visibility:getComputedStyle(n).visibility,opacity:getComputedStyle(n).opacity,inert:n.inert})));assert(state.some(x=>x.aria==='true'));assert(state.filter(x=>x.aria==='true').every(x=>x.visibility==='hidden'&&x.opacity==='0'&&x.inert),'Every rear venue fully disappears and cannot receive focus')};
+await assertBackHidden();await page.locator('[data-orbit-step="1"]').click();assert.equal(await page.locator('.venue-orbit').getAttribute('data-active-index'),'1');await assertBackHidden();
+await page.locator('.venue-orbit-stage').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('.venue-orbit').getAttribute('data-active-index'),'2');
+await page.setViewportSize({width:390,height:844});await page.locator('.venue-orbit-stage').scrollIntoViewIfNeeded();const stageBox=await page.locator('.venue-orbit-stage').boundingBox();await page.mouse.move(stageBox.x+stageBox.width*.75,stageBox.y+stageBox.height*.4);await page.mouse.down();await page.mouse.move(stageBox.x+stageBox.width*.25,stageBox.y+stageBox.height*.4,{steps:12});await page.mouse.up();assert.notEqual(await page.locator('.venue-orbit').getAttribute('data-active-index'),'2');await assertBackHidden();
+console.log('VENUE ORBIT PASS: real owner selection and logo upload; mouse drag, keyboard, rear visibility, private unpublished logos and public content boundaries');
 await page.goto(base+'/app/pricing');await page.locator('#pricing-form').waitFor();
 await page.locator('[name=price_50]').fill('10000');await page.locator('#pricing-form button[type=submit]').click();
 await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Тарифы на сайте обновлены'));
@@ -150,7 +170,7 @@ await page.goto(base+'/about?employees=50');await page.locator('#price-result').
 await page.goto(base+'/app/pricing');await page.locator('#pricing-form').waitFor();await page.locator('[name=price_50]').fill('9900');await page.locator('#pricing-form button[type=submit]').click();
 await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Тарифы на сайте обновлены'));
 assert.equal((await call('/pricing')).tiers[0].monthly,9900);
-await sweep('owner',[['/app','platform'],['/app/legal','legal-editor'],['/app/venues','venues'],['/app/audit','audit'],['/app/pricing','pricing-editor'],['/app/settings','settings'],['/app/support','support'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
+await sweep('owner',[['/app','platform'],['/app/legal','legal-editor'],['/app/showcase','showcase-editor'],['/app/venues','venues'],['/app/audit','audit'],['/app/pricing','pricing-editor'],['/app/settings','settings'],['/app/support','support'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
 await sweep('owner',['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].flatMap(key=>['theory','questions','settings'].map(section=>['/app/catalog/'+key+'/edit','library-editor-'+key+'-'+section])));
 for(const item of (await call('/owner/catalog')).courses)for(const width of sizes)for(const theme of themes)await shot('owner','/app/catalog/'+item.key,'full-'+item.key,width,theme);
 await page.goto(base+'/app/catalog');await page.locator('[data-catalog-activate]').click();await page.screenshot({path:join(output,'catalog-approval-modal-1440.png'),fullPage:true});await page.keyboard.press('Escape');
@@ -174,7 +194,9 @@ for(const [n,price] of [[1,'9 900'],[50,'9 900'],[51,'14 900'],[100,'14 900'],[1
 }
 await page.locator('#team-size').fill('0');assert.equal(await page.locator('#team-size').getAttribute('aria-invalid'),'true');assert(await page.locator('[data-quote]').isDisabled());
 await page.locator('[data-team="100"]').click();assert((await page.locator('#price-result').innerText()).replace(/\s/g,'').includes('14900'));
-const downloadEvent=page.waitForEvent('download');await page.locator('[data-quote]').click();const download=await downloadEvent;assert.equal(download.suggestedFilename(),'BarOS-100-employees.txt');
+const downloadEvent=page.waitForEvent('download');await page.locator('[data-quote]').click();const download=await downloadEvent;assert.equal(download.suggestedFilename(),'BarOS-100-managed.docx');const quoteBytes=readFileSync(await download.path());assert.equal(quoteBytes.subarray(0,2).toString(),'PK');assert(quoteBytes.length>10000,'Actual Word archive downloaded');
+await sweep('public',[['/about?employees=100&mode=managed','sales-contact'],['/about','venue-ring']]);
+await page.emulateMedia({reducedMotion:'no-preference'});await page.goto(base+'/about?employees=100&mode=managed');await page.locator('#team-size').waitFor();await page.locator('[data-sales-contact]').first().click();await page.getByRole('dialog').waitFor();assert((await page.locator('.sales-modal').innerText()).includes('@Frooppe'));await page.keyboard.press('Escape');await page.locator('[data-mode=self]').click();assert((await page.locator('#price-result').innerText()).replace(/\s/g,'').includes('7900'));await page.emulateMedia({reducedMotion:'reduce'});await page.waitForFunction(()=>document.getAnimations().every(a=>a.playState!=='running'));
 await page.locator('.site-login').click();await page.locator('#auth-form').waitFor();assert.equal(new URL(page.url()).pathname,'/login');
 for(const who of ['browser.worker0','browser.owner']){
  await login(who);await page.goto(base+'/');await page.waitForURL(base+'/app');await page.locator('.site-return').waitFor();

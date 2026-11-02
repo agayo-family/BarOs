@@ -32,9 +32,9 @@ body,.sidebar,.topbar,.card,.btn,input,textarea,select,.modal,.bottom-nav,.learn
 :root[data-theme=dark] .nav a:hover,:root[data-theme=dark] .outline-item:hover,:root[data-theme=dark] tr:hover{background:var(--surface-soft)}
 .btn:active{transform:translateY(1px) scale(.98)}
 .btn:focus-visible,a:focus-visible,button:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
-.content{animation:page-arrive .32s cubic-bezier(.22,1,.36,1)}
-.content>.card,.content>.stats,.content>.grid-3,.content>.dashboard-grid{animation:page-arrive .4s cubic-bezier(.22,1,.36,1)}
-.modal{animation:modal-arrive .25s cubic-bezier(.22,1,.36,1)}
+.content{animation:page-arrive .42s cubic-bezier(.22,1,.36,1)}
+.content>.card,.content>.stats,.content>.grid-3,.content>.dashboard-grid{animation:page-arrive .48s cubic-bezier(.22,1,.36,1)}
+.modal{animation:modal-arrive .32s cubic-bezier(.22,1,.36,1)}
 @keyframes page-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 @keyframes modal-arrive{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
 ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}

@@ -1,4 +1,4 @@
-import {$,$$,state,go,icon,modal,notice,toast} from './core.js?v=2.13.0';
+import {$,$$,state,go,icon,modal,notice,toast,api} from './core.js?v=2.13.1';
 
 let installPrompt=null,changing=false;
 export const themeButton=()=>`<button class="btn icon-only ghost" data-theme-toggle aria-label="Переключить цветовую тему">${icon('moon')}</button>`;
@@ -13,7 +13,7 @@ async function toggleTheme(button){if(changing)return;changing=true;const next=d
   try{await transition.ready;document.documentElement.animate({clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${radius}px at ${x}px ${y}px)`]},{duration:650,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::view-transition-new(root)'});await transition.finished}finally{rain.remove()}
  }catch{applyTheme(next)}finally{changing=false}
 }
-function contact(){if(state.me?.account){go('/app/support');return}modal('Помощь со входом',`<p>Если у вас ещё нет аккаунта, запросите приглашение у управляющего вашего заведения.</p><p>Для восстановления доступа сотрудника или управляющего нужна ссылка восстановления от администратора.</p><a class="btn soft" href="/owner-recovery">Восстановить кабинет администратора</a>`)}
+async function contact(){if(state.me?.account){go('/app/support');return}try{const [{showSalesContact},pricing]=await Promise.all([import('./sales.js?v=2.13.1'),api('/pricing')]);showSalesContact(pricing)}catch{modal('Связаться с BarOS','<p>Обсудить подключение: <a class="btn primary" href="https://t.me/Frooppe" target="_blank" rel="noopener noreferrer">Telegram @Frooppe</a></p><p>Если нужен доступ сотрудника, попросите управляющего выдать приглашение или ссылку восстановления.</p>')}}
 async function install(){if(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone){toast('BarOS уже открыт как приложение');return}
  if(installPrompt){const prompt=installPrompt;installPrompt=null;await prompt.prompt();const choice=await prompt.userChoice;toast(choice.outcome==='accepted'?'Установка подтверждена':'Установить можно позже из профиля');return}
  const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent)||navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1;

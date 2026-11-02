@@ -1,5 +1,5 @@
-import {mediaText} from './media.js?v=2.13.0';
-import {esc,icon} from './core.js?v=2.13.0';
+import {mediaText} from './media.js?v=2.13.1';
+import {esc,icon} from './core.js?v=2.13.1';
 
 // Only escaped text and a small Markdown subset. Uploaded HTML is never executed.
 const inline=mediaText;

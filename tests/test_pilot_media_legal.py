@@ -16,6 +16,78 @@ class PilotTests(unittest.TestCase):
     login=fixtures.PackageTests.login
     post=fixtures.PackageTests.post
 
+    def test_showcase_is_opt_in_and_only_publishes_sanitized_dedicated_logos(self):
+        from baros.v2.models import VenueSettings
+        self.assertEqual(self.client.get('/api/showcase').json(),{'items':[]})
+        self.assertEqual(self.client.get('/api/owner/showcase').status_code,403)
+        self.assertEqual(self.client.put('/api/owner/showcase',headers=self.headers,json={'version':0,'items':[],'permission_confirmed':False}).status_code,403)
+        with SessionLocal() as db:
+            db.add(Account(role='owner',login='showcase.owner',name='Владелец',password_hash=hash_password('test-import-password')));db.commit()
+        self.login('showcase.owner')
+        image=Image.new('RGBA',(640,320),(20,40,80,100));raw=io.BytesIO();image.save(raw,'PNG')
+        r=self.client.post('/api/owner/showcase/logo',headers=self.headers,files={'file':('logo.png',raw.getvalue(),'image/png')})
+        self.assertEqual(r.status_code,200,r.text);logo_id=r.json()['logo_id']
+        private=self.client.get(r.json()['preview']);self.assertEqual(private.status_code,200)
+        restored=Image.open(io.BytesIO(private.content));self.assertEqual(restored.size,(320,160));self.assertEqual(restored.mode,'RGBA')
+        public='/api/showcase/logos/'+logo_id;self.assertEqual(self.client.get(public).status_code,404)
+        item={'organization_id':self.oid,'name':'Название для сайта','city':'Йошкар-Ола','description':'Бар','logo_id':logo_id}
+        body={'version':0,'items':[item],'permission_confirmed':False}
+        self.assertEqual(self.client.put('/api/owner/showcase',headers=self.headers,json=body).status_code,400)
+        body['permission_confirmed']=True
+        self.assertEqual(self.client.put('/api/owner/showcase',headers=self.headers,json=body).status_code,200)
+        self.assertEqual(self.client.put('/api/owner/showcase',headers=self.headers,json=body).status_code,409)
+        self.client.cookies.clear();listing=self.client.get('/api/showcase').json()['items']
+        self.assertEqual(set(listing[0]),{'id','name','city','description','logo'});self.assertEqual(listing[0]['name'],item['name'])
+        self.assertEqual(self.client.get(public).status_code,200)
+        self.assertEqual(self.client.get('/api/owner/showcase/logos/'+logo_id).status_code,401)
+        with SessionLocal() as db:db.get(VenueSettings,self.oid).status='archived';db.commit()
+        self.assertEqual(self.client.get('/api/showcase').json()['items'],[])
+        self.assertEqual(self.client.get(public).status_code,404)
+
+    def test_showcase_rejects_missing_logos_duplicates_and_unsafe_files(self):
+        with SessionLocal() as db:db.add(Account(role='owner',login='showcase.rules',name='Владелец',password_hash=hash_password('test-import-password')));db.commit()
+        self.login('showcase.rules')
+        item={'organization_id':self.oid,'name':'Публичное название','logo_id':'a'*32}
+        body={'version':0,'items':[item],'permission_confirmed':True}
+        self.assertEqual(self.client.put('/api/owner/showcase',headers=self.headers,json=body).status_code,409)
+        body['items']=[{**item,'logo_id':None}]*2
+        self.assertEqual(self.client.put('/api/owner/showcase',headers=self.headers,json=body).status_code,400)
+        self.assertEqual(self.client.post('/api/owner/showcase/logo',headers=self.headers,files={'file':('logo.svg',b'<svg onload="alert(1)"/>','image/svg+xml')}).status_code,400)
+        body['items']=[{**item,'organization_id':999999,'logo_id':None}]
+        self.assertEqual(self.client.put('/api/owner/showcase',headers=self.headers,json=body).status_code,409)
+
+    def test_word_quote_is_public_and_uses_current_prices_for_both_modes(self):
+        from docx import Document
+        from baros.v2.models import Setting
+        from baros.v2.domain import dump
+        with SessionLocal() as db:
+            db.get(Setting,'public_pricing').value=dump({'version':7,'prices':[11000,17000,27000],
+                'self_prices':[5000,8000,13000],'preparation':[30000,50000,80000],
+                'contact_email':'sales@example.org'})
+            db.commit()
+        self.client.cookies.clear()
+        for mode,expected,absent in [('managed',['17\u00a0000 ₽','50\u00a0000 ₽','67\u00a0000 ₽'],['14\u00a0900 ₽']),
+                                     ('self',['8\u00a0000 ₽','Не включена'],['50\u00a0000 ₽'])]:
+            r=self.client.get('/api/pricing/quote.docx',params={'employees':51,'mode':mode})
+            self.assertEqual(r.status_code,200,r.text if r.status_code!=200 else '')
+            self.assertIn('wordprocessingml.document',r.headers['content-type'])
+            self.assertEqual(r.headers['cache-control'],'no-store')
+            self.assertIn(f'BarOS-51-{mode}.docx',r.headers['content-disposition'])
+            doc=Document(io.BytesIO(r.content))
+            text='\n'.join([p.text for p in doc.paragraphs]+[c.text for t in doc.tables for row in t.rows for c in row.cells])
+            for phrase in expected+['sales@example.org','@Frooppe','51 сотрудников','до 100 сотрудников']:
+                self.assertIn(phrase,text)
+            for phrase in absent:self.assertNotIn(phrase,text)
+
+    def test_word_quote_custom_scope_and_invalid_requests(self):
+        from docx import Document
+        r=self.client.get('/api/pricing/quote.docx?employees=201&mode=managed')
+        self.assertEqual(r.status_code,200)
+        doc=Document(io.BytesIO(r.content));text='\n'.join(p.text for p in doc.paragraphs)
+        self.assertIn('Индивидуальные условия',text);self.assertEqual(len(doc.tables),0)
+        for query in ['employees=0','employees=10001','employees=1.5','employees=100&mode=invalid']:
+            self.assertEqual(self.client.get('/api/pricing/quote.docx?'+query).status_code,422)
+
     def photo(self):
         image=Image.new('RGB',(1800,1000),'#91adbd');exif=Image.Exif();exif[270]='private camera metadata'
         b=io.BytesIO();image.save(b,format='JPEG',exif=exif)

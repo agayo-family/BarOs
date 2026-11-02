@@ -139,5 +139,8 @@ jobs:
             test-results/browser/*-shifts*.png
             test-results/browser/*-photo*.png
             test-results/browser/public-landing-self-*.png
+            test-results/browser/public-venue-ring-*.png
+            test-results/browser/public-sales-contact-*.png
+            test-results/browser/owner-showcase-editor-*.png
             test-results/browser/manager-empty-test-editor-*.png
           retention-days: 1

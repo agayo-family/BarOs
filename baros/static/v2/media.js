@@ -1,4 +1,4 @@
-import {esc,api,toast} from './core.js?v=2.13.0';
+import {esc,api,toast} from './core.js?v=2.13.1';
 
 export function mediaText(value){
  const text=String(value||''),re=/!\[([^\]\n]{0,200})\]\((\/api\/media\/[A-Za-z0-9_-]{20,80})\)/g;let out='',at=0;
