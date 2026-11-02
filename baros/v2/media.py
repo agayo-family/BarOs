@@ -12,6 +12,9 @@ from .domain import require, parse, applies, course_settings
 
 router=APIRouter()
 
+def plain_media(value):
+    return re.sub(r'!\[([^\]\n]*)\]\(/api/media/[A-Za-z0-9_-]{20,80}\)',lambda m:'[Фото: '+(m[1] or 'Иллюстрация')+']',str(value))
+
 def validate_media(db,oid,value):
     ids=set(re.findall(r'/api/media/([A-Za-z0-9_-]{20,80})',str(value)))
     if not ids:return

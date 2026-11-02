@@ -144,3 +144,23 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(self.client.put('/api/owner/legal',headers=self.headers,json=body).status_code,200)
         self.login('manager');restored=self.client.get('/api/legal/versions/'+old['version']);self.assertEqual(restored.status_code,200,restored.text);self.assertEqual(restored.json(),old)
         self.login('worker');self.assertEqual(self.client.get('/api/legal/versions/'+old['version']).status_code,404)
+
+    def test_question_photo_has_readable_analytics_csv_without_private_paths(self):
+        photo=self.photo();course,_=self.course(photo['url']);cid=course['id']
+        self.assertEqual(self.post(f'/api/courses/{cid}/publish',{'reviewed':True,'edit_version':course['edit_version']}).status_code,200)
+        self.login('worker')
+        with patch('baros.v2.learning.MIN_READ_SECONDS',0):self.assertEqual(self.post(f'/api/learning/{cid}/lessons/0',{'complete':True}).status_code,200)
+        exam=self.post(f'/api/learning/{cid}/exam',{}).json()
+        self.assertEqual(self.post('/api/exams/'+exam['id']+'/finish',{'answers':{'0':0}}).status_code,200)
+        self.login('manager');r=self.client.get('/api/reports/analytics/export?section=questions')
+        self.assertEqual(r.status_code,200,r.text);self.assertNotIn('/api/media/',r.text);self.assertIn('[Фото:',r.text)
+
+    def test_global_photo_is_previewable_in_own_draft_not_by_other_workers(self):
+        with SessionLocal() as db:db.add(Account(role='owner',login='media.owner',name='Владелец',password_hash=hash_password('test-import-password')));db.commit()
+        self.login('media.owner');pic=Image.new('RGB',(20,20),'white');b=io.BytesIO();pic.save(b,format='PNG')
+        r=self.client.post('/api/media?global_asset=true',headers=self.headers,files={'file':('shared.png',b.getvalue(),'image/png')});self.assertEqual(r.status_code,200,r.text);url=r.json()['url']
+        self.login('manager');self.assertEqual(self.client.get(url).status_code,404)
+        course,_=self.course(url);self.assertEqual(self.client.get(url).status_code,200)
+        self.login('worker');self.assertEqual(self.client.get(url).status_code,404)
+        self.login('manager');self.assertEqual(self.post('/api/courses/'+str(course['id'])+'/publish',{'reviewed':True,'edit_version':course['edit_version']}).status_code,200)
+        self.login('worker');self.assertEqual(self.client.get(url).status_code,200)

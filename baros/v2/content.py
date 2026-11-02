@@ -29,12 +29,13 @@ def get_course(db,oid,cid):
 def course_card(db,c,s=None,counts=None,program=None):
     s=s or course_settings(db,c)
     lesson_count,question_count=counts if counts is not None else (len(c.lessons),len(c.questions))
+    program=program if program is not None else parse(getattr(db.get(CourseProgram,c.id),'payload',None))
     return {'id':c.id,'title':c.title,'description':c.description,'published':c.published,'archived':s.archived,'version':s.version,
             'edit_version':s.edit_version,'positions':parse(s.positions_json,['all']),'lessons':lesson_count,'questions':question_count,
             'quiz_size':s.quiz_size,'is_intro':s.is_intro,'ai_generated':s.ai_generated,'bank_target':s.bank_target,'required':c.required,
             'passing_score':c.passing_score,'due_at':iso(s.due_at),'updated_at':iso(s.updated_at),
-            'flashcards':len((program if program is not None else parse(getattr(db.get(CourseProgram,c.id),'payload',None))).get('flashcards',[])),
-            'source_review_required':bool((program if program is not None else parse(getattr(db.get(CourseProgram,c.id),'payload',None))).get('source_review',{}).get('required'))}
+            'flashcards':min(60,lesson_count) if program.get('assembly')=='source_bound' else len(program.get('flashcards',[])),
+            'source_review_required':bool(program.get('source_review',{}).get('required'))}
 
 
 @router.get('/api/courses')

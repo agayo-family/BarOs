@@ -89,3 +89,5 @@ body,.sidebar,.topbar,.card,.btn,input,textarea,select,.modal,.bottom-nav,.learn
 .flashcard-face:has(.course-photo){padding:20px;gap:10px}.flashcard-question:has(.course-photo){font-size:23px}.flashcard-answer{max-height:220px;overflow:auto;display:block}.flashcard-back .course-photo img{max-height:130px}
 
 .photo-preview{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.photo-preview-item{border:1px solid var(--line);border-radius:12px;padding:10px;min-width:0}.photo-preview-item .btn{font-size:11px;min-height:36px;width:100%}
+
+.table-wrap .course-photo img{max-width:160px;max-height:120px}.mentor-focus .course-photo img{max-height:180px}
