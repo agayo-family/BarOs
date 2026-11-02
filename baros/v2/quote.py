@@ -19,6 +19,10 @@ def make_quote(prices, employees, mode):
     tier = next((t for t in prices['modes'][mode]['tiers'] if employees <= t['employees']), None)
     title = prices['modes'][mode]['title']
     document = Document()
+    # Some Office templates carry a blue rule in the inherited Title style.
+    # Keep the exported estimate clean in both Word and LibreOffice.
+    for border in document.styles.element.xpath('.//w:pBdr'):
+        border.getparent().remove(border)
     document.core_properties.author = 'BarOS'
     document.core_properties.title = 'Расчёт подключения BarOS'
     document.core_properties.subject = 'Предварительная стоимость для одного заведения'
