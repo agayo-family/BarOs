@@ -1,5 +1,5 @@
-const CACHE = 'baros-v2-20261102-3';
-const ASSETS = ['/static/v2/landing.css?v=2.13.0','/static/v2/audit.css?v=2.13.0','/static/v2/shell.js?v=2.13.0','/static/v2/growth.css?v=2.13.0','/static/v2/style.css?v=2.13.0','/static/v2/app.js?v=2.13.0','/static/v2/experience.css?v=2.13.0','/static/v2/shifts.css?v=2.13.0','/static/v2/games.css?v=2.13.0','/static/v2/theme-init.js?v=2.13.0','/static/v2/icon-192.png'];
+const CACHE = 'baros-v2-20261102-4';
+const ASSETS = ['/static/v2/landing.css?v=2.13.1','/static/v2/audit.css?v=2.13.1','/static/v2/shell.js?v=2.13.1','/static/v2/growth.css?v=2.13.1','/static/v2/style.css?v=2.13.1','/static/v2/app.js?v=2.13.1','/static/v2/experience.css?v=2.13.1','/static/v2/shifts.css?v=2.13.1','/static/v2/games.css?v=2.13.1','/static/v2/theme-init.js?v=2.13.1','/static/v2/icon-192.png'];
 self.addEventListener('install', e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>clients.claim())));
 self.addEventListener('fetch', e=>{

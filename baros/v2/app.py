@@ -33,7 +33,7 @@ async def lifespan(app):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         migrate(db)
-        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog','standard_catalog_draft','public_pricing','legal_information']:
+        for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog','standard_catalog_draft','public_pricing','legal_information','public_showcase']:
             if not db.get(Setting,key): db.add(Setting(key=key,value=''))
         db.commit()
         from .notifications import ensure_vapid
@@ -48,7 +48,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.13.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.13.1', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -67,7 +67,7 @@ async def guard(request, call_next):
         except ValueError: return JSONResponse({'detail':'Некорректный запрос'},status_code=400)
         # Bodyless action endpoints (publish/archive/start exam) are valid; when a
         # body is present, require JSON everywhere except the multipart uploader.
-        if request.url.path.startswith('/api/') and request.url.path not in {'/api/sources','/api/growth/avatar','/api/media'} and int(content_len or 0) > 0 and 'application/json' not in request.headers.get('content-type',''):
+        if request.url.path.startswith('/api/') and request.url.path not in {'/api/sources','/api/growth/avatar','/api/media','/api/owner/showcase/logo'} and int(content_len or 0) > 0 and 'application/json' not in request.headers.get('content-type',''):
             return JSONResponse({'detail':'Ожидается JSON'},status_code=415)
     response=await call_next(request)
     if request.url.path.startswith('/static/v2/') and request.url.path.endswith(('.js','.css')):
@@ -97,13 +97,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.13.0'}
+    return {'status':'ok','service':'baros','version':'2.13.1'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.13.0'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.13.1'}
 
 
 @app.post('/api/auth/setup')
@@ -463,6 +463,9 @@ from .autobuild import router as autobuild_router
 app.include_router(autobuild_router)
 from .legal import router as legal_router
 app.include_router(legal_router)
+
+from .showcase import router as showcase_router
+app.include_router(showcase_router)
 
 @app.get('/api/{path:path}')
 def missing_api(path:str):raise HTTPException(404,'Метод не найден')

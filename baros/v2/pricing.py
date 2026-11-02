@@ -2,11 +2,12 @@
 
 These settings never change an existing venue's access or charge a customer.
 """
-from fastapi import APIRouter, Depends
+from typing import Literal
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 from sqlalchemy import select
 from ..db import get_db
-from .auth import actor, owner
+from .auth import actor, owner, ip, rate
 from .domain import dump, parse, require, log
 from .models import Setting
 
@@ -52,6 +53,17 @@ def pricing(db):
 @router.get('/api/pricing')
 def public_pricing(db=Depends(get_db)):
     return pricing(db)
+
+
+@router.get('/api/pricing/quote.docx')
+def download_quote(request: Request, employees: int = Query(ge=1, le=10000),
+                   mode: Literal['self', 'managed'] = 'managed', db=Depends(get_db)):
+    from .quote import make_quote
+    rate(db, 'public-quote:' + ip(request), 20, seconds=300)
+    return Response(make_quote(pricing(db), employees, mode),
+                    media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    headers={'Content-Disposition': f'attachment; filename="BarOS-{employees}-{mode}.docx"',
+                             'Cache-Control': 'no-store'})
 
 
 @router.put('/api/owner/pricing')

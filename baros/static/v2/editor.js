@@ -1,6 +1,6 @@
-import {mediaText,photoPicker} from './media.js?v=2.13.0';
-import {renderLesson} from './learning-ui.js?v=2.13.0';
-import {$,$$,state,api,go,esc,icon,btn,field,textarea,select,check,positions,selected,wirePositions,on,bindForm,modal,toast,notice,empty,pageHead,badge,positionTags,dateValue,pageCleanup} from './core.js?v=2.13.0';
+import {mediaText,photoPicker} from './media.js?v=2.13.1';
+import {renderLesson} from './learning-ui.js?v=2.13.1';
+import {$,$$,state,api,go,esc,icon,btn,field,textarea,select,check,positions,selected,wirePositions,on,bindForm,modal,toast,notice,empty,pageHead,badge,positionTags,dateValue,pageCleanup} from './core.js?v=2.13.1';
 export async function editorPage(root,cid,options={}){const global=Boolean(options.catalog),endpoint=global?'/owner/catalog/courses/'+encodeURIComponent(cid):'/courses/'+cid;const item=await api(endpoint);let c=global?{...item.course,edit_version:item.edit_version,version:item.version,published:false,archived:false,catalog_outcomes:item.outcomes}:item;let tab='theory',lesson=0,query='',page=0,changeVersion=0,saveFlight=null;const ticket=state.renderTicket;
  const storageKey='baros:course-editor:'+state.me.account.id+':'+(state.org||state.me.account.organization_id||'')+':'+(global?'catalog:':'course:')+cid;
  let draftDirty=false,pendingQuestion=null;
