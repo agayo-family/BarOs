@@ -1,0 +1,9 @@
+import {$,state,api,field,btn,notice,pageHead,bindForm,toast} from './core.js?v=2.12.0';
+
+export async function pricingPage(root){
+ let pricing=await api('/pricing');
+ root.innerHTML=pageHead('Тарифы на главной странице','Стоимость подписки для новых подключений.', '<a class="btn soft" href="/about#pricing">Посмотреть на сайте</a>','ПУБЛИЧНОЕ ПРЕДЛОЖЕНИЕ')+
+ `<section class="card" style="max-width:760px"><h2>Подписка на одно заведение</h2><p class="muted">Все суммы в рублях за месяц. Для команды больше 200 сотрудников на сайте отображаются индивидуальные условия.</p><form id="pricing-form"><div class="grid-3">${pricing.tiers.map(t=>field('price_'+t.employees,'До '+t.employees+' сотрудников',t.monthly,'number','required min="100" max="1000000" step="1"')).join('')}</div>${field('contact_email','Рабочая почта для подключения',pricing.contact_email,'email','maxlength="254" autocomplete="email"','Адрес появится на главной странице. Укажите рабочую почту, которую можно публиковать.')}<p class="footnote">Можно оставить почту пустой: посетителям будет доступно скачивание расчёта. Подготовка обучения по меню согласуется отдельно.</p>${notice('Изменение публичных цен не меняет доступ и договорённости уже подключённых заведений. Их настройки находятся в разделе «Заведения».')}<div class="actions section-space">${btn('Сохранить тарифы','check','primary','type="submit"')}</div></form></section>`;
+ $('#pricing-form',root).addEventListener('input',()=>{state.dirty=true});
+ bindForm('#pricing-form',async d=>{const prices=pricing.tiers.map(t=>Number(d.get('price_'+t.employees)));if(!(prices[0]<prices[1]&&prices[1]<prices[2]))throw new Error('Цена должна увеличиваться вместе с лимитом сотрудников');pricing=await api('/owner/pricing','PUT',{version:pricing.version,prices,contact_email:d.get('contact_email')||''});state.dirty=false;toast('Тарифы на сайте обновлены')},root);
+}
