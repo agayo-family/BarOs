@@ -42,6 +42,7 @@
         // or a hosting loading/interstitial page responds with HTTP 200.
         const page=await fetch(location.href,{cache:'no-store',credentials:'same-origin',signal:active.signal});
         if(page.ok&&new URL(page.url).origin===location.origin&&page.headers.get('content-type')?.includes('text/html')&&(await page.text()).includes('<meta name="baros-shell" content="1">')){
+          if(active.signal.aborted||document.hidden||stopped)return;
           opening=true;status.textContent='Связь восстановлена. Открываем страницу…';location.reload();return;
         }
       }

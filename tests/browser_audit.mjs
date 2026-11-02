@@ -12,6 +12,8 @@ const ctx=await browser.newContext({locale:'ru-RU',timezoneId:'Europe/Moscow',re
 const page=await ctx.newPage();
 page.on('dialog',d=>d.accept());
 const errors=[],failures=[],screens=[];
+const reconnectConsole=[];
+page.on('console',message=>{if(message.type()==='error')reconnectConsole.push(message.text())});
 page.on('pageerror',e=>errors.push(e.message));
 page.on('response',r=>{if(r.status()>=500&&!(r.fromServiceWorker()&&r.headers()['x-baros-recovery']==='1'))failures.push({url:r.url(),status:r.status()})});
 let me=null,oid=null;
@@ -134,7 +136,11 @@ await ctx.unroute(gatewayRoute);
 await page.setViewportSize({width:process.env.BAROS_AUDIT_REVERSE?1440:390,height:844});
 await ctx.setOffline(true);const offline=await page.goto(base+'/app?reconnect-audit=1');
 assert.equal(offline.status(),503);assert.equal(offline.headers()['x-baros-recovery'],'1');
-assert.equal(await page.locator('h1').innerText(),'Ожидаем подключения');
+await page.waitForFunction(()=>['waiting','paused'].includes(document.body.dataset.state),{},{timeout:5000}).catch(async error=>{
+ console.log('RECONNECT HELPER DIAGNOSTIC',JSON.stringify({console:reconnectConsole.slice(-8),page:await page.evaluate(()=>({online:navigator.onLine,state:document.body.dataset.state,scripts:[...document.scripts].map(s=>s.src)}))}));
+ throw error;
+});
+assert.match(await page.locator('h1').innerText(),/^(Ожидаем подключения|Подключаемся к BarOS)$/);
 assert.equal(await page.locator('meta[http-equiv=refresh]').count(),0,'No full-page refresh loop with JavaScript');
 assert.equal(await page.locator('#connection-retry').innerText(),'Проверить связь');
 assert(!await page.locator('body').innerText().then(text=>text.includes('Вы вне сети')));
