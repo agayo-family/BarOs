@@ -135,6 +135,8 @@ def import_info(r,duplicate=False):
 @router.post('/api/packages/preview')
 def preview(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'courses_manage',True);p=data.package;fp=fingerprint(p)
+    from .media import validate_media
+    validate_media(db,oid,(p.course or p.assessment).model_dump(mode='json'))
     old=db.scalar(select(PackageReceipt).where(PackageReceipt.organization_id==oid,PackageReceipt.fingerprint==fp))
     content=p.course or p.assessment
     return {'title':content.title,'kind':p.kind,'positions':content.positions,'duplicate':import_info(old,True) if old else None,
@@ -145,6 +147,8 @@ def preview(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get_db)):
 @router.post('/api/packages/import')
 def import_package(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'courses_manage',True);p=data.package;fp=fingerprint(p)
+    from .media import validate_media
+    validate_media(db,oid,(p.course or p.assessment).model_dump(mode='json'))
     old=db.scalar(select(PackageReceipt).where(PackageReceipt.organization_id==oid,PackageReceipt.fingerprint==fp))
     from .drafts import selected_sources,record_origin
     sources=selected_sources(db,oid,data.source_ids)
@@ -242,6 +246,8 @@ def edit_assessment(aid:int,data:AssessmentEditIn,request:Request,a=Depends(acto
     require(data.revision==assessment_revision(test.payload),'Тест изменён в другом окне. Обновите редактор.',409)
     require(not test.published or data.reviewed,'Подтвердите проверку изменений опубликованного теста')
     protect_linked_courses(db,test,data.assessment.positions)
+    from .media import validate_media
+    validate_media(db,test.organization_id,data.assessment.model_dump(mode='json'))
     payload=dump(data.assessment.model_dump(mode='json'))
     require(len(payload.encode('utf-8'))<=2*1024*1024,'Пакет превышает 2 МБ',413)
     test.title=data.assessment.title;test.payload=payload

@@ -70,6 +70,7 @@ def payload(db, c, *, program=...):
     if program_data is not None:
         program_data['steps']=[{'lesson_index':i,'title':l.title,'minutes':max(1,math.ceil(len(l.body.split())/180))} for i,l in enumerate(c.lessons)]
         program_data['bank_size']=len(c.questions)
+        if program_data.get('assembly')=='source_bound':program_data['flashcards']=[{'question':'Что важно помнить: '+l.title+'?','answer':l.body,'explanation':'Сверьте формулировку с правилами заведения.'} for l in list(c.lessons)[:60]]
     return {'title': c.title, 'description': c.description, 'positions': parse(s.positions_json, ['all']),
             'program':program_data,
             'passing_score': c.passing_score, 'required': c.required, 'quiz_size': s.quiz_size,
@@ -192,7 +193,7 @@ def _learner_stats(account, visible, enrolled, all_exams, reads, assessments=Non
         progress=round(100*(read_count+int(auto_passed and data['quiz_size']>0)+int(bool(aid) and written_done))/max(1,components))
         cards.append({'id': c.id, 'revision_id':rev.id, 'title': data['title'], 'description': data['description'], 'positions': data['positions'],
                       'required': data['required'], 'is_intro': data.get('is_intro', False), 'version': rev.version,
-                      'lesson_count': len(data['lessons']), 'read_count': read_count, 'question_count': data['quiz_size'], 'card_count': len(data['questions']),
+                      'lesson_count': len(data['lessons']), 'read_count': read_count, 'question_count': data['quiz_size'], 'card_count': len(data['questions'])+len((data.get('program') or {}).get('flashcards',[])),
                       'bank_size': len(data['questions']), 'passing_score': data['passing_score'],
                       'due_at': iso(e.due_at) if e else None, 'passed': passed, 'attempts': len(exams),
                       'overdue': bool(e and e.due_at and e.due_at < now() and not complete),

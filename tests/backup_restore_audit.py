@@ -21,6 +21,14 @@ with psycopg.connect(source) as db:
     db.execute('CREATE TABLE baros_restore_probe (id serial primary key, body text, payload bytea)')
     db.execute('INSERT INTO baros_restore_probe (body,payload) VALUES (%s,%s)',
                ('На, стой-ка — источник, редакция и письменный ответ\n"<текст>"', bytes(range(256)) * 100))
+with psycopg.connect(source) as db:
+    person=db.execute('SELECT id,organization_id FROM v2_accounts WHERE organization_id IS NOT NULL LIMIT 1').fetchone()
+    assert person, 'Audit fixtures must contain a tenant account'
+    db.execute('INSERT INTO v2_course_media (id,organization_id,creator_id,content,mime,size,created_at) VALUES (%s,%s,%s,%s,%s,%s,now())',
+               ('backup_photo_binary_probe',person[1],person[0],bytes(range(256))*7,'image/jpeg',1792))
+    db.execute('INSERT INTO v2_legal_acceptances (account_id,document,version,accepted_at) VALUES (%s,%s,%s,now())',
+               (person[0],'privacy','backup-legal-version'))
+    db.execute('INSERT INTO v2_settings (key,value) VALUES (%s,%s)',('legal_snapshot:backup-legal-version','Архивный текст и реквизиты · версия для проверки восстановления'))
 with psycopg.connect(admin, autocommit=True) as db:
     if db.execute("SELECT 1 FROM pg_database WHERE datname='baros_restore_test'").fetchone():
         raise SystemExit('Restore test database already exists; refusing to reuse it')
@@ -47,4 +55,7 @@ with tempfile.TemporaryDirectory(prefix='baros-restore-check-') as temporary:
             'На, стой-ка — источник, редакция и письменный ответ\n"<текст>"', bytes(range(256)) * 100)
         next_id = db.execute("INSERT INTO baros_restore_probe (body) VALUES ('sequence restored') RETURNING id").fetchone()[0]
         assert next_id == 2
+        assert db.execute("SELECT content FROM v2_course_media WHERE id='backup_photo_binary_probe'").fetchone()[0]==bytes(range(256))*7
+        assert db.execute("SELECT count(*) FROM v2_legal_acceptances WHERE version='backup-legal-version'").fetchone()[0]==1
+        assert db.execute("SELECT value FROM v2_settings WHERE key='legal_snapshot:backup-legal-version'").fetchone()[0]=='Архивный текст и реквизиты · версия для проверки восстановления'
 print('BACKUP RESTORE PASS: complete content hashes, binary sources, Unicode, sequence, checksum and nonempty-target refusal')

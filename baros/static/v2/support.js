@@ -1,4 +1,4 @@
-import {$,state,api,esc,btn,modal,pageHead,badge,empty,fmtDate,on,bindForm,toast} from './core.js?v=2.12.0';
+import {$,state,api,esc,btn,modal,pageHead,badge,empty,fmtDate,on,bindForm,toast} from './core.js?v=2.13.0';
 const categories={access:'Доступ к аккаунту',learning:'Обучение и результаты',technical:'Работа платформы',other:'Другой вопрос'};
 const statuses={open:'Новое',in_progress:'В работе',closed:'Решено'};
 export async function supportPage(root){

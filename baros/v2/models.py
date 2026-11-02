@@ -3,6 +3,25 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, Stri
 from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 
+class CourseMedia(Base):
+    __tablename__ = 'v2_course_media'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey('organizations.id'), index=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'))
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    mime: Mapped[str] = mapped_column(String(40))
+    size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class LegalAcceptance(Base):
+    __tablename__ = 'v2_legal_acceptances'
+    __table_args__ = (UniqueConstraint('account_id', 'document', 'version'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), index=True)
+    document: Mapped[str] = mapped_column(String(40))
+    version: Mapped[str] = mapped_column(String(64))
+    accepted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 def now():
     return datetime.utcnow()
