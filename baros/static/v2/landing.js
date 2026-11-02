@@ -62,7 +62,7 @@ export async function landingPage(ticket=state.renderTicket){
  const stepPlans=direction=>{galleryGesture=false;const next=Math.max(0,Math.min(3,selectedPlan()+direction));update(planLimits[next]);$(`[data-plan="${planLimits[next]}"]`)?.scrollIntoView?.({behavior:'smooth',block:'nearest',inline:'center'})};
  $$('[data-plan-step]').forEach(b=>b.onclick=()=>stepPlans(Number(b.dataset.planStep)));
  const gallery=$('#plan-carousel');
- gallery.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();if(e.key==='Home'||e.key==='End'){update(e.key==='Home'?50:250)}else stepPlans(e.key==='ArrowRight'?1:-1)});
+ gallery.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const fromCard=e.target.hasAttribute('data-plan');if(e.key==='Home'||e.key==='End'){update(e.key==='Home'?50:250)}else stepPlans(e.key==='ArrowRight'?1:-1);if(fromCard)$(`[data-plan="${planLimits[selectedPlan()]}"]`)?.focus({preventScroll:true})});
  gallery.addEventListener('pointerdown',()=>{galleryGesture=true});
  gallery.addEventListener('wheel',()=>{galleryGesture=true},{passive:true});
  gallery.addEventListener('scrollend',()=>{if(!galleryGesture)return;galleryGesture=false;const left=gallery.getBoundingClientRect().left,slides=[...gallery.querySelectorAll('[data-plan]')],nearest=slides.sort((a,b)=>Math.abs(a.getBoundingClientRect().left-left)-Math.abs(b.getBoundingClientRect().left-left))[0];if(nearest&&Number(nearest.dataset.plan)!==planLimits[selectedPlan()])update(nearest.dataset.plan)});
