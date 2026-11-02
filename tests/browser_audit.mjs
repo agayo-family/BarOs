@@ -22,6 +22,18 @@ async function call(path,method='GET',data,extra={}){
  return res.json();
 }
 async function login(login){await call('/auth/login','POST',{login,password:'browser-audit-password'});me=await call('/me')}
+// Fail early for public layout regressions before the long course sweep.
+await page.goto(base+'/');
+for(const width of [360,390,768,1440])for(const theme of ['light','dark']){
+ await page.setViewportSize({width,height:844});
+ await page.evaluate(theme=>localStorage.setItem('baros:theme',theme),theme);
+ await page.reload();await page.waitForFunction(()=>document.querySelector('#app')?.getAttribute('aria-busy')==='false');
+ const dimensions=await page.evaluate(()=>({viewport:innerWidth,scroll:document.documentElement.scrollWidth,font:parseFloat(getComputedStyle(document.querySelector('#team-size')).fontSize),field:document.querySelector('#team-size').getBoundingClientRect().width}));
+ if(dimensions.scroll>width+1)await page.screenshot({path:join(output,`public-preflight-${width}-${theme}.png`),fullPage:true});
+ assert(dimensions.scroll<=width+1,`Homepage fits ${width}/${theme}: ${JSON.stringify(dimensions)}`);
+ assert(dimensions.font>=24&&dimensions.field<=140,'The team count keeps its large, compact numeric field');
+}
+console.log('PUBLIC LAYOUT PASS: all four widths and both themes fit without clipping; numeric field styling is preserved');
 await call('/auth/setup','POST',{token:process.env.FIRST_RUN_TOKEN,name:'Владелец аудита',login:'browser.owner',password:'browser-audit-password'});
 me=await call('/me');
 const venue=await call('/venues','POST',{name:'Академия бара: проверка длинных названий и стандартов сервиса',plan:'Пилот',days:30,seat_limit:50});oid=venue.id;

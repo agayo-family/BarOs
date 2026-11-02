@@ -129,6 +129,8 @@ jobs:
             test-results/browser/*-support*.png
             test-results/browser/*-reconnect-*.png
             test-results/browser/public-landing-*.png
+            test-results/browser/public-login-390-*.png
+            test-results/browser/public-preflight-*.png
             test-results/browser/public-landing-custom-390-*.png
             test-results/browser/owner-pricing-editor-390-*.png
             test-results/browser/manager-empty-test-editor-*.png
