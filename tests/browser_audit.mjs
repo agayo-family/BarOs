@@ -12,6 +12,8 @@ const ctx=await browser.newContext({locale:'ru-RU',timezoneId:'Europe/Moscow',re
 const page=await ctx.newPage();
 page.on('dialog',d=>d.accept());
 const errors=[],failures=[],screens=[];
+const reconnectConsole=[];
+page.on('console',message=>{if(message.type()==='error')reconnectConsole.push(message.text())});
 page.on('pageerror',e=>errors.push(e.message));
 page.on('response',r=>{if(r.status()>=500&&!(r.fromServiceWorker()&&r.headers()['x-baros-recovery']==='1'))failures.push({url:r.url(),status:r.status()})});
 let me=null,oid=null;
@@ -121,20 +123,33 @@ written=await call('/assessment-attempts/'+written.id,'PUT',{version:written.ver
 written=await call('/assessment-attempts/'+written.id+'/submit','POST',{version:written.version});
 await sweep('employee',[['/app/assessment-attempts/'+written.id,'submitted']]);
 await shot('employee','/app/exam/'+exam.id,'result',1440,'light');
-// Check offline navigation's visible recovery state, then restore connectivity.
+// A short gateway failure must be absorbed by the real service worker.
 await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
+let gatewayRequests=0;
+const gatewayRoute=base+'/app?reconnect-short=1';
+await ctx.route(gatewayRoute,async route=>{gatewayRequests++;if(gatewayRequests===1)await route.fulfill({status:502,contentType:'text/plain',body:'Temporary gateway failure'});else await route.continue()});
+const retried=await page.goto(gatewayRoute);
+assert.equal(retried.status(),200,'A single 502 never becomes a visible recovery page');assert.equal(gatewayRequests,2);
+await page.waitForFunction(()=>document.querySelector('#app')?.getAttribute('aria-busy')==='false');
+await ctx.unroute(gatewayRoute);
+// Check offline navigation's visible recovery state, then restore connectivity.
 await page.setViewportSize({width:process.env.BAROS_AUDIT_REVERSE?1440:390,height:844});
 await ctx.setOffline(true);const offline=await page.goto(base+'/app?reconnect-audit=1');
 assert.equal(offline.status(),503);assert.equal(offline.headers()['x-baros-recovery'],'1');
-assert.equal(await page.locator('h1').innerText(),'Не удаётся открыть BarOS');
-assert.equal(await page.locator('meta[http-equiv=refresh]').getAttribute('content'),'8');
+await page.waitForFunction(()=>['waiting','paused'].includes(document.body.dataset.state),{},{timeout:5000}).catch(async error=>{
+ console.log('RECONNECT HELPER DIAGNOSTIC',JSON.stringify({console:reconnectConsole.slice(-8),page:await page.evaluate(()=>({online:navigator.onLine,state:document.body.dataset.state,scripts:[...document.scripts].map(s=>s.src)}))}));
+ throw error;
+});
+assert.match(await page.locator('h1').innerText(),/^(Ожидаем подключения|Подключаемся к BarOS)$/);
+assert.equal(await page.locator('meta[http-equiv=refresh]').count(),0,'No full-page refresh loop with JavaScript');
+assert.equal(await page.locator('#connection-retry').innerText(),'Проверить связь');
 assert(!await page.locator('body').innerText().then(text=>text.includes('Вы вне сети')));
 await page.screenshot({path:join(output,'employee-reconnect-'+(process.env.BAROS_AUDIT_REVERSE?'1440':'390')+'.png'),fullPage:true});
 await ctx.setOffline(false);
 // No explicit reload: the recovery page itself must return to the same route.
 await page.waitForFunction(()=>document.querySelector('#app')?.getAttribute('aria-busy')==='false',{},{timeout:20000});
 assert.equal(new URL(page.url()).search,'?reconnect-audit=1');
-console.log('RECONNECT PASS: real service worker outage, neutral recovery, unchanged route and automatic restoration');
+console.log('RECONNECT PASS: transparent retry after one 502, cached recovery during real offline navigation, unchanged route, readiness verification and automatic restoration without reload loops');
 await ctx.clearCookies();await ctx.addCookies(managerStorage.cookies);me=await call('/me');
 await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/assessments','assessments'],['/app/assessment-attempts/'+written.id,'written-review'],['/app/courses/'+c.id,'editor'],['/app/assessments/'+assessment.id,'assessment'],['/app/assessments/'+assessment.id+'/edit','assessment-editor'],['/app/staff','staff'],['/app/sources','sources'],['/app/reports','reports'],...['courses','questions','written','timeline','attempts'].map(tab=>['/app/reports?tab='+tab,'reports-'+tab]),['/app/drafts','drafts'],['/app/ai','legacy-drafts'],['/app/assessments/'+emptyTest.id+'/edit','empty-test-editor'],['/app/interview','interview'],['/app/venues','venue-settings'],['/app/settings','settings'],['/app/support','support']]);
 await page.setViewportSize({width:390,height:844});
