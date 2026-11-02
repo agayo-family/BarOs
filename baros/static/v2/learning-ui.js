@@ -1,7 +1,8 @@
-import {esc,icon} from './core.js?v=2.12.0';
+import {mediaText} from './media.js?v=2.13.0';
+import {esc,icon} from './core.js?v=2.13.0';
 
 // Only escaped text and a small Markdown subset. Uploaded HTML is never executed.
-const inline=text=>esc(text).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+const inline=mediaText;
 export function lessonBlocks(body){
  const lines=String(body||'').replace(/\r\n?/g,'\n').split('\n');
  const blocks=[];let title='',parts=[];

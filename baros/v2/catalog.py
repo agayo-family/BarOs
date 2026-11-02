@@ -259,6 +259,8 @@ def edit_catalogue_course(key: str, data: CatalogCourseEditIn, a=Depends(actor),
     item = next((c for c in current['courses'] if c['key'] == key), None)
     require(item, 'Курс библиотеки не найден', 404)
     course = data.course
+    from .media import validate_media
+    validate_media(db,None,course.model_dump(mode='json'))
     require(course.positions == [item['role']], 'Должность общего курса менять нельзя')
     require(bool(course.lessons), 'Добавьте хотя бы один урок')
     require(len(course.questions) >= course.quiz_size,

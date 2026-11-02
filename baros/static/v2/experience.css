@@ -83,3 +83,11 @@ body,.sidebar,.topbar,.card,.btn,input,textarea,select,.modal,.bottom-nav,.learn
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.theme-rain{display:none}}
 
 .badge.outline{color:var(--muted)}
+
+.course-photo{display:block;margin:14px auto;max-width:100%;text-align:center}.course-photo img{display:block;max-height:360px;max-width:100%;width:auto;height:auto;object-fit:contain;border-radius:12px;margin:auto}.flashcard .course-photo img{max-height:180px}.photo-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 20px}.photo-picker>small{flex-basis:100%;color:var(--muted)}.photo-description{font-size:12px;flex:1;min-width:160px}.photo-preview{flex-basis:100%}.photo-preview img{max-height:180px}.photo-upload{cursor:pointer}.photo-upload input[hidden]{display:none!important}
+
+.flashcard-face:has(.course-photo){padding:20px;gap:10px}.flashcard-question:has(.course-photo){font-size:23px}.flashcard-answer{max-height:220px;overflow:auto;display:block}.flashcard-back .course-photo img{max-height:130px}
+
+.photo-preview{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.photo-preview-item{border:1px solid var(--line);border-radius:12px;padding:10px;min-width:0}.photo-preview-item .btn{font-size:11px;min-height:36px;width:100%}
+
+.table-wrap .course-photo img{max-width:160px;max-height:120px}.mentor-focus .course-photo img{max-height:180px}

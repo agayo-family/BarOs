@@ -29,11 +29,13 @@ def get_course(db,oid,cid):
 def course_card(db,c,s=None,counts=None,program=None):
     s=s or course_settings(db,c)
     lesson_count,question_count=counts if counts is not None else (len(c.lessons),len(c.questions))
+    program=program if program is not None else parse(getattr(db.get(CourseProgram,c.id),'payload',None))
     return {'id':c.id,'title':c.title,'description':c.description,'published':c.published,'archived':s.archived,'version':s.version,
             'edit_version':s.edit_version,'positions':parse(s.positions_json,['all']),'lessons':lesson_count,'questions':question_count,
             'quiz_size':s.quiz_size,'is_intro':s.is_intro,'ai_generated':s.ai_generated,'bank_target':s.bank_target,'required':c.required,
             'passing_score':c.passing_score,'due_at':iso(s.due_at),'updated_at':iso(s.updated_at),
-            'source_review_required':bool((program if program is not None else parse(getattr(db.get(CourseProgram,c.id),'payload',None))).get('source_review',{}).get('required'))}
+            'flashcards':min(60,lesson_count) if program.get('assembly')=='source_bound' else len(program.get('flashcards',[])),
+            'source_review_required':bool(program.get('source_review',{}).get('required'))}
 
 
 @router.get('/api/courses')
@@ -56,6 +58,8 @@ def course(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
 
 
 def save_course(db,c,data):
+    from .media import validate_media
+    validate_media(db,c.organization_id,data.model_dump(mode='json'))
     s=course_settings(db,c)
     c.title=data.title;c.description=data.description;c.target_role=positions(data.positions)[0];c.passing_score=data.passing_score;c.required=data.required
     s.positions_json=dump(data.positions)
@@ -206,7 +210,8 @@ async def upload(request:Request,file:UploadFile=File(...),roles:str=Form('["all
     try:ext=validate_file(name,raw)
     except Exception as exc:require(False,str(exc) if isinstance(exc,ValueError) else 'Файл повреждён или формат не поддерживается')
     s=db.scalar(select(VenueSettings).where(VenueSettings.organization_id==oid).with_for_update())
-    used=db.scalar(select(func.coalesce(func.sum(SourceFile.size),0)).where(SourceFile.organization_id==oid)) or 0
+    from .models import CourseMedia
+    used=(db.scalar(select(func.coalesce(func.sum(SourceFile.size),0)).where(SourceFile.organization_id==oid)) or 0)+(db.scalar(select(func.coalesce(func.sum(CourseMedia.size),0)).where(CourseMedia.organization_id==oid)) or 0)
     require(used+len(raw)<=s.storage_limit_mb*1024*1024,'Достигнут лимит материалов подписки',409)
     try:extracted,note=await asyncio.to_thread(extract,name,raw);state='ready'
     except Exception as exc:

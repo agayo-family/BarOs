@@ -93,6 +93,7 @@ def practice_cards(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     c,s,rev,data,e=learning_course(request,db,a,cid)
     cards=[{'id':i,'question':q['prompt'],'answer':q['choices'][q['correct_index']],
             'explanation':q.get('explanation','')} for i,q in enumerate(data['questions'])]
+    cards += [{'id':len(data['questions'])+i,**card} for i,card in enumerate((data.get('program') or {}).get('flashcards',[]))]
     db.commit()
     return {'id':cid,'revision_id':rev.id,'version':rev.version,'title':data['title'],'cards':cards}
 
@@ -215,7 +216,7 @@ def submit(eid:str,data:AnswerIn,request:Request,a=Depends(actor),db=Depends(get
 @router.post('/api/learning/{cid}/cards/{index}/practice')
 def credit_card(cid:int,index:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     c,s,rev,p,e=learning_course(request,db,a,cid)
-    require(0<=index<len(p['questions']),'Карточка не найдена',404)
+    require(0<=index<len(p['questions'])+len((p.get('program') or {}).get('flashcards',[])),'Карточка не найдена',404)
     from .auth import rate
     rate(db,'card-practice:'+str(a.id),1200,3600)
     result=reward(db,a,f'card:{rev.id}:{index}:{now().date().isoformat()}','cards',2,1,cards=1)

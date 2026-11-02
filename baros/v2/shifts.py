@@ -82,6 +82,19 @@ class RotationIn(StrictModel):
     pattern: list[int | None] = Field(min_length=1, max_length=60)
 
 
+class BatchIn(StrictModel):
+    account_id:int|None=Field(default=None,ge=1)
+    template_id:int=Field(ge=1)
+    template_version:int=Field(ge=1)
+    days:list[date]=Field(min_length=1,max_length=62)
+
+    @field_validator('days')
+    @classmethod
+    def unique_days(cls,value):
+        if len(set(value))!=len(value):raise ValueError('Даты не должны повторяться')
+        return sorted(value)
+
+
 def scope(request, db, a, write=False):
     oid = tenant(request, db, a, 'shifts_manage' if a.role == 'manager' and write else None,
                  write=write, learning=a.role == 'employee')
@@ -365,7 +378,12 @@ def rotation_items(db, a, oid, data):
 @router.post('/rotations/preview')
 def preview_rotation(data: RotationIn, request: Request, a=Depends(actor), db=Depends(get_db)):
     oid = scope(request, db, a, True); items = rotation_items(db, a, oid, data)
-    aid = target(db, a, oid, data.account_id).id; preview = []
+    return preview_items(db,a,oid,data.account_id,items)
+
+
+def preview_items(db,a,oid,account_id,items):
+    person=target(db,a,oid,account_id);require(person.active,'Доступ сотрудника отключён')
+    aid = person.id; preview = []; totals={}
     previous = []
     for item in items:
         payload, start, end = normalized(item); conflict = ''
@@ -376,8 +394,36 @@ def preview_rotation(data: RotationIn, request: Request, a=Depends(actor), db=De
             if not hasattr(exc, 'detail'): raise
             conflict = exc.detail
         if item.kind in WORK: previous.append((start, end))
-        preview.append({'day': item.day.isoformat(), 'title': item.title, 'start_time': item.start_time, 'end_time': item.end_time, 'conflict': conflict})
-    return {'count': len(preview), 'conflicts': sum(bool(p['conflict']) for p in preview), 'items': preview}
+        minutes=minute_count(start,end,payload['break_minutes']) if item.kind in WORK else 0
+        forecast,_=pay(minutes,payload);totals[item.currency]=totals.get(item.currency,0)+forecast
+        preview.append({'day': item.day.isoformat(), 'title': item.title, 'start_time': item.start_time, 'end_time': item.end_time, 'conflict': conflict,'planned_minutes':minutes,'forecast':forecast,'currency':item.currency})
+    return {'count': len(preview), 'conflicts': sum(bool(p['conflict']) for p in preview), 'items': preview,'totals':totals}
+
+
+def batch_items(db,a,oid,data):
+    row=db.scalar(templates_query(a,oid).where(ShiftTemplate.id==data.template_id))
+    require(row,'Шаблон удалён или недоступен',404)
+    require(row.version==data.template_version,'Шаблон изменился. Обновите график и проверьте даты заново.',409)
+    require((data.days[-1]-data.days[0]).days<=366,'Выберите даты в пределах одного года')
+    return [ShiftIn(**parse(row.payload),day=d,account_id=data.account_id) for d in data.days]
+
+
+@router.post('/batch/preview')
+def preview_batch(data:BatchIn,request:Request,a=Depends(actor),db=Depends(get_db)):
+    oid=scope(request,db,a,True)
+    return preview_items(db,a,oid,data.account_id,batch_items(db,a,oid,data))
+
+
+@router.post('/batch')
+def apply_batch(data:BatchIn,request:Request,a=Depends(actor),db=Depends(get_db)):
+    oid=scope(request,db,a,True)
+    # Version-locked template plus the existing per-person lock: either every
+    # date is written, or the entire request is rolled back on a conflict.
+    db.scalar(select(ShiftTemplate).where(ShiftTemplate.id==data.template_id).with_for_update())
+    items=batch_items(db,a,oid,data)
+    for item in items:add_shift(db,a,oid,item)
+    log(db,a,oid,'Добавлены смены на выбранные даты',count=len(items),account_id=data.account_id or a.id)
+    db.commit();return {'created':len(items)}
 
 
 @router.post('/rotations')
