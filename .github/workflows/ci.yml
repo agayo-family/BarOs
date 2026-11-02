@@ -34,6 +34,8 @@ jobs:
           for file in baros/static/v2/*.js; do
             node --input-type=module --check < "$file"
           done
+      - name: Verify service worker reconnect and private request handling
+        run: node tests/service_worker_audit.mjs
       - name: Verify real API and DOM learning, game and shift flows
         run: |
           npm ci --prefix tests/ui --ignore-scripts
@@ -124,5 +126,6 @@ jobs:
             test-results/browser/manager-reports*.png
             test-results/browser/manager-drafts-*.png
             test-results/browser/*-support*.png
+            test-results/browser/*-reconnect-*.png
             test-results/browser/manager-empty-test-editor-*.png
           retention-days: 1

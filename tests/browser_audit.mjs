@@ -13,7 +13,7 @@ const page=await ctx.newPage();
 page.on('dialog',d=>d.accept());
 const errors=[],failures=[],screens=[];
 page.on('pageerror',e=>errors.push(e.message));
-page.on('response',r=>{if(r.status()>=500)failures.push({url:r.url(),status:r.status()})});
+page.on('response',r=>{if(r.status()>=500&&!(r.fromServiceWorker()&&r.headers()['x-baros-recovery']==='1'))failures.push({url:r.url(),status:r.status()})});
 let me=null,oid=null;
 async function call(path,method='GET',data,extra={}){
  const headers={...me?{'x-csrf-token':me.csrf}:{},...oid&&me?.account.role==='owner'?{'x-organization-id':String(oid)}:{}};
@@ -90,7 +90,19 @@ written=await call('/assessment-attempts/'+written.id+'/submit','POST',{version:
 await sweep('employee',[['/app/assessment-attempts/'+written.id,'submitted']]);
 await shot('employee','/app/exam/'+exam.id,'result',1440,'light');
 // Check offline navigation's visible recovery state, then restore connectivity.
-await ctx.setOffline(true);await page.goto(base+'/app').catch(()=>{});await ctx.setOffline(false);await page.goto(base+'/app');
+await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
+await page.setViewportSize({width:process.env.BAROS_AUDIT_REVERSE?1440:390,height:844});
+await ctx.setOffline(true);const offline=await page.goto(base+'/app?reconnect-audit=1');
+assert.equal(offline.status(),503);assert.equal(offline.headers()['x-baros-recovery'],'1');
+assert.equal(await page.locator('h1').innerText(),'Не удаётся открыть BarOS');
+assert.equal(await page.locator('meta[http-equiv=refresh]').getAttribute('content'),'8');
+assert(!await page.locator('body').innerText().then(text=>text.includes('Вы вне сети')));
+await page.screenshot({path:join(output,'employee-reconnect-'+(process.env.BAROS_AUDIT_REVERSE?'1440':'390')+'.png'),fullPage:true});
+await ctx.setOffline(false);
+// No explicit reload: the recovery page itself must return to the same route.
+await page.waitForFunction(()=>document.querySelector('#app')?.getAttribute('aria-busy')==='false',{},{timeout:20000});
+assert.equal(new URL(page.url()).search,'?reconnect-audit=1');
+console.log('RECONNECT PASS: real service worker outage, neutral recovery, unchanged route and automatic restoration');
 await ctx.clearCookies();await ctx.addCookies(managerStorage.cookies);me=await call('/me');
 await sweep('manager',[['/app','overview'],['/app/courses','courses'],['/app/assessments','assessments'],['/app/assessment-attempts/'+written.id,'written-review'],['/app/courses/'+c.id,'editor'],['/app/assessments/'+assessment.id,'assessment'],['/app/assessments/'+assessment.id+'/edit','assessment-editor'],['/app/staff','staff'],['/app/sources','sources'],['/app/reports','reports'],...['courses','questions','written','timeline','attempts'].map(tab=>['/app/reports?tab='+tab,'reports-'+tab]),['/app/drafts','drafts'],['/app/ai','legacy-drafts'],['/app/assessments/'+emptyTest.id+'/edit','empty-test-editor'],['/app/interview','interview'],['/app/venues','venue-settings'],['/app/settings','settings'],['/app/support','support']]);
 await page.setViewportSize({width:390,height:844});await page.goto(base+'/app/sources');await page.locator('[data-upload]').click();await page.screenshot({path:join(output,'manager-upload-modal-390.png'),fullPage:true});await page.keyboard.press('Escape');
