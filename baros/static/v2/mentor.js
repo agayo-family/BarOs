@@ -1,6 +1,6 @@
-import {mediaText} from './media.js?v=2.13.1';
-import {$,state,api,esc,icon,btn,notice,pageHead,pageCleanup,on,toast,go} from './core.js?v=2.13.1';
-import {petFigure} from './growth.js?v=2.13.1';
+import {mediaText} from './media.js?v=2.13.3';
+import {$,state,api,esc,icon,btn,notice,pageHead,pageCleanup,on,toast,go} from './core.js?v=2.13.3';
+import {petFigure} from './growth.js?v=2.13.3';
 
 function contextFromURL(){
  const params=new URLSearchParams(location.search),ctx={};

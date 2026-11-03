@@ -1,7 +1,7 @@
-import {mediaText,photoPicker} from './media.js?v=2.13.1';
-import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.13.1';
+import {mediaText,photoPicker} from './media.js?v=2.13.3';
+import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.13.3';
 
-import {rewardNotice} from './growth.js?v=2.13.1';
+import {rewardNotice} from './growth.js?v=2.13.3';
 
 export async function cardsPage(root,cid=null){const ticket=state.renderTicket;
  const preview=state.me.account.role!=='employee';
@@ -39,8 +39,8 @@ export function mountDeck(root,data,{preview=false,ticket=state.renderTicket}={}
   $('[data-repeat]',root).onclick=()=>{repeat=!repeat;deck=repeat?cards.filter(x=>!known.has(x.id)):[...cards];index=0;flipped=false;draw()};
  }
  function step(direction){if(busy||index+direction<0||index+direction>=deck.length)return;busy=true;
-  const face=$('[data-flip]',root);face?.classList.add(direction>0?'card-exit-left':'card-exit-right');
-  timer=setTimeout(()=>{index+=direction;flipped=false;busy=false;draw();$('[data-flip]',root)?.classList.add(direction>0?'card-enter-right':'card-enter-left');$('[data-flip]',root)?.focus({preventScroll:true})},reduced()?0:170);
+  const face=$('[data-flip]',root);face?.classList.remove('card-enter-left','card-enter-right');face?.classList.add(direction>0?'card-exit-left':'card-exit-right');
+  timer=setTimeout(()=>{index+=direction;flipped=false;busy=false;draw();$('[data-flip]',root)?.classList.add(direction>0?'card-enter-right':'card-enter-left');$('[data-flip]',root)?.focus({preventScroll:true})},reduced()?0:190);
  }
  draw();return clean;
 }

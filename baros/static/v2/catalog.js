@@ -1,6 +1,7 @@
-import {mediaText} from './media.js?v=2.13.1';
-import {$,$$,state,api,esc,icon,btn,field,check,modal,toast,notice,empty,pageHead,badge,stat,fmtDate,plural,on,bindForm,setOrg,go,showLink} from './core.js?v=2.13.1';
-import {renderLesson} from './learning-ui.js?v=2.13.1';
+import {mediaText} from './media.js?v=2.13.3';
+import {smoothBehavior} from './motion.js?v=2.13.3';
+import {$,$$,state,api,esc,icon,btn,field,check,modal,toast,notice,empty,pageHead,badge,stat,fmtDate,plural,on,bindForm,setOrg,go,showLink} from './core.js?v=2.13.3';
+import {renderLesson} from './learning-ui.js?v=2.13.3';
 
 const reviewKey=fp=>'baros:catalog-read:'+fp;
 function readKeys(fp){try{const value=JSON.parse(localStorage.getItem(reviewKey(fp))||'[]');return Array.isArray(value)?[...new Set(value.filter(x=>typeof x==='string'))]:[]}catch{return []}}
@@ -37,7 +38,7 @@ export async function catalogCoursePage(root,key){
  `<section class="card catalog-read-action"><h2>Проверили содержание курса?</h2><p>Отметка помогает отслеживать прочитанное в этом браузере. Общее включение выполняется отдельно на странице библиотеки.</p>${btn(readKeys(item.fingerprint).includes(key)?'Курс отмечен прочитанным':'Отметить курс прочитанным','check','primary','data-mark-read')}<a class="btn" href="/app/catalog" data-clear-org>К остальным курсам</a></section></div></div>`;
  on('[data-mark-read]','click',(e,b)=>{const keys=new Set(readKeys(item.fingerprint));keys.add(key);try{localStorage.setItem(reviewKey(item.fingerprint),JSON.stringify([...keys]))}catch{throw new Error('Браузер не сохранил отметку. Общую проверку можно подтвердить на странице библиотеки.')}b.textContent='Курс отмечен прочитанным';toast('Курс отмечен прочитанным')},root);
  // The global SPA handler owns other links; these stay within the current reading page.
- $$('[data-section-link]',root).forEach(a=>a.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();$(a.getAttribute('href'),root)?.scrollIntoView({behavior:'smooth',block:'start'})}));
+ $$('[data-section-link]',root).forEach(a=>a.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();$(a.getAttribute('href'),root)?.scrollIntoView({behavior:smoothBehavior(),block:'start'})}));
 }
 
 export async function onboardingPage(root){

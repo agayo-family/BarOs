@@ -1,4 +1,4 @@
-import {modal,esc,icon} from './core.js?v=2.13.1';
+import {modal,esc,icon} from './core.js?v=2.13.3';
 
 const rub=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
 export function showSalesContact(pricing={},selection={}){

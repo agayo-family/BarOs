@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {auditMotion} from './motion_browser_audit.mjs';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES ? process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES+'/playwright' : 'playwright');
 const base=process.env.BAROS_AUDIT_URL;
@@ -177,6 +178,7 @@ await assertBackHidden();await page.locator('[data-orbit-step="1"]').click();ass
 await page.locator('.venue-orbit-stage').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('.venue-orbit').getAttribute('data-active-index'),'2');
 await page.setViewportSize({width:390,height:844});await page.locator('.venue-orbit-stage').scrollIntoViewIfNeeded();const stageBox=await page.locator('.venue-orbit-stage').boundingBox();await page.mouse.move(stageBox.x+stageBox.width*.75,stageBox.y+stageBox.height*.4);await page.mouse.down();await page.mouse.move(stageBox.x+stageBox.width*.25,stageBox.y+stageBox.height*.4,{steps:12});await page.mouse.up();assert.notEqual(await page.locator('.venue-orbit').getAttribute('data-active-index'),'2');await assertBackHidden();
 console.log('VENUE ORBIT PASS: real owner selection and logo upload; mouse drag, keyboard, rear visibility, private unpublished logos and public content boundaries');
+await auditMotion({page,base,call,output});
 await page.goto(base+'/app/pricing');await page.locator('#pricing-form').waitFor();
 await page.locator('[name=price_50]').fill('10000');await page.locator('#pricing-form button[type=submit]').click();
 await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Тарифы на сайте обновлены'));
