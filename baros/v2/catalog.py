@@ -6,6 +6,7 @@ Venue creation and activation share one database lock to avoid missing a venue.
 from copy import deepcopy
 from datetime import timedelta
 from functools import lru_cache
+import gzip
 import json
 import math
 import os
@@ -29,6 +30,7 @@ STATE_KEY = 'standard_catalog'
 DRAFT_KEY = 'standard_catalog_draft'
 DATA_FILE = Path(__file__).with_name('standard_courses.json')
 UPDATES_FILE = Path(__file__).with_name('standard_course_updates.json')
+BANKS_FILE = Path(__file__).with_name('standard_question_banks.json.gz')
 
 
 @lru_cache(maxsize=1)
@@ -53,6 +55,14 @@ def candidate():
                 rows[int(index)][field] = value
         item['version'] = edit['version']
     data['version'] = updates['version']
+    with gzip.open(BANKS_FILE, 'rt', encoding='utf-8') as source:
+        banks = json.load(source)
+    require(banks['base_version'] == data['version'] and set(banks['courses']) == set(by_key),
+            'Проверьте редакцию банков общей библиотеки', 500)
+    for key, questions in banks['courses'].items():
+        by_key[key]['course']['questions'].extend(questions)
+        by_key[key]['version'] += 1
+    data['version'] = banks['version']
     keys = set()
     for item in data['courses']:
         require(item['key'] not in keys, 'В библиотеке повторяется идентификатор курса', 500)

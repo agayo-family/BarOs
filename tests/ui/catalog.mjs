@@ -12,7 +12,16 @@ await import('./ui/app.js');const core=await import('./ui/core.js?v=2.13.3');awa
 const venue=await core.api('/venues','POST',{name:'На, стой-ка'});core.setOrg(venue.id);core.go('/app/catalog');await until(()=>document.querySelector('[data-catalog-role]'),'Catalog loaded');assert.equal(core.state.org,'');let catalog=await core.api('/owner/catalog');assert.equal(document.querySelectorAll('[data-catalog-grid] article').length,catalog.courses.length);assert.equal((await core.api('/owner/catalog')).enabled,false);
 const select=e('[data-catalog-role]');for(const role of ['bartender','waiter','administrator','hookah_master','cook','cleaner']){select.value=role;select.dispatchEvent(new Event('change',{bubbles:true}));assert.equal(document.querySelectorAll('[data-catalog-grid] article').length,catalog.courses.filter(c=>c.role===role).length)}
 fill('[data-catalog-search]','нет такой темы');assert(document.body.textContent.includes('Курсы не найдены'));fill('[data-catalog-search]','');
-core.go('/app/catalog/waiter-03-difficult');await until(()=>document.querySelector('[data-mark-read]'),'Full course');assert.equal(document.querySelectorAll('.lesson-reader').length,10);assert.equal(document.querySelectorAll('.catalog-question').length,40);assert.equal(document.querySelectorAll('.catalog-written').length,0);assert(!document.querySelector('a[href="#catalog-written"]'));assert(document.body.textContent.includes('30 из 40'));assert(!document.body.textContent.includes('Критерии для управляющего'));assert(document.querySelector('a[href="/app/catalog/waiter-03-difficult/edit"]'),'Owner sees the shared course editor');
+core.go('/app/catalog/waiter-03-difficult');
+await until(()=>document.querySelector('[data-mark-read]'),'Full course');
+const expectedBankSize=320;
+assert.equal(document.querySelectorAll('.lesson-reader').length,10);
+assert.equal(document.querySelectorAll('.catalog-question').length,expectedBankSize);
+assert.equal(document.querySelectorAll('.catalog-written').length,0);
+assert(!document.querySelector('a[href="#catalog-written"]'));
+assert(document.body.textContent.includes(`30 из ${expectedBankSize}`));
+assert(!document.body.textContent.includes('Критерии для управляющего'));
+assert(document.querySelector('a[href="/app/catalog/waiter-03-difficult/edit"]'),'Owner sees the shared course editor');
 core.go('/app/catalog/waiter-03-difficult/edit');await until(()=>document.querySelector('#lesson-title'),'Shared editor loaded');
 assert.equal(document.querySelectorAll('[data-publish],[data-archive]').length,0,'Saving shared drafts never publishes or archives venue copies');
 fill('#lesson-title','Разбор гостевой ситуации');click('[data-editor-tab=questions]');click('[data-question=0]');
