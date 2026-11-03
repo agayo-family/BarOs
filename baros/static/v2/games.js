@@ -1,8 +1,9 @@
-import {mediaText} from './media.js?v=2.13.1';
-import {$,$$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,go,on,toast,select} from './core.js?v=2.13.1';
-import {renderLesson} from './learning-ui.js?v=2.13.1';
+import {mediaText} from './media.js?v=2.13.3';
+import {smoothBehavior} from './motion.js?v=2.13.3';
+import {$,$$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,go,on,toast,select} from './core.js?v=2.13.3';
+import {renderLesson} from './learning-ui.js?v=2.13.3';
 
-import {rewardNotice,companionName} from './growth.js?v=2.13.1';
+import {rewardNotice,companionName} from './growth.js?v=2.13.3';
 const difficultyNames={easy:'Знакомство',normal:'Практика',hard:'Вызов'};
 
 const names={mix:'Маршрут темы',pairs:'Найди пару',words:'Собери ответ',truth:'Верно или нет',scenario:'Рабочая ситуация',recall:'Вспомни сам'};

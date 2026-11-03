@@ -1,5 +1,5 @@
-import {mediaText,photoPicker} from './media.js?v=2.13.1';
-import {$,$$,state,api,go,esc,btn,notice,pageHead,toast,pageCleanup} from './core.js?v=2.13.1';
+import {mediaText,photoPicker} from './media.js?v=2.13.3';
+import {$,$$,state,api,go,esc,btn,notice,pageHead,toast,pageCleanup} from './core.js?v=2.13.3';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 let sequence=0;

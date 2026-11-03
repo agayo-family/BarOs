@@ -1,4 +1,5 @@
-import {$,$$,state,go,icon,modal,notice,toast,api} from './core.js?v=2.13.1';
+import {$,$$,state,go,icon,modal,notice,toast,api} from './core.js?v=2.13.3';
+import {respectPreference} from './motion.js?v=2.13.3';
 
 let installPrompt=null,changing=false;
 export const themeButton=()=>`<button class="btn icon-only ghost" data-theme-toggle aria-label="Переключить цветовую тему">${icon('moon')}</button>`;
@@ -10,10 +11,10 @@ async function toggleTheme(button){if(changing)return;changing=true;const next=d
   const r=button.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,radius=Math.hypot(Math.max(x,innerWidth-x),Math.max(y,innerHeight-y));
   const rain=document.createElement('div');rain.className='theme-rain';rain.setAttribute('aria-hidden','true');rain.innerHTML=Array.from({length:7},(_,i)=>`<i style="left:${13+i*12}%;top:${14+(i*19)%65}%;--delay:${i*45}ms"></i>`).join('');document.body.append(rain);
   const transition=document.startViewTransition(()=>applyTheme(next));
-  try{await transition.ready;document.documentElement.animate({clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${radius}px at ${x}px ${y}px)`]},{duration:650,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::view-transition-new(root)'});await transition.finished}finally{rain.remove()}
+  try{await transition.ready;respectPreference(document.documentElement.animate({clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${radius}px at ${x}px ${y}px)`]},{duration:650,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::view-transition-new(root)'}));await transition.finished}finally{rain.remove()}
  }catch{applyTheme(next)}finally{changing=false}
 }
-async function contact(){if(state.me?.account){go('/app/support');return}try{const [{showSalesContact},pricing]=await Promise.all([import('./sales.js?v=2.13.1'),api('/pricing')]);showSalesContact(pricing)}catch{modal('Связаться с BarOS','<p>Обсудить подключение: <a class="btn primary" href="https://t.me/Frooppe" target="_blank" rel="noopener noreferrer">Telegram @Frooppe</a></p><p>Если нужен доступ сотрудника, попросите управляющего выдать приглашение или ссылку восстановления.</p>')}}
+async function contact(){if(state.me?.account){go('/app/support');return}try{const [{showSalesContact},pricing]=await Promise.all([import('./sales.js?v=2.13.3'),api('/pricing')]);showSalesContact(pricing)}catch{modal('Связаться с BarOS','<p>Обсудить подключение: <a class="btn primary" href="https://t.me/Frooppe" target="_blank" rel="noopener noreferrer">Telegram @Frooppe</a></p><p>Если нужен доступ сотрудника, попросите управляющего выдать приглашение или ссылку восстановления.</p>')}}
 async function install(){if(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone){toast('BarOS уже открыт как приложение');return}
  if(installPrompt){const prompt=installPrompt;installPrompt=null;await prompt.prompt();const choice=await prompt.userChoice;toast(choice.outcome==='accepted'?'Установка подтверждена':'Установить можно позже из профиля');return}
  const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent)||navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1;
