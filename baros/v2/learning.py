@@ -1,5 +1,6 @@
 import os
 import secrets
+from collections import Counter
 from datetime import timedelta
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, update, func
@@ -105,6 +106,40 @@ def visible_exam(exam,data):
             'answers':parse(exam.answers_json),'finished':bool(exam.finished_at),'result':parse(exam.result_json) if exam.finished_at else None}
 
 
+def select_exam_questions(pool, size, attempts, rng):
+    # Question indexes are stable for the lifetime of this course revision.
+    counts = Counter()
+    latest = set()
+    history_limit = 2 * ((len(pool) + size - 1) // size)
+    for number, attempt in enumerate(attempts[:history_limit]):
+        indexes = {row.get('original') for row in parse(attempt.questions_json, [])
+                   if isinstance(row, dict) and type(row.get('original')) is int}
+        counts.update(indexes)
+        if number == 0:
+            latest = indexes
+
+    def priority(row):
+        index, _ = row
+        return index in latest, counts[index]
+
+    remaining = list(enumerate(pool))
+    rng.shuffle(remaining)
+    remaining.sort(key=priority)
+    boundary = priority(remaining[size - 1])
+    selected = [row for row in remaining if priority(row) < boundary]
+    tied = [row for row in remaining if priority(row) == boundary]
+    # Balance question types among equally fresh candidates.
+    for kind, ratio in [('knowledge', .4), ('understanding', .27), ('sales', .2), ('scenario', .13)]:
+        quota = max(0, int(size * ratio) - sum(q['type'] == kind for _, q in selected))
+        chosen = [row for row in tied if row[1]['type'] == kind][:min(quota, size - len(selected))]
+        selected.extend(chosen)
+        used = {index for index, _ in chosen}
+        tied = [row for row in tied if row[0] not in used]
+    selected.extend(tied[:size - len(selected)])
+    rng.shuffle(selected)
+    return selected
+
+
 @router.post('/api/learning/{cid}/exam')
 def start_exam(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     from .models import WrittenAttempt
@@ -112,24 +147,19 @@ def start_exam(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     require(not db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==a.id,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now())),'Сначала завершите письменный тест',409)
     c,s,rev,data,e=learning_course(request,db,a,cid)
     require(data['quiz_size']>0,'Пройдите отдельную итоговую проверку этого курса',409)
-    for exam in exams_for(db,a,rev.id):
+    attempts=exams_for(db,a,rev.id)
+    for exam in attempts:
         if not exam.finished_at:
             if exam.expires_at<=now():finish(db,exam,data)
             else:return visible_exam(exam,data)
     required=set(range(len(data['lessons'])))
     done={r.lesson_index for r in db.scalars(select(LessonRead).where(LessonRead.account_id==a.id,LessonRead.revision_id==rev.id,LessonRead.completed_at.is_not(None))).all()}
     require(required<=done,'Сначала изучите и отметьте все теоретические уроки',409)
-    attempts=exams_for(db,a,rev.id)
     require(not data['max_attempts'] or len(attempts)<data['max_attempts'],'Лимит попыток исчерпан. Обратитесь к управляющему.',409)
     pool=data['questions'];n=data['quiz_size']
     require(len(pool)>=n and n>0,'Недостаточно вопросов в опубликованной версии',409)
     rng=secrets.SystemRandom()
-    selected=[];remaining=list(enumerate(pool));rng.shuffle(remaining)
-    # Proportional stratification supports every manager-selected exam length.
-    for qt,ratio in [('knowledge',.4),('understanding',.27),('sales',.2),('scenario',.13)]:
-        chosen=[x for x in remaining if x[1]['type']==qt][:int(n*ratio)]
-        selected+=chosen;used={i for i,_ in chosen};remaining=[x for x in remaining if x[0] not in used]
-    selected+=remaining[:n-len(selected)];rng.shuffle(selected)
+    selected=select_exam_questions(pool,n,attempts,rng)
     questions=[]
     for original,q in selected:
         indices=list(range(4));rng.shuffle(indices)

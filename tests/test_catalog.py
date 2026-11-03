@@ -58,7 +58,7 @@ class CatalogTests(unittest.TestCase):
    full=self.client.get('/api/owner/catalog/courses/'+item['key']).json()
    self.assertNotIn('practice',full)
    self.assertGreaterEqual(full['version'],3)
-   self.assertGreaterEqual(len(full['course']['lessons']),8);self.assertEqual(len(full['course']['questions']),40)
+   self.assertGreaterEqual(len(full['course']['lessons']),8);self.assertGreaterEqual(len(full['course']['questions']),300)
    self.assertGreaterEqual(sum(len(l['body'].split()) for l in full['course']['lessons']),1800)
    self.assertEqual(full['course']['quiz_size'],30);self.assertEqual(full['course']['time_limit_minutes'],45)
    self.assertEqual(full['course']['passing_score'],80)
@@ -67,7 +67,7 @@ class CatalogTests(unittest.TestCase):
     self.assertIsNone(re.search(r'(?mi)^##\s*(?:Задание|Практика|Практическая проверка|Домашнее)\b',l['body']))
    for q in full['course']['questions']:
     self.assertEqual(len(set(q['choices'])),4);self.assertTrue(0<=q['correct_index']<4);self.assertNotIn(q['prompt'],prompts);prompts.add(q['prompt'])
-  self.assertEqual(len(prompts),1440)
+  self.assertGreaterEqual(len(prompts),36*300)
   with SessionLocal() as db:self.assertEqual(db.scalar(select(func.count(Course.id))),1);self.assertEqual(db.scalar(select(func.count(ImportedAssessment.id))),0)
  def test_review_revision_fingerprint_csrf_and_owner_guards(self):
   c=self.client.get('/api/owner/catalog').json();data={'reviewed':False,'fingerprint':c['fingerprint'],'expected_revision':0}
@@ -128,13 +128,13 @@ class CatalogTests(unittest.TestCase):
  def test_expanded_bank_cards_and_full_thirty_question_exam(self):
   self.activate();self.login('worker')
   cid=self.client.get('/api/learning').json()['courses'][0]['id'];course=self.client.get(f'/api/learning/{cid}').json()
-  self.assertEqual((course['quiz_size'],course['bank_size']),(30,40))
+  self.assertEqual(course['quiz_size'],30);self.assertGreaterEqual(course['bank_size'],300)
   self.assertEqual(self.post(f'/api/learning/{cid}/exam',{}).status_code,409)
   for i in range(len(course['lessons'])):
    self.assertEqual(self.post(f'/api/learning/{cid}/lessons/{i}',{'complete':False}).status_code,200)
    with patch('baros.v2.learning.now',return_value=now()+timedelta(seconds=course['min_read_seconds']+1)):
     r=self.post(f'/api/learning/{cid}/lessons/{i}',{'complete':True});self.assertEqual(r.status_code,200,r.text)
-  cards=self.client.get(f'/api/learning/{cid}/cards').json()['cards'];self.assertEqual(len(cards),40)
+  cards=self.client.get(f'/api/learning/{cid}/cards').json()['cards'];self.assertEqual(len(cards),course['bank_size'])
   exam=self.post(f'/api/learning/{cid}/exam',{}).json();self.assertEqual(len(exam['questions']),30)
   self.assertEqual(len({q['prompt'] for q in exam['questions']}),30)
   self.assertTrue(all('correct_index' not in q and 'explanation' not in q and len(q['choices'])==4 for q in exam['questions']))
@@ -143,11 +143,14 @@ class CatalogTests(unittest.TestCase):
   with SessionLocal() as db:
    saved=db.get(Exam,exam['id']);snapshot=parse(saved.questions_json,[])
    answers={str(i):q['correct_index'] for i,q in enumerate(snapshot)}
-   self.assertEqual(len(parse(db.get(CourseRevision,saved.revision_id).payload)['questions']),40)
+   self.assertEqual(len(parse(db.get(CourseRevision,saved.revision_id).payload)['questions']),course['bank_size'])
   result=self.post('/api/exams/'+exam['id']+'/finish',{'answers':answers}).json()
   self.assertEqual((result['total'],result['correct'],result['score']),(30,30,100))
   self.assertIsNone(result['written_assessment_id'])
   self.assertEqual(len(self.client.get('/api/assessments').json()),0)
+  next_exam=self.post(f'/api/learning/{cid}/exam',{}).json()
+  self.assertEqual(len(next_exam['questions']),30)
+  self.assertTrue({q['prompt'] for q in exam['questions']}.isdisjoint(q['prompt'] for q in next_exam['questions']))
 
  def test_onboarding_tracks_actual_counts_and_excludes_platform(self):
   r=self.client.get('/api/owner/onboarding');self.assertEqual(r.status_code,200);data=r.json();self.assertEqual(len(data['venues']),2)
