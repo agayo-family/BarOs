@@ -106,7 +106,10 @@ async function shot(role,path,label,width,theme){
  if(label==='support'&&role!=='owner'){await page.locator('[data-new-support]').click();await page.screenshot({path:join(output,`${role}-support-dialog-${width}-${theme}.png`),fullPage:true});await page.keyboard.press('Escape')}
  const visibleCopy=await page.locator('body').innerText();if(['lesson','cards','written','reports-questions','assessment','written-review'].includes(label))assert(!/!\[[^\n]*\]\(\/api\/media\//.test(visibleCopy),'Private photo markup is rendered in '+role+'/'+label);assert(label.startsWith('legal')||label==='sales-contact'||!/(?<![A-Za-zА-Яа-яЁё])(?:AI|ИИ)(?![A-Za-zА-Яа-яЁё])|ChatGPT|Qwen|Yandex AI|ergin|frooppe|На, стой-ка|Сергей|sergey|Render|FIRST_RUN_TOKEN|SESSION_SECRET|API[- ]?ключ|провайдер/iu.test(visibleCopy),`Neutral customer copy: ${role}/${label}`);
  const info=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,title:document.querySelector('h1,h2')?.textContent||'',error:document.querySelector('#page-content .notice-box.error')?.textContent,overflow:[...document.querySelectorAll('#page-content *')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&(r.left< -1||r.right>innerWidth+1)&&!e.closest('.table-wrap,.tabs,.question-nav,.game-pair-list')}).slice(0,8).map(e=>({tag:e.tagName,cls:e.className,text:e.textContent.slice(0,60)}))}));
- const name=`${role}-${label}-${width}-${theme}`;await page.screenshot({path:join(output,name+'.png'),fullPage:true,animations:'disabled'});
+ const name=`${role}-${label}-${width}-${theme}`;
+ // The layout scan above still checks the complete course, including the bank.
+ const coursePreview=role==='owner'&&path.startsWith('/app/catalog/')&&!path.endsWith('/edit');
+ await page.screenshot({path:join(output,name+'.png'),fullPage:!coursePreview,animations:'disabled'});
  screens.push({name,path,...info});
  if(label==='sales-contact'){await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator('#app').getAttribute('inert'),null)}
  writeFileSync(join(output,'progress.json'),JSON.stringify({screens:screens.length,last:name,errors,server_failures:failures}));
