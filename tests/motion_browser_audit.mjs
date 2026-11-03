@@ -86,10 +86,11 @@ export async function auditMotion({page,base,call,output}){
   await page.locator('.site-faq summary').first().click();
   await page.waitForFunction(()=>document.getAnimations().every(a=>a.playState!=='running'));
   assert(await page.locator('.site-faq details').first().evaluate(el=>el.open));
+  const initialTheme=await page.locator('html').getAttribute('data-theme');
   await page.locator('[data-theme-toggle]').first().click();
-  await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark'&&!document.querySelector('.theme-rain')&&document.getAnimations().every(a=>a.playState!=='running'));
+  await page.waitForFunction(theme=>document.documentElement.dataset.theme===theme&&!document.querySelector('.theme-rain')&&document.getAnimations().every(a=>a.playState!=='running'),initialTheme==='dark'?'light':'dark');
   await page.locator('[data-theme-toggle]').first().click();
-  await page.waitForFunction(()=>document.documentElement.dataset.theme==='light'&&!document.querySelector('.theme-rain')&&document.getAnimations().every(a=>a.playState!=='running'));
+  await page.waitForFunction(theme=>document.documentElement.dataset.theme===theme&&!document.querySelector('.theme-rain')&&document.getAnimations().every(a=>a.playState!=='running'),initialTheme);
   await page.locator('[data-theme-toggle]').first().click();await page.emulateMedia({reducedMotion:'reduce'});
   await page.waitForFunction(()=>!document.querySelector('.theme-rain')&&document.getAnimations().every(a=>a.playState!=='running'));
   writeFileSync(join(output,'motion.json'),JSON.stringify(results,null,2));
