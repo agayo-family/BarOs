@@ -200,7 +200,8 @@ def create_group(data: GroupIn, a=Depends(actor), db=Depends(get_db)):
 
 
 def lock_venue(db, oid):
-    org = db.scalar(select(Organization).where(Organization.id == oid).with_for_update())
+    # Serialize grants without blocking foreign-key checks by in-flight venue writes.
+    org = db.scalar(select(Organization).where(Organization.id == oid).with_for_update(key_share=True))
     require(org and org.name != '__BAROS_PLATFORM__' and db.get(VenueSettings, oid), 'Заведение не найдено', 404)
     return org
 
