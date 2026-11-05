@@ -440,6 +440,8 @@ def ics_text(value):
 @router.get('/export/{format}')
 def export(format: str, request: Request, start: date, end: date, account_id: int | None = None, a=Depends(actor), db=Depends(get_db)):
     oid, rows = selection(request, db, a, start, end, account_id)
+    if a.role == 'manager':
+        check_venue_permission(db, a, oid, 'exports_access')
     require(format in {'csv', 'ics'}, 'Формат не поддерживается')
     if format == 'csv':
         out = io.StringIO(); w = csv.writer(out, delimiter=';')

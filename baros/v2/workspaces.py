@@ -14,7 +14,7 @@ from ..db import get_db
 from ..models import Course, Organization
 from .auth import SENSITIVE_PERMISSIONS, actor, check_venue_permission, owner
 from .domain import POSITIONS, PERMISSIONS, dump, iso, learner_stats_many, log, now, parse, positions, require
-from .models import (Account, BusinessGroup, CourseMedia, Exam, GroupDistribution, GroupMembership,
+from .models import (Account, BusinessGroup, CourseMedia, CourseSettings, Exam, GroupDistribution, GroupMembership,
                      GroupStandard, GroupVenue, ImportedAssessment, SourceFile, VenueMembership,
                      VenueSettings, WrittenAttempt)
 from .schemas import CourseIn, StrictModel
@@ -293,9 +293,24 @@ def group_detail(gid: int, a=Depends(actor), db=Depends(get_db)):
                   ).where(GroupMembership.group_id == gid).order_by(Account.name)).all()]
     standards = db.scalars(select(GroupStandard).options(defer(GroupStandard.payload)).where(
         GroupStandard.group_id == gid).order_by(GroupStandard.version.desc(), GroupStandard.title)).all()
+    deliveries = defaultdict(list)
+    rows = db.execute(select(GroupDistribution, Course.published, CourseSettings, Organization.name).join(
+        GroupStandard, GroupStandard.id == GroupDistribution.standard_id
+    ).join(Course, Course.id == GroupDistribution.course_id).join(
+        CourseSettings, CourseSettings.course_id == Course.id
+    ).join(Organization, Organization.id == GroupDistribution.organization_id).where(
+        GroupStandard.group_id == gid, GroupDistribution.organization_id.in_(ids)
+    ).order_by(Organization.name)).all()
+    for delivery, published, cfg, venue_name in rows:
+        deliveries[delivery.standard_id].append({
+            'venue_id': delivery.organization_id, 'name': venue_name,
+            'state': 'archived' if cfg.archived else 'published' if published else 'draft',
+            'edited': cfg.edit_version != delivery.initial_edit_version,
+        })
     return {'id': gid, 'name': group.name, 'role': role, 'people': people,
             'venues': [{'id': org.id, 'name': org.name, 'writable': writable(cfg)} for org, cfg in venue_rows(db, ids)],
-            'standards': [{'id': row.id, 'key': row.key, 'title': row.title, 'version': row.version} for row in standards]}
+            'standards': [{'id': row.id, 'key': row.key, 'title': row.title, 'version': row.version,
+                           'deliveries': deliveries[row.id]} for row in standards]}
 
 
 class StandardIn(StrictModel):
@@ -377,7 +392,8 @@ def distribute(gid: int, sid: int, data: DistributionIn, a=Depends(actor), db=De
         db.add(course)
         db.flush()
         save_course(db, course, CourseIn.model_validate_json(body))
-        db.add(GroupDistribution(standard_id=sid, organization_id=oid, course_id=course.id))
+        db.add(GroupDistribution(standard_id=sid, organization_id=oid, course_id=course.id,
+                                 initial_edit_version=db.get(CourseSettings, course.id).edit_version))
         log(db, a, oid, 'Получен черновик стандарта группы', group_id=gid, standard_id=sid, version=standard.version)
         result.append({'venue_id': oid, 'course_id': course.id, 'existing': False})
     db.commit()

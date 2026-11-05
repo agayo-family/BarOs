@@ -74,12 +74,19 @@ class WorkspaceTests(unittest.TestCase):
         self.request('GET', '/venue', oid='00'+str(self.second), status=403)
         for path in ['/sources','/export','/reports/analytics/export','/shifts/context']:
             self.request('GET', path, oid=self.second, status=403)
+        export_url = '/shifts/export/csv?start=2026-11-01&end=2026-11-10&account_id=0'
         self.request('GET', '/export', oid=self.oid)
+        self.login('network.owner')
+        self.grant(self.second, permissions={'shifts_manage':True})
+        self.login('manager')
+        self.request('GET', '/shifts/context', oid=self.second)
+        self.request('GET', export_url, oid=self.second, status=403)
         self.login('network.owner')
         self.grant(self.second, permissions={'exports_access':True,'uploads_manage':True,'shifts_manage':True})
         self.login('manager')
         for path in ['/sources','/export','/reports/analytics/export','/shifts/context']:
             self.request('GET', path, oid=self.second)
+        self.request('GET', export_url, oid=self.second)
         self.login('worker')
         self.request('GET', '/learning', oid=self.second, status=403)
         self.request('GET', '/workspaces/overview', status=403)
@@ -153,6 +160,8 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(self.request('POST', distribution, {'venues':[self.second]})['items'][0]['existing'])
         item = self.request('GET', f'/courses/{cid}', oid=self.second)
         self.assertEqual(item['group_standard']['version'], 1)
+        delivery = self.request('GET', f'/workspaces/groups/{gid}')['standards'][0]['deliveries']
+        self.assertEqual([(row['venue_id'], row['state'], row['edited']) for row in delivery], [(self.second,'draft',False)])
         private_copy = re.search(r'/api/media/([\w-]+)',item['lessons'][0]['body'])[1]
         self.assertNotEqual(private_copy, mid)
         self.request('GET', f'/media/{private_copy}?venue={self.second}')

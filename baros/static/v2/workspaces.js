@@ -49,6 +49,14 @@ function grantForm(id, venues, people) {
   select('active','Действие',[['true','Выдать доступ'],['false','Отозвать доступ']],'true')+rights+submit('Сохранить доступ'));
 }
 
+function standardRow(row) {
+ const status={draft:'черновик',published:'опубликовано',archived:'архив'};
+ const destinations=row.deliveries.map(item=>item.name+' · '+status[item.state]+(item.edited?' · местные правки':''));
+ return `<div class="line-item">
+  <div class="grow"><strong>${esc(row.title)}</strong><small>${esc(destinations.join(' · ')||'Ещё не передан в точки')}</small></div>
+  <span class="muted">Версия ${row.version}</span></div>`;
+}
+
 function groupHTML(group, owner, venues) {
  const latest=group.standards.filter((standard,i,all)=>all.findIndex(row=>row.key===standard.key)===i);
  const canEdit=['owner','lead','methodist'].includes(group.role), points=group.venues.filter(v=>v.writable);
@@ -60,11 +68,12 @@ function groupHTML(group, owner, venues) {
   select('active','Состав группы',[['true','Подключить'],['false','Исключить']],'true')+submit('Сохранить состав')):''}
  ${['owner','lead'].includes(group.role)?`<h3>Участники группы</h3>
   ${group.people.map(person=>`<p>${esc(person.name)} · ${esc(roles[person.role])}</p>`).join('')||'<p class="muted">Участники ещё не назначены.</p>'}
+  ${owner?'<p class="muted">Руководитель и методист видят сводку точек, которые администратор подключает к группе. Для работы внутри конкретного заведения выдай доступ отдельно.</p>':''}
   ${owner?form('group-person',loginField()+select('role','Роль',[...Object.entries(roles),['remove','Исключить из группы']],'manager')+submit('Сохранить роль')):
    people.length&&group.venues.length?grantForm('group-grant',group.venues,people):''}`:''}
  </section><section class="card"><h2>Стандарты группы</h2>
  <p class="muted">Каждая версия поступает в выбранные точки как отдельный черновик. Управляющий проверяет его перед публикацией.</p>
- ${group.standards.map(row=>`<div class="line-item"><strong>${esc(row.title)}</strong><span class="muted">Версия ${row.version}</span></div>`).join('')||'<p class="muted">Пока нет стандартов.</p>'}
+ ${group.standards.map(standardRow).join('')||'<p class="muted">Пока нет стандартов.</p>'}
  ${canEdit?`<details><summary>Загрузить стандарт из BarOS JSON</summary>
  ${form('group-standard',
   select('key','Редакция',[['','Новый стандарт'],...latest.map(row=>[row.key,row.title+' · новая версия'])],'')+

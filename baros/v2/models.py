@@ -517,3 +517,4 @@ class GroupDistribution(Base):
     standard_id: Mapped[int] = mapped_column(ForeignKey('v2_group_standards.id'), primary_key=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), primary_key=True)
     course_id: Mapped[int] = mapped_column(ForeignKey('courses.id'), unique=True)
+    initial_edit_version: Mapped[int] = mapped_column(Integer)
