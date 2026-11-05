@@ -471,3 +471,50 @@ class SupportTicket(Base):
     version: Mapped[int] = mapped_column(Integer,default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime,default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime,default=now)
+
+
+class BusinessGroup(Base):
+    __tablename__ = 'v2_business_groups'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+
+
+class GroupVenue(Base):
+    __tablename__ = 'v2_group_venues'
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey('v2_business_groups.id'), index=True)
+
+
+class GroupMembership(Base):
+    __tablename__ = 'v2_group_memberships'
+    group_id: Mapped[int] = mapped_column(ForeignKey('v2_business_groups.id'), primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), primary_key=True, index=True)
+    role: Mapped[str] = mapped_column(String(24))
+
+
+class VenueMembership(Base):
+    __tablename__ = 'v2_venue_memberships'
+    account_id: Mapped[int] = mapped_column(ForeignKey('v2_accounts.id'), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), primary_key=True, index=True)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey('v2_business_groups.id'), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    permissions_json: Mapped[str] = mapped_column(Text, default='{}')
+
+
+class GroupStandard(Base):
+    __tablename__ = 'v2_group_standards'
+    __table_args__ = (UniqueConstraint('group_id', 'key', 'version'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey('v2_business_groups.id'), index=True)
+    key: Mapped[str] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(200))
+    payload: Mapped[str] = mapped_column(Text)
+
+
+class GroupDistribution(Base):
+    __tablename__ = 'v2_group_distributions'
+    standard_id: Mapped[int] = mapped_column(ForeignKey('v2_group_standards.id'), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey('courses.id'), unique=True)
+    initial_edit_version: Mapped[int] = mapped_column(Integer)

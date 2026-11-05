@@ -1,5 +1,5 @@
-import {$,state,api,esc,field,textarea,btn,pageHead,bindForm,toast,fmtDate} from './core.js?v=2.13.3';
-import {themeButton,syncThemeControls} from './experience.js?v=2.13.3';
+import {$,state,api,esc,field,textarea,btn,pageHead,bindForm,toast,fmtDate} from './core.js?v=2.14.0';
+import {themeButton,syncThemeControls} from './experience.js?v=2.14.0';
 export async function legalPage(ticket=state.renderTicket){
  const requested=new URLSearchParams(location.search).get('version');
  const data=await api(requested?'/legal/versions/'+encodeURIComponent(requested):'/legal');if(ticket!==state.renderTicket)return;

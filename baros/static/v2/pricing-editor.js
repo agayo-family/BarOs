@@ -1,4 +1,4 @@
-import {$,state,api,field,btn,notice,pageHead,bindForm,toast} from './core.js?v=2.13.3';
+import {$,state,api,field,btn,notice,pageHead,bindForm,toast} from './core.js?v=2.14.0';
 
 export async function pricingPage(root){
  let pricing=await api('/pricing');

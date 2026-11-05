@@ -1,5 +1,5 @@
-import {themeButton,syncThemeControls} from './experience.js?v=2.13.3';
-import {$,state,api,reloadMe,go,brand,icon,esc,field,positions,selected,wirePositions,bindForm,btn,notice,modal,copy,badge} from './core.js?v=2.13.3';
+import {themeButton,syncThemeControls} from './experience.js?v=2.14.0';
+import {$,state,api,reloadMe,go,brand,icon,esc,field,positions,selected,wirePositions,bindForm,btn,notice,modal,copy,badge} from './core.js?v=2.14.0';
 export async function authPage(path,ticket=state.renderTicket){
  state.me=null;
  const info=await api('/public');if(ticket!==state.renderTicket)return;state.me={positions:info.positions};
@@ -30,6 +30,6 @@ export async function authPage(path,ticket=state.renderTicket){
    }
    if(inviteInfo){const r=await api('/invites/'+encodeURIComponent(invite),'POST',data);await reloadMe();go('/app');setTimeout(()=>{const m=modal('Сохраните данные для входа',notice('Ключ показывается один раз. Сохраните его в менеджере паролей. Позже пароль можно изменить в профиле.','warning')+`<label class="field"><span>Логин</span><div class="secret-box">${esc(r.login)}</div></label><label class="field"><span>Личный ключ</span><div class="secret-box">${esc(r.recovery_key)}</div></label><div class="modal-actions">${btn('Скопировать','copy','primary','data-copy')}</div>`);$('[data-copy]',m.root).onclick=()=>copy(`BarOS\nЛогин: ${r.login}\nКлюч: ${r.recovery_key}`)},150);return}
    if(join){data.positions=selected(form);if(!data.positions.length)throw new Error('Выберите должность');await api('/auth/join','POST',data)}else await api(setup?'/auth/setup':'/auth/login','POST',data);
-   await reloadMe();go('/app');
+   state.org='';await reloadMe();go('/app');
  });
 }

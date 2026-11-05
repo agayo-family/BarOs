@@ -18,11 +18,22 @@ export async function auditMotion({page,base,call,output}){
    await page.locator('.site-mode-switch').scrollIntoViewIfNeeded();
    const capture=async(action,duration=850)=>page.evaluate(async({action,duration})=>{
     const price=document.querySelector('#price-result'),card=document.querySelector('.site-price-card'),gallery=document.querySelector('#plan-carousel');
-    const snap=()=>({t:performance.now(),height:price.getBoundingClientRect().height,card:card.getBoundingClientRect().height,scroll:gallery.scrollLeft,y:scrollY});
+    const snap=()=>({t:performance.now(),height:price.getBoundingClientRect().height,card:card.getBoundingClientRect().height,scroll:gallery.scrollLeft,y:scrollY,
+     layout:['.site-price-intro','#team-size','.site-price-actions','.site-plan-gallery','#questions'].map(selector=>document.querySelector(selector).getBoundingClientRect().top+scrollY),
+     labelOffsets:[...gallery.querySelectorAll('.site-plan-limit')].flatMap(label=>{
+      const rect=label.getBoundingClientRect(), parent=label.closest('[data-plan]').getBoundingClientRect();
+      return [rect.x-parent.x,rect.y-parent.y];
+     })});
     const frames=[snap()];document.querySelector(action).click();const start=performance.now();
     await new Promise(resolve=>{function tick(){frames.push(snap());if(performance.now()-start>=duration)resolve();else requestAnimationFrame(tick)}requestAnimationFrame(tick)});
     return frames;
    },{action,duration});
+   function assertStill(frames,context){
+    for(const field of ['layout','labelOffsets'])for(let i=0;i<frames[0][field].length;i++){
+     const values=frames.map(frame=>frame[field][i]);
+     assert(Math.max(...values)-Math.min(...values)<.6,context+' shifted '+field+'/'+i);
+    }
+   }
    for(const mode of ['self','managed']){
     const frames=await capture(`[data-mode="${mode}"]`),first=frames[0],last=frames.at(-1),direction=Math.sign(last.height-first.height);
     assert(frames.length>8,'Capture intermediate animation frames');
@@ -32,6 +43,7 @@ export async function auditMotion({page,base,call,output}){
     const tail=frames.filter(x=>x.t>last.t-180);
     assert(Math.max(...tail.map(x=>x.height))-Math.min(...tail.map(x=>x.height))<.6,'Price stays at its final height when the effect is removed');
     assert(Math.max(...frames.map(x=>x.y))-Math.min(...frames.map(x=>x.y))<1.1,'Mode change never nudges the page scroll position');
+    assertStill(frames,width+'/'+mode);
     results.push({width,kind:'price-'+mode,frames});
    }
    // Repeated changes retain the actual button nodes and final natural height.
@@ -45,6 +57,16 @@ export async function auditMotion({page,base,call,output}){
    const gallery=await capture('[data-plan-step="1"]',1000);
    for(let i=1;i<gallery.length;i++)assert(gallery[i].scroll>=gallery[i-1].scroll-.8,'Smooth scrolling and CSS snapping never fight each other');
    results.push({width,kind:'plans',frames:gallery});
+   for(const zoom of [1,1.25]){
+    await page.evaluate(zoom=>{document.documentElement.style.zoom=String(zoom)},zoom);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    for(const plan of [200,250,50]){
+     const frames=await capture(`[data-plan="${plan}"]`,350);
+     assertStill(frames,width+'/'+zoom+'/'+plan);
+     results.push({width,zoom,kind:'stable-plan-'+plan,frames});
+    }
+   }
+   await page.evaluate(()=>{document.documentElement.style.zoom='1'});
    await page.locator('.venue-orbit-stage').scrollIntoViewIfNeeded();
    const frames=await page.evaluate(async()=>{
     const root=document.querySelector('.venue-orbit'),card=root.querySelector('[data-orbit-index="1"]'),caption=root.querySelector('.venue-orbit-caption'),labels=[...root.querySelectorAll('[data-orbit-caption]')];

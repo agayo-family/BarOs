@@ -1,5 +1,5 @@
-import {esc,icon} from './core.js?v=2.13.3';
-import {reducedMotion} from './motion.js?v=2.13.3';
+import {esc,icon} from './core.js?v=2.14.0';
+import {reducedMotion} from './motion.js?v=2.14.0';
 
 export function orbitMarkup(items){
  if(!items?.length)return '';

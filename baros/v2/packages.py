@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from ..db import get_db
 from ..models import Course
 from .models import Account, ImportedAssessment, PackageReceipt, WrittenAttempt, Exam, Notice
-from .auth import actor, manager, tenant
+from .auth import check_venue_permission, actor, manager, tenant
 from .domain import POSITIONS, applies, course_settings, dump, iso, log, now, parse, require
 from .schemas import CourseIn
 
@@ -151,6 +151,7 @@ def import_package(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get
     validate_media(db,oid,(p.course or p.assessment).model_dump(mode='json'))
     old=db.scalar(select(PackageReceipt).where(PackageReceipt.organization_id==oid,PackageReceipt.fingerprint==fp))
     from .drafts import selected_sources,record_origin
+    if data.source_ids:check_venue_permission(db,a,oid,'uploads_manage')
     sources=selected_sources(db,oid,data.source_ids)
     if old:return import_info(old,True)
     receipt=PackageReceipt(organization_id=oid,fingerprint=fp)

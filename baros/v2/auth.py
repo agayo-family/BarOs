@@ -6,7 +6,7 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.exc import IntegrityError
 from ..db import get_db
 from ..config import COOKIE_SECURE
-from .models import Account, LoginSession, RateBucket
+from .models import Account, LoginSession, RateBucket, VenueMembership, VenueSettings, GroupMembership, GroupVenue
 from .domain import now, digest, settings, parse, require
 
 SESSION_DAYS = 14
@@ -40,28 +40,83 @@ def owner(account):
     require(account.role == 'owner', 'Только для администратора платформы', 403)
 
 
-def tenant(request, db, account, capability=None, write=False, learning=False):
+SENSITIVE_PERMISSIONS = {'shifts_manage', 'uploads_manage', 'exports_access', 'ai_use'}
+
+
+def venue_membership(db, account, oid, lock=False):
+    query = select(VenueMembership).where(VenueMembership.account_id == account.id,
+                                          VenueMembership.organization_id == oid)
+    row = db.scalar(query.with_for_update(read=True) if lock else query)
+    if row is None:
+        require(oid == account.organization_id, 'Нет доступа к этому заведению', 403)
+    else:
+        require(row.active, 'Нет доступа к этому заведению', 403)
+        if row.group_id is not None:
+            link = db.get(GroupVenue, oid)
+            require(link and link.group_id == row.group_id and
+                    db.get(GroupMembership, (row.group_id, account.id)),
+                    'Нет доступа к этому заведению', 403)
+    return row
+
+
+def selected_venue(request, db, account, lock=False, media_venue=None):
+    raw = request.headers.get('x-organization-id')
+    if raw is None and account.role == 'manager' and media_venue is not None:
+        raw = str(media_venue)
+    if raw is not None:
+        valid = raw.isascii() and raw.isdecimal() and len(raw) <= 10
+        require(valid and 0 < int(raw) <= 2147483647 and raw == str(int(raw)),
+                'Нет доступа к этому заведению', 400 if account.role == 'owner' else 403)
+        oid = int(raw)
+    else:
+        oid = account.organization_id
+    require(oid, 'Сначала выберите заведение', 400 if account.role == 'owner' else 403)
     if account.role == 'owner':
-        raw = request.headers.get('x-organization-id', '')
-        try: org_id = int(raw)
-        except ValueError: raise HTTPException(400, 'Сначала выберите заведение')
-        s = db.get(__import__('baros.v2.models', fromlist=['VenueSettings']).VenueSettings, org_id)
-        require(s, 'Заведение не найдено', 404)
-        return org_id
-    org_id = account.organization_id
-    require(org_id, 'Аккаунт не привязан к заведению', 403)
-    if request.headers.get('x-organization-id'):
-        require(request.headers['x-organization-id'] == str(org_id), 'Нет доступа к этому заведению', 403)
-    s = settings(db, org_id)
-    perms = parse(s.permissions_json)
-    require(s.status not in {'suspended', 'archived'}, 'Доступ к заведению приостановлен. Обратитесь в поддержку.', 403)
-    require(perms.get('employee_access' if learning else 'manager_access', True), 'Доступ временно ограничен. Обратитесь в поддержку.', 403)
+        require(db.get(VenueSettings, oid), 'Заведение не найдено', 404)
+        return oid, None
+    if account.role == 'manager':
+        return oid, venue_membership(db, account, oid, lock)
+    require(oid == account.organization_id, 'Нет доступа к этому заведению', 403)
+    return oid, None
+
+
+def venue_permissions(db, account, oid, keys, membership=None):
+    if account.role == 'owner':
+        return dict.fromkeys(keys, True)
+    if membership is None and account.role == 'manager':
+        membership = venue_membership(db, account, oid)
+    extra = oid != account.organization_id or bool(membership and membership.group_id)
+    point = parse(settings(db, oid).permissions_json)
+    person = parse(account.permissions_json)
+    grant = parse(membership.permissions_json) if membership else {}
+    return {key: bool(point.get(key, True) and person.get(key, True) and
+                      grant.get(key, not extra or key not in SENSITIVE_PERMISSIONS)) for key in keys}
+
+
+def check_venue_permission(db, account, oid, key, membership=None):
+    require(venue_permissions(db, account, oid, [key], membership)[key],
+            'Это действие ограничено. Обратитесь в поддержку.', 403)
+
+
+def tenant(request, db, account, capability=None, write=False, learning=False, media_venue=None):
+    oid, membership = selected_venue(request, db, account, lock=write, media_venue=media_venue)
+    if account.role == 'owner':
+        return oid
+    cfg = settings(db, oid)
+    perms = parse(cfg.permissions_json)
+    require(cfg.status not in {'suspended', 'archived'}, 'Доступ к заведению приостановлен. Обратитесь в поддержку.', 403)
+    require(perms.get('employee_access' if learning else 'manager_access', True),
+            'Доступ временно ограничен. Обратитесь в поддержку.', 403)
     if learning or write:
-        require(s.subscription_status not in {'past_due', 'suspended'} and (not s.paid_until or s.paid_until > now()), 'Подписка закончилась. Обратитесь в поддержку для продления.', 402)
+        require(cfg.subscription_status not in {'past_due', 'suspended'} and
+                (not cfg.paid_until or cfg.paid_until > now()),
+                'Подписка закончилась. Обратитесь в поддержку для продления.', 402)
+    if write and account.role == 'manager':
+        require(cfg.status != 'read_only', 'Заведение доступно только для чтения', 403)
     if capability:
         require(account.role == 'manager', 'Это действие доступно управляющему', 403)
-        require(s.status != 'read_only' and perms.get(capability, True) and parse(account.permissions_json).get(capability, True), 'Это действие ограничено. Обратитесь в поддержку.', 403)
-    return org_id
+        check_venue_permission(db, account, oid, capability, membership)
+    return oid
 
 
 def manager(request, db, account, capability=None, write=False):
