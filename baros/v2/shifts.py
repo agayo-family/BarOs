@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from pydantic import Field, field_validator, model_validator
 from sqlalchemy import select, update, delete
 from ..db import get_db
-from .auth import actor, tenant
+from .auth import check_venue_permission, actor, tenant
 from .domain import require, dump, parse, now, iso, log, add_notice
 from .models import Account, ShiftEntry, ShiftTemplate, ShiftPreference, VenueSettings
 from .schemas import StrictModel
@@ -99,8 +99,7 @@ def scope(request, db, a, write=False):
     oid = tenant(request, db, a, 'shifts_manage' if a.role == 'manager' and write else None,
                  write=write, learning=a.role == 'employee')
     if a.role == 'manager':
-        require(parse(db.get(VenueSettings, oid).permissions_json).get('shifts_manage', True) and
-                parse(a.permissions_json).get('shifts_manage', True), 'Доступ к графику ограничен владельцем BarOS', 403)
+        check_venue_permission(db, a, oid, 'shifts_manage')
     if write:
         require(a.role == 'owner' or db.get(VenueSettings, oid).status != 'read_only', 'Заведение доступно только для чтения', 403)
     return oid

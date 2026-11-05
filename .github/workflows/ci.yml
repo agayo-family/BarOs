@@ -79,6 +79,7 @@ jobs:
           BAROS_AI_ENABLED=1 python -m unittest discover -s tests -p 'test_release_readiness.py' -v
           python -m unittest discover -s tests -p 'test_review_workspace.py' -v
           python -m unittest discover -s tests -p 'test_analytics.py' -v
+          python -m unittest discover -s tests -p 'test_workspaces.py' -v
           python -m unittest discover -s tests -p 'test_support.py' -v
           python -m unittest discover -s tests -p 'test_public_home.py' -v
           python -m unittest discover -s tests -p 'test_pilot_media_legal.py' -v
@@ -126,6 +127,7 @@ jobs:
             test-results/browser/result.json
             test-results/browser/progress.json
             test-results/browser/server.log
+            test-results/browser/*-network-*.png
             test-results/browser/manager-reports*.png
             test-results/browser/manager-drafts-*.png
             test-results/browser/*-support*.png

@@ -1,8 +1,8 @@
-import {$,$$,state,api,icon,esc,toast,pageCleanup} from './core.js?v=2.13.3';
-import {orbitMarkup,mountOrbit} from './orbit.js?v=2.13.3';
-import {showSalesContact} from './sales.js?v=2.13.3';
-import {resizeArrive,revealSections,smoothBehavior} from './motion.js?v=2.13.3';
-import {themeButton,syncThemeControls} from './experience.js?v=2.13.3';
+import {$,$$,state,api,icon,esc,toast,pageCleanup} from './core.js?v=2.14.0';
+import {orbitMarkup,mountOrbit} from './orbit.js?v=2.14.0';
+import {showSalesContact} from './sales.js?v=2.14.0';
+import {fadeChange,reserveHeight,revealSections,smoothBehavior} from './motion.js?v=2.14.0';
+import {themeButton,syncThemeControls} from './experience.js?v=2.14.0';
 
 const numberFormat=new Intl.NumberFormat('ru-RU');
 const rub=value=>numberFormat.format(value);
@@ -34,38 +34,68 @@ export async function landingPage(ticket=state.renderTicket){
  <section class="site-section site-container" id="possibilities"><div class="site-section-heading"><div class="site-kicker">ОДИН ПУТЬ ОТ МАТЕРИАЛА ДО РЕЗУЛЬТАТА</div><h2>Знать стандарт.<br><span>Уметь применить на смене.</span></h2><p>Соберите знания заведения в обучение, к которому удобно возвращаться.</p></div><div class="site-features"><article class="site-feature site-feature-large"><div class="site-feature-number">01 / ВАШИ ЗНАНИЯ</div><h3>Меню и стандарты<br>становятся обучением</h3><p>Храните исходные материалы, загружайте курсы и тесты в черновики. Проверяйте содержание, редактируйте и назначайте нужным должностям.</p><div class="site-materials" aria-hidden="true"><span>${icon('file')}Меню заведения</span><span>${icon('book')}Уроки и примеры</span><span>${icon('checkcircle')}Проверено управляющим</span></div></article><article class="site-feature"><div class="site-feature-number">02 / ПРОВЕРКА ЗНАНИЙ</div>${icon('target')}<h3>Ответы показывают понимание</h3><p>Тесты с вариантами и письменные ситуации с гостями. Критерии оценки, обратная связь и история попыток.</p></article><article class="site-feature"><div class="site-feature-number">03 / ЗАКРЕПЛЕНИЕ</div>${icon('cards')}<h3>Повторение, к которому возвращаются</h3><p>Карточки и учебные игры помогают ещё раз пройти составы, стандарты и сложные вопросы.</p></article></div></section>
  <section class="site-insight-wrap"><div class="site-container site-insight"><div><div class="site-kicker">УПРАВЛЕНИЕ ОБУЧЕНИЕМ</div><h2>Видеть, кому нужна помощь.<br><span>И с какой темой.</span></h2><p>От общего отчёта по команде до конкретного ответа сотрудника. Смотрите завершённые курсы, результаты попыток, сложные вопросы и письменные работы.</p><ul class="site-checks">${check('Назначения и результаты по должностям')}${check('Темы, к которым стоит вернуться')}${check('Динамика обучения и выгрузка отчётов')}</ul></div><div class="site-example"><span class="site-demo-label">Пример разбора темы</span><h3>Что обсудить перед сменой</h3><div class="site-topic"><span>Состав и аллергены</span><b>Повторить</b></div><p>Разберите сложные ответы, уточните стандарт и назначьте повторение нужным сотрудникам.</p><div class="site-example-path"><span>${icon('chart')}Найти пробел</span><span>${icon('book')}Повторить</span><span>${icon('check')}Проверить</span></div></div></div></section>
  <section class="site-section site-container" id="how"><div class="site-section-heading"><div class="site-kicker">НАЧНИТЕ С ОДНОЙ ЗАДАЧИ</div><h2>От вашего меню<br><span>к знаниям команды.</span></h2></div><ol class="site-steps"><li><span>01</span><h3>Выберите тему</h3><p>Меню для официантов, классика для барменов или стандарты работы для новой команды.</p></li><li><span>02</span><h3>Проверьте обучение</h3><p>Подготовьте уроки и вопросы, утвердите формулировки и критерии письменных ответов.</p></li><li><span>03</span><h3>Пригласите сотрудников</h3><p>Назначьте обучение по должностям. Сотрудники проходят его со своего телефона.</p></li><li><span>04</span><h3>Разберите результат</h3><p>Проверьте письменные работы, посмотрите отчёт и определите темы для повторения.</p></li></ol></section>
- <section class="site-pricing-wrap" id="pricing"><div class="site-container"><div class="site-pricing"><div class="site-price-intro"><div class="site-kicker">ДВА СПОСОБА НАЧАТЬ</div><h2>Ваша академия.<br><span>В удобном для вас ритме.</span></h2><p>Соберите обучение своими силами или поручите подготовку команде BarOS. Учебные инструменты доступны в обоих вариантах.</p><ul class="site-checks">${check('Уроки, тесты и карточки с фотографиями')}${check('Письменные ответы и аналитика команды')}${check('График смен, часы и расчёт заработка')}${check('Раздельный кабинет вашего заведения')}</ul><p class="site-price-terms">Одна подписка — одно заведение. Оплата по счёту напрямую исполнителю, без автоматических списаний.</p></div><div class="site-price-card"><div class="site-mode-switch" role="group" aria-label="Способ подготовки обучения"><button type="button" data-mode="self">Самостоятельно</button><button type="button" data-mode="managed">С подготовкой</button></div><p id="mode-description" class="site-mode-description"></p><label class="site-count-label" for="team-size">Сколько сотрудников в вашей команде?</label><div class="site-team-input"><input id="team-size" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${employees}" aria-describedby="team-size-help"><span>сотрудников</span></div><input class="site-team-range" id="team-range" type="range" min="1" max="300" step="1" value="${Math.min(employees,300)}" aria-label="Число сотрудников"><div class="site-tier-buttons" role="group" aria-label="Быстрый выбор размера команды">${[50,100,200,250].map(n=>`<button type="button" data-team="${n}">${n===250?'Больше 200':'До '+n}</button>`).join('')}</div><p id="team-size-help" class="site-help">Считаются активные аккаунты сотрудников одного заведения.</p><div id="price-result" role="status" aria-live="polite" aria-atomic="true"></div><div class="site-price-actions"><button type="button" class="btn primary full" data-quote>Скачать расчёт в Word ${icon('download')}</button>${contact}</div><p class="site-price-note">Подготовка указана «от». Темы, объём материалов, обновления и сроки согласуются до оплаты.</p></div></div><div class="site-plan-gallery"><div class="site-plan-heading"><div><span class="site-kicker">ВЫБЕРИТЕ СВОЙ МАСШТАБ</span><h3>Все тарифы перед вами</h3></div><div class="site-plan-arrows"><button type="button" class="btn icon-only soft" data-plan-step="-1" aria-label="Предыдущий тариф">${icon('back')}</button><button type="button" class="btn icon-only soft" data-plan-step="1" aria-label="Следующий тариф">${icon('arrow')}</button></div></div><div id="plan-carousel" class="site-plan-carousel" tabindex="0" role="region" aria-label="Тарифы. Пролистывайте в сторону или используйте стрелки."></div><p class="site-help">Листайте тарифы в сторону. Нажмите карточку, чтобы увидеть подробный расчёт.</p></div></div></section>
+ <section class="site-pricing-wrap" id="pricing"><div class="site-container"><div class="site-pricing"><div class="site-price-intro"><div class="site-kicker">ДВА СПОСОБА НАЧАТЬ</div><h2>Ваша академия.<br><span>В удобном для вас ритме.</span></h2><p>Соберите обучение своими силами или поручите подготовку команде BarOS. Учебные инструменты доступны в обоих вариантах.</p><ul class="site-checks">${check('Уроки, тесты и карточки с фотографиями')}${check('Письменные ответы и аналитика команды')}${check('График смен, часы и расчёт заработка')}${check('Раздельный кабинет вашего заведения')}</ul><p class="site-price-terms">Одна подписка — одно заведение. Оплата по счёту напрямую исполнителю, без автоматических списаний.</p></div><div class="site-price-card"><div class="site-mode-switch" role="group" aria-label="Способ подготовки обучения"><button type="button" data-mode="self">Самостоятельно</button><button type="button" data-mode="managed">С подготовкой</button></div><p id="mode-description" class="site-mode-description"></p><label class="site-count-label" for="team-size">Сколько сотрудников в вашей команде?</label><div class="site-team-input"><input id="team-size" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${employees}" aria-describedby="team-size-help"><span>сотрудников</span></div><input class="site-team-range" id="team-range" type="range" min="1" max="300" step="1" value="${Math.min(employees,300)}" aria-label="Число сотрудников"><div class="site-tier-buttons" role="group" aria-label="Быстрый выбор размера команды">${[50,100,200,250].map(n=>`<button type="button" data-team="${n}">${n===250?'Больше 200':'До '+n}</button>`).join('')}</div><p id="team-size-help" class="site-help">Считаются активные аккаунты сотрудников одного заведения.</p><div id="price-result" class="site-price-result" role="status" aria-live="polite" aria-atomic="true"></div><div class="site-price-actions"><button type="button" class="btn primary full" data-quote>Скачать расчёт в Word ${icon('download')}</button>${contact}</div><p class="site-price-note">Подготовка указана «от». Темы, объём материалов, обновления и сроки согласуются до оплаты.</p></div></div><div class="site-plan-gallery"><div class="site-plan-heading"><div><span class="site-kicker">ВЫБЕРИТЕ СВОЙ МАСШТАБ</span><h3>Все тарифы перед вами</h3></div><div class="site-plan-arrows"><button type="button" class="btn icon-only soft" data-plan-step="-1" aria-label="Предыдущий тариф">${icon('back')}</button><button type="button" class="btn icon-only soft" data-plan-step="1" aria-label="Следующий тариф">${icon('arrow')}</button></div></div><div id="plan-carousel" class="site-plan-carousel" tabindex="0" role="region" aria-label="Тарифы. Пролистывайте в сторону или используйте стрелки."></div><p class="site-help">Листайте тарифы в сторону. Нажмите карточку, чтобы увидеть подробный расчёт.</p></div></div></section>
  <section class="site-section site-container site-faq" id="questions"><div class="site-section-heading"><div class="site-kicker">ПЕРЕД ПЕРВОЙ СМЕНОЙ</div><h2>Частые вопросы</h2><p>О подключении, обучении и работе команды.</p></div><div>${faq.map(([q,a])=>`<details><summary>${q}<span aria-hidden="true">+</span></summary><p>${a}</p></details>`).join('')}</div></section>
  <section class="site-container site-final" id="start"><div><div class="site-kicker">СЛЕДУЮЩИЙ ШАГ</div><h2>Начните с темы,<br>которая нужна на ближайшей смене.</h2><p>Выберите размер команды и сохраните расчёт для обсуждения подключения.</p></div><div><a class="btn primary" href="#pricing">Выбрать тариф ${icon('arrow')}</a>${contact}<a class="site-text-link" href="${authed?'/app':'/login'}">${authed?'Вернуться в кабинет':'Уже с командой? Войти'}</a></div></section></main><footer class="site-footer site-container">${logo(sitePath)}<span>Знания вашего заведения.<br>Уверенность вашей команды.</span><nav aria-label="Дополнительные ссылки"><a href="#pricing">Стоимость</a><a href="#questions">Вопросы</a><a href="/join">Я новый сотрудник</a><a href="/legal/privacy">Документы и реквизиты</a></nav></footer></div>`;
  const input=$('#team-size'),range=$('#team-range'),price=$('#price-result'),gallery=$('#plan-carousel');
  let valid=true,galleryGesture=false,downloading=false,priceAnimation=null;
  const downloadAbort=new AbortController();
+ const description=$('#mode-description');
+ const descriptions={
+  self:'Вы загружаете материалы, собираете черновики и проверяете обучение перед публикацией.',
+  managed:'Команда BarOS готовит обучение по вашим материалам, согласует содержание и сопровождает обновления в рамках договора.'
+ };
+ function priceMarkup(n,selectedMode){
+  const tier=pricing.modes[selectedMode].tiers.find(t=>n<=t.employees);
+  return tier?`<span class="site-price-tier">${esc(pricing.modes[selectedMode].title)} · до ${tier.employees} сотрудников</span><div class="site-price-value">${rub(tier.monthly)} <span>₽ / месяц</span></div>${tier.preparation?`<div class="site-setup-price"><span>Подготовка обучения</span><strong>от ${rub(tier.preparation)} ₽ <small>разово</small></strong></div><p class="site-first-month">Первый месяц с подготовкой: от ${rub(tier.monthly+tier.preparation)} ₽</p>`:'<p class="site-first-month">Без разовой платы за подготовку</p>'}<p class="site-per-person">≈ ${rub(Math.round(tier.monthly/n))} ₽ на сотрудника в месяц при команде из ${n}</p>`:'<span class="site-price-tier">Команда больше 200 сотрудников</span><div class="site-price-value site-custom-price">Индивидуально</div><p class="site-per-person">Подберём условия по составу команды и числу заведений.</p>';
+ }
+ const variants=Object.keys(descriptions).flatMap(selectedMode=>{
+  const tiers=pricing.modes[selectedMode].tiers;
+  return tiers.flatMap((tier,i)=>[priceMarkup(i?tiers[i-1].employees+1:1,selectedMode),priceMarkup(tier.employees,selectedMode)]);
+ }).concat(priceMarkup(10000,'managed'));
+ function reservePricingSpace(){
+  reserveHeight(price,variants);
+  reserveHeight(description,Object.values(descriptions).map(esc));
+ }
  function scrollPlan(limit){
   const slide=$(`[data-plan="${limit}"]`,gallery);if(!slide)return;
   const padding=parseFloat(window.getComputedStyle(gallery).paddingLeft)||0;
-  const left=gallery.scrollLeft+slide.getBoundingClientRect().left-gallery.getBoundingClientRect().left-padding;
+  const track=gallery.getBoundingClientRect(),card=slide.getBoundingClientRect();
+  if(card.left>=track.left+padding-.5&&card.right<=track.right-padding+.5)return;
+  const left=gallery.scrollLeft+card.left-track.left-padding;
   gallery.scrollTo?.({left:Math.max(0,left),behavior:smoothBehavior()});
  }
  function update(value,writeUrl=true){
-  const previousPriceHeight=price.getBoundingClientRect().height;
   priceAnimation?.cancel();priceAnimation=null;
   const n=Number(value);valid=String(value).trim()!==''&&Number.isInteger(n)&&n>=1&&n<=10000;
   input.setAttribute('aria-invalid',String(!valid));$('[data-quote]').disabled=!valid||downloading;
-  if(!valid){price.innerHTML='<p class="site-price-error">Укажите целое число от 1 до 10 000.</p>';if(writeUrl)priceAnimation=resizeArrive(price,previousPriceHeight);return}
+  if(!valid){price.innerHTML='<p class="site-price-error">Укажите целое число от 1 до 10 000.</p>';if(writeUrl)priceAnimation=fadeChange(price);return}
   employees=n;input.value=String(n);range.value=String(Math.min(n,300));range.setAttribute('aria-valuetext',n+' сотрудников');
   const tiers=pricing.modes[mode].tiers,tier=tiers.find(t=>n<=t.employees);
   const selected=tiers.findIndex(t=>n<=t.employees),selectedIndex=selected<0?3:selected;
   $$('[data-team]').forEach(b=>b.setAttribute('aria-pressed',String(tier?Number(b.dataset.team)===tier.employees:Number(b.dataset.team)===250)));
   $$('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
-  $('#mode-description').textContent=mode==='self'?'Вы загружаете материалы, собираете черновики и проверяете обучение перед публикацией.':'Команда BarOS готовит обучение по вашим материалам, согласует содержание и сопровождает обновления в рамках договора.';
-  $('#price-result').innerHTML=tier?`<span class="site-price-tier">${esc(pricing.modes[mode].title)} · до ${tier.employees} сотрудников</span><div class="site-price-value">${rub(tier.monthly)} <span>₽ / месяц</span></div>${tier.preparation?`<div class="site-setup-price"><span>Подготовка обучения</span><strong>от ${rub(tier.preparation)} ₽ <small>разово</small></strong></div><p class="site-first-month">Первый месяц с подготовкой: от ${rub(tier.monthly+tier.preparation)} ₽</p>`:'<p class="site-first-month">Без разовой платы за подготовку</p>'}<p class="site-per-person">≈ ${rub(Math.round(tier.monthly/n))} ₽ на сотрудника в месяц при команде из ${n}</p>`:'<span class="site-price-tier">Команда больше 200 сотрудников</span><div class="site-price-value site-custom-price">Индивидуально</div><p class="site-per-person">Подберём условия по составу команды и числу заведений.</p>';
+  if(description.textContent!==descriptions[mode])description.textContent=descriptions[mode];
+  price.innerHTML=priceMarkup(n,mode);
   [...tiers,{employees:250,monthly:null,preparation:null}].forEach((t,i)=>{
    let button=$(`[data-plan="${t.employees}"]`,gallery);
-   if(!button){button=document.createElement('button');button.type='button';button.dataset.plan=String(t.employees);button.onclick=()=>{galleryGesture=false;update(button.dataset.plan);button.focus({preventScroll:true});scrollPlan(button.dataset.plan)};gallery.append(button)}
+   if(!button){button=document.createElement('button');button.type='button';button.dataset.plan=String(t.employees);button.innerHTML='<span class="site-plan-limit"></span><strong><span data-plan-price></span><small></small></strong><span data-plan-setup></span><span class="site-plan-choose"><span data-plan-label></span><span data-plan-icon aria-hidden="true"></span></span>';button.onclick=()=>{galleryGesture=false;update(button.dataset.plan);button.focus({preventScroll:true});scrollPlan(button.dataset.plan)};gallery.append(button)}
    button.className='site-plan-slide'+(i===selectedIndex?' selected':'');button.setAttribute('aria-pressed',String(i===selectedIndex));
-   button.innerHTML=`<span class="site-plan-limit">${i===3?'Больше 200':'До '+t.employees} сотрудников</span><strong>${t.monthly?rub(t.monthly)+' ₽':'Обсудим'}<small>${t.monthly?'в месяц':'индивидуально'}</small></strong><span>${t.preparation?'Подготовка от '+rub(t.preparation)+' ₽':i===3?'Для большой команды и сети':'Без платы за подготовку'}</span><span class="site-plan-choose">${i===selectedIndex?'Выбрано':'Выбрать тариф'} ${icon(i===selectedIndex?'check':'arrow')}</span>`;
+   const texts={
+    '.site-plan-limit':(i===3?'Больше 200':'До '+t.employees)+' сотрудников',
+    '[data-plan-price]':t.monthly?rub(t.monthly)+' ₽':'Обсудим',
+    'strong>small':t.monthly?'в месяц':'индивидуально',
+    '[data-plan-setup]':t.preparation?'Подготовка от '+rub(t.preparation)+' ₽':i===3?'Для большой команды и сети':'Без платы за подготовку',
+    '[data-plan-label]':i===selectedIndex?'Выбрано':'Выбрать тариф'
+   };
+   for(const [selector,text] of Object.entries(texts)){
+    const node=$(selector,button);
+    if(node.textContent!==text)node.textContent=text;
+   }
+   const symbol=i===selectedIndex?'check':'arrow',slot=$('[data-plan-icon]',button);
+   if(slot.dataset.symbol!==symbol){slot.innerHTML=icon(symbol);slot.dataset.symbol=symbol}
   });
-  if(writeUrl)priceAnimation=resizeArrive(price,previousPriceHeight);
+  if(writeUrl)priceAnimation=fadeChange(price);
   if(writeUrl){const url=new URL(location.href);url.searchParams.set('employees',String(n));url.searchParams.set('mode',mode);history.replaceState({},'',url.pathname+url.search+url.hash)}
  }
  input.addEventListener('input',()=>update(input.value));range.addEventListener('input',()=>update(range.value));$$('[data-team]').forEach(b=>b.onclick=()=>update(b.dataset.team));
@@ -89,8 +119,16 @@ export async function landingPage(ticket=state.renderTicket){
  gallery.addEventListener('pointerdown',()=>{galleryGesture=true});
  gallery.addEventListener('wheel',()=>{galleryGesture=true},{passive:true});
  gallery.addEventListener('scrollend',()=>{if(!galleryGesture)return;galleryGesture=false;const left=gallery.getBoundingClientRect().left,slides=[...gallery.querySelectorAll('[data-plan]')],nearest=slides.sort((a,b)=>Math.abs(a.getBoundingClientRect().left-left)-Math.abs(b.getBoundingClientRect().left-left))[0];if(nearest&&Number(nearest.dataset.plan)!==planLimits[selectedPlan()])update(nearest.dataset.plan)});
- update(employees,false);syncThemeControls();
- const stopMotion=revealSections($('.site-page')),stopOrbit=mountOrbit($('.site-page'),showcase.items);pageCleanup(()=>{stopMotion();stopOrbit();priceAnimation?.cancel();downloadAbort.abort()},ticket);
+ update(employees,false);reservePricingSpace();syncThemeControls();
+ let measuredWidth=price.getBoundingClientRect().width;
+ const observer=window.ResizeObserver?new window.ResizeObserver(()=>{
+  const width=price.getBoundingClientRect().width;
+  if(Math.abs(width-measuredWidth)>.5){measuredWidth=width;reservePricingSpace()}
+ }):null;
+ observer?.observe(price);
+ window.addEventListener('resize',reservePricingSpace);
+ document.fonts?.addEventListener?.('loadingdone',reservePricingSpace);
+ const stopMotion=revealSections($('.site-page')),stopOrbit=mountOrbit($('.site-page'),showcase.items);pageCleanup(()=>{stopMotion();stopOrbit();priceAnimation?.cancel();observer?.disconnect();window.removeEventListener('resize',reservePricingSpace);document.fonts?.removeEventListener?.('loadingdone',reservePricingSpace);downloadAbort.abort()},ticket);
  document.title='BarOS — обучение команды ресторана, бара и кафе';
  const main=$('#site-main');main.tabIndex=-1;main.focus({preventScroll:true});
  if(location.hash){const el=document.getElementById(location.hash.slice(1));el?.scrollIntoView()}else window.scrollTo({top:0,behavior:'instant'});

@@ -18,9 +18,11 @@ from ..models import Organization, Employee, Course, User
 from ..security import hash_password, verify_password
 from .models import *
 from .domain import *
-from .auth import actor, owner, manager, tenant, rate, ip, make_session, COOKIE
+from .auth import actor, owner, manager, tenant, rate, ip, make_session, COOKIE, check_venue_permission, venue_permissions
 from .schemas import *
 from . import ai
+
+from .workspaces import manager_workspaces, migrate_memberships, router as workspaces_router
 
 STATIC = Path(__file__).resolve().parent.parent/'static'/'v2'
 
@@ -33,6 +35,7 @@ async def lifespan(app):
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         migrate(db)
+        migrate_memberships(db)
         for key in ['ai_quota_lock','maintenance_lock','auth_setup_lock','standard_catalog','standard_catalog_draft','public_pricing','legal_information','public_showcase']:
             if not db.get(Setting,key): db.add(Setting(key=key,value=''))
         db.commit()
@@ -48,7 +51,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.13.3', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.14.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -97,13 +100,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.13.3'}
+    return {'status':'ok','service':'baros','version':'2.14.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.13.3'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.14.0'}
 
 
 @app.post('/api/auth/setup')
@@ -205,6 +208,7 @@ def accept_invite(token:str,data:InviteIn,request:Request,db=Depends(get_db)):
     else:
         a=Account(organization_id=inv.organization_id,name=data.name,login='manager-'+secrets.token_hex(5),role='manager',password_hash=hash_password(secret))
         db.add(a);db.flush()
+        db.add(VenueMembership(account_id=a.id, organization_id=inv.organization_id))
         db.get(Organization,inv.organization_id).name=data.organization
     inv.used_at=now()
     log(db,a,inv.organization_id,'Приглашение принято',kind=inv.kind)
@@ -241,7 +245,11 @@ def me(request:Request,a=Depends(actor),db=Depends(get_db)):
     if a.role=='employee': ensure_enrollments(db,a);db.commit()
     org=db.get(Organization,a.organization_id) if a.organization_id else None
     unread=db.scalar(select(func.count(Notice.id)).where(Notice.account_id==a.id,Notice.read==False)) or 0
+    workspaces = manager_workspaces(db, a) if a.role == 'manager' else None
+    if workspaces is not None and not any(v['id'] == a.organization_id and v['available'] for v in workspaces['venues']):
+        org = None
     return {'account':account_data(a),'venue':venue_data(db,org) if org else None,'csrf':request.state.csrf,
+            **({'workspaces': workspaces} if workspaces is not None else {}),
             'positions':POSITIONS,'permissions':{k:v for k,v in PERMISSIONS.items() if not k.startswith('ai') or os.getenv('BAROS_AI_ENABLED','0')=='1'},'question_types':QTYPES,'unread':unread,'ai':ai.status() if a.role!='employee' else None}
 
 
@@ -287,7 +295,7 @@ def edit_venue(org_id:int,data:VenueUpdate,a=Depends(actor),db=Depends(get_db)):
     s=settings(db,org_id);org.name=data.name
     for key in ['status','plan','subscription_status','seat_limit','storage_limit_mb','ai_daily_limit','note']: setattr(s,key,getattr(data,key))
     s.paid_until=naive_utc(data.paid_until) if data.paid_until else None
-    require(set(data.permissions)<=set(PERMISSIONS)|{'employee_access','manager_access'},'Неизвестное разрешение')
+    require(set(data.permissions)<=set(PERMISSIONS)|{'employee_access','manager_access','exports_access'},'Неизвестное разрешение')
     s.permissions_json=dump(data.permissions)
     log(db,a,org_id,'Изменены доступ и подписка',status=s.status,plan=s.plan,paid_until=iso(s.paid_until))
     db.commit();return venue_data(db,org)
@@ -311,7 +319,12 @@ def rotate_code(request:Request,a=Depends(actor),db=Depends(get_db)):
 @app.get('/api/venue')
 def venue(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
-    return venue_data(db,db.get(Organization,oid))
+    result = venue_data(db, db.get(Organization, oid))
+    if a.role == 'manager':
+        result['permissions'] = venue_permissions(db, a, oid, set(PERMISSIONS) | {'exports_access'})
+        if a.organization_id != oid:
+            result.pop('note', None)
+    return result
 
 
 @app.get('/api/staff')
@@ -404,6 +417,7 @@ def notice_read(a=Depends(actor),db=Depends(get_db)):
 def export(request:Request,a=Depends(actor),db=Depends(get_db)):
     import csv,io
     oid=manager(request,db,a)
+    check_venue_permission(db,a,oid,'exports_access')
     out=io.StringIO();writer=csv.writer(out,delimiter=';')
     writer.writerow(['Сотрудник','Логин','Должности','Назначено','Пройдено тестов','Успешных курсов','Попыток','Средний балл','Среднее время (сек)','Просрочено','Назначений обучения','Завершено обучения','Готовность, %','Письменных тестов назначено','Письменных тестов проверено','Письменных тестов на проверке'])
     employees=db.scalars(select(Account).where(Account.organization_id==oid,Account.role=='employee')).all()
@@ -429,6 +443,7 @@ from .mentor import router as mentor_router
 from .packages import router as packages_router
 from .analytics import router as analytics_router
 app.include_router(analytics_router)
+app.include_router(workspaces_router)
 from .reports import router as reports_router
 from .catalog import router as catalog_router
 app.include_router(catalog_router)

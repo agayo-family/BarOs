@@ -1,6 +1,6 @@
-const CACHE = 'baros-v2-20261102-6';
+const CACHE = 'baros-v2-20261105-1';
 const RECONNECT = '/static/v2/reconnect.js?v=2.13.2';
-const ASSETS = ['/static/v2/landing.css?v=2.13.3','/static/v2/audit.css?v=2.13.3','/static/v2/shell.js?v=2.13.3','/static/v2/growth.css?v=2.13.3','/static/v2/style.css?v=2.13.3','/static/v2/app.js?v=2.13.3','/static/v2/experience.css?v=2.13.3','/static/v2/shifts.css?v=2.13.3','/static/v2/games.css?v=2.13.3','/static/v2/theme-init.js?v=2.13.3','/static/v2/icon-192.png',RECONNECT];
+const ASSETS = ['/static/v2/landing.css?v=2.14.0','/static/v2/audit.css?v=2.14.0','/static/v2/shell.js?v=2.14.0','/static/v2/growth.css?v=2.14.0','/static/v2/style.css?v=2.14.0','/static/v2/app.js?v=2.14.0','/static/v2/experience.css?v=2.14.0','/static/v2/shifts.css?v=2.14.0','/static/v2/games.css?v=2.14.0','/static/v2/theme-init.js?v=2.14.0','/static/v2/icon-192.png',RECONNECT];
 
 function recoveryPage(){
   return new Response(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="referrer" content="no-referrer"><title>BarOS — подключение</title><script src="${RECONNECT}" defer></script><noscript><meta http-equiv="refresh" content="30"></noscript><style>

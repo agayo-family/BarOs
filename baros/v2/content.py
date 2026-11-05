@@ -13,7 +13,7 @@ from ..db import get_db
 from ..models import Organization, Course, Lesson, Question
 from .models import *
 from .domain import *
-from .auth import actor, manager
+from .auth import check_venue_permission, actor, manager
 from .schemas import *
 from .extraction import extract, validate_file, MIMES
 from . import ai
@@ -54,7 +54,11 @@ def courses(request:Request,a=Depends(actor),db=Depends(get_db)):
 @router.get('/api/courses/{cid}')
 def course(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a);c=get_course(db,oid,cid)
-    return {**payload(db,c),**{k:v for k,v in course_card(db,c).items() if k not in {'lessons','questions'}},'source_ids':parse(course_settings(db,c).source_ids_json,[])}
+    from .models import GroupDistribution, GroupStandard
+    standard = db.execute(select(GroupStandard.title, GroupStandard.version).join(
+        GroupDistribution, GroupDistribution.standard_id == GroupStandard.id
+    ).where(GroupDistribution.course_id == cid)).first()
+    return {**({'group_standard': {'title': standard.title, 'version': standard.version}} if standard else {}), **payload(db,c),**{k:v for k,v in course_card(db,c).items() if k not in {'lessons','questions'}},'source_ids':parse(course_settings(db,c).source_ids_json,[])}
 
 
 def save_course(db,c,data):
@@ -192,7 +196,7 @@ def source_card(s,characters=None,original=None):
 
 @router.get('/api/sources')
 def sources(request:Request,a=Depends(actor),db=Depends(get_db)):
-    oid=manager(request,db,a)
+    oid=manager(request,db,a);check_venue_permission(db,a,oid,'uploads_manage')
     rows=db.execute(select(SourceFile,func.length(SourceFile.text),SourceFile.content.is_not(None))
         .options(defer(SourceFile.text),defer(SourceFile.content))
         .where(SourceFile.organization_id==oid).order_by(SourceFile.id.desc())).all()
@@ -228,13 +232,13 @@ def get_source(db,oid,sid):
 
 @router.get('/api/sources/{sid}')
 def source(sid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
-    oid=manager(request,db,a);s=get_source(db,oid,sid);return {**source_card(s),'text':s.text}
+    oid=manager(request,db,a);check_venue_permission(db,a,oid,'uploads_manage');s=get_source(db,oid,sid);return {**source_card(s),'text':s.text}
 
 
 @router.get('/api/sources/{sid}/download')
 def download(sid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     from urllib.parse import quote
-    oid=manager(request,db,a);s=get_source(db,oid,sid);require(s.content is not None,'Оригинал старого файла не сохранился',404)
+    oid=manager(request,db,a);check_venue_permission(db,a,oid,'uploads_manage');s=get_source(db,oid,sid);require(s.content is not None,'Оригинал старого файла не сохранился',404)
     return Response(s.content,media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(s.name)})
 
 
@@ -279,7 +283,7 @@ def jobs(request:Request,a=Depends(actor),db=Depends(get_db)):
 @router.post('/api/jobs')
 def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     require(os.getenv('BAROS_AI_ENABLED','0')=='1','Создайте курс вручную или загрузите готовый файл обучения.',409)
-    oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True)
+    oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True);check_venue_permission(db,a,oid,'uploads_manage')
     try: configured=ai.provider()
     except ValueError as error: require(False,str(error),503)
     require(configured,'Сейчас не удалось создать обучение. Создайте курс вручную или загрузите файл.',503)
@@ -313,7 +317,7 @@ def generate(data:GenerateIn,request:Request,a=Depends(actor),db=Depends(get_db)
 
 @router.post('/api/jobs/{jid}/retry')
 def retry(jid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
-    oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True)
+    oid=manager(request,db,a,'ai_use',True);manager(request,db,a,'courses_manage',True);check_venue_permission(db,a,oid,'uploads_manage')
     j=db.get(Job,jid);require(j and j.organization_id==oid,'Задача не найдена',404)
     require(j.status in {'failed','needs_review'},'Задача уже выполняется или завершена',409)
     if j.course_id:
@@ -331,11 +335,11 @@ def retry(jid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
 def ai_usage(request:Request,a=Depends(actor),db=Depends(get_db)):
     from .ai_budget import overview
     if a.role=='owner':return overview(db)
-    oid=manager(request,db,a);return overview(db,oid)
+    oid=manager(request,db,a);check_venue_permission(db,a,oid,'ai_use');return overview(db,oid)
 
 
 @router.get('/api/ai/spend')
 def ai_spend(request:Request,a=Depends(actor),db=Depends(get_db)):
     from .ai_providers import overview
     if a.role=='owner':return overview(db)
-    return overview(db,manager(request,db,a))
+    oid=manager(request,db,a);check_venue_permission(db,a,oid,'ai_use');return overview(db,oid)

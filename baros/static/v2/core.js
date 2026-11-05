@@ -33,7 +33,7 @@ const icons={
  phone:'<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/>',interview:'<path d="M21 12a9 9 0 0 1-9 9H3l2-5a9 9 0 1 1 16-4Z"/><path d="M8 9h8M8 13h5"/>',
  eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',refresh:'<path d="M20 8a8 8 0 1 0 1 7M20 3v5h-5"/>',lock:'<rect x="4" y="10" width="16" height="12" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3M12 15v3"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M7 14h3M7 17h3"/>'};
 export const icon=(name,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.file}</svg>`;
-export const brand=()=>`<a href="/app" class="brand"><div class="brandmark">B<span>•</span></div>BarOS<small>2.13.3</small></a>`;
+export const brand=()=>`<a href="/app" class="brand"><div class="brandmark">B<span>•</span></div>BarOS<small>2.14.0</small></a>`;
 export const initials=s=>String(s||'?').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
 export const avatar=(s,cls='')=>`<div class="avatar ${cls}">${esc(initials(s))}</div>`;
 export const badge=(s,cls='')=>`<span class="badge ${cls}">${esc(s)}</span>`;
@@ -67,7 +67,7 @@ export async function api(path,method='GET',body){
  try{return await task}finally{if(inFlightReads.get(key)===task)inFlightReads.delete(key)}
 }
 async function request(path,method,body){
- const headers={}; if(state.me?.csrf)headers['x-csrf-token']=state.me.csrf;if(state.org&&state.me?.account?.role==='owner')headers['x-organization-id']=state.org;
+ const headers={}; if(state.me?.csrf)headers['x-csrf-token']=state.me.csrf;if(state.org&&['owner','manager'].includes(state.me?.account?.role))headers['x-organization-id']=state.org;
  if(!(body instanceof FormData))headers['content-type']='application/json';
  const controller=new AbortController(),timeout=path==='/mentor/messages'?110000:body instanceof FormData?120000:25000;
  const timer=setTimeout(()=>controller.abort(),timeout);
@@ -81,7 +81,31 @@ async function request(path,method,body){
 }
 export async function reloadMe(ticket){const me=await api('/me');if(ticket===undefined||ticket===state.renderTicket)state.me=me;return me}
 export function toast(message,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.textContent=message;$('#toast-root').append(el);setTimeout(()=>el.remove(),6000)}
-export function go(path,replace=false,beforeNavigate){if(state.dirty&&!confirm('Есть несохранённые изменения. Покинуть редактор?'))return false;state.dirty=false;beforeNavigate?.();replace?history.replaceState({},'',path):history.pushState({},'',path);window.dispatchEvent(new Event('baros:navigate'));return true;}
+export function venueURL(path, venue=state.org) {
+ const target=new URL(path, location.origin);
+ if(target.origin!==location.origin || !/^\/app(?:\/|$)/.test(target.pathname) || target.pathname==='/app/network')return path;
+ if(venue&&!target.searchParams.has('venue'))target.searchParams.set('venue',venue);
+ return target.pathname+target.search+target.hash;
+}
+export function go(path,replace=false,beforeNavigate){
+ if(state.dirty&&!confirm('Есть несохранённые изменения. Покинуть редактор?'))return false;
+ state.dirty=false;
+ beforeNavigate?.();
+ if(state.me?.account?.role==='manager'){
+  path=venueURL(path);
+  const target=new URL(path,location.origin);
+  const next=target.pathname==='/app/network'?'':target.searchParams.get('venue');
+  if(/^\/app(?:\/|$)/.test(target.pathname)&&next!==null&&next!==state.org){
+   // Pending callbacks remain in the old document when switching venues.
+   state.cleanup?.();
+   if(replace)location.replace(path);else location.assign(path);
+   return true;
+  }
+ }
+ replace?history.replaceState({},'',path):history.pushState({},'',path);
+ window.dispatchEvent(new Event('baros:navigate'));
+ return true;
+}
 const pendingActions=new WeakSet();
 export function on(selector,event,callback,root=document){$$(selector,root).forEach(el=>el.addEventListener(event,async e=>{if(pendingActions.has(el))return;pendingActions.add(el);try{const result=callback(e,el);if(result?.then){el.setAttribute('aria-busy','true');await result}}catch(err){toast(err.message,true)}finally{pendingActions.delete(el);el.removeAttribute('aria-busy')}}))}
 let closeActiveModal=null;
@@ -104,6 +128,6 @@ export async function copy(text){try{await navigator.clipboard.writeText(text);t
 export const absolute=path=>new URL(path,location.origin).href;
 export function showLink(title,url,detail='Ссылка одноразовая. Передайте её получателю лично.'){const m=modal(title,`<p class="lead">${esc(detail)}</p><div class="secret-box">${esc(absolute(url))}</div><div class="modal-actions">${btn('Скопировать ссылку','copy','primary','data-copy')}</div>`);$('[data-copy]',m.root).onclick=()=>copy(absolute(url));}
 export function setOrg(id){const value=id?String(id):'';if(state.org!==value){state.venue=null;state.venueLoadedAt=0}state.org=value;if(value)localStorage.setItem('baros:venue',value);else localStorage.removeItem('baros:venue')}
-export async function download(path,name){const res=await fetch('/api'+path,{credentials:'same-origin',headers:state.org&&state.me.account.role==='owner'?{'x-organization-id':state.org}:{}});if(!res.ok){const j=await res.json();throw new Error(j.detail||'Не удалось скачать')};const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+export async function download(path,name){const res=await fetch('/api'+path,{credentials:'same-origin',headers:state.org&&['owner','manager'].includes(state.me?.account?.role)?{'x-organization-id':state.org}:{}});if(!res.ok){const j=await res.json();throw new Error(j.detail||'Не удалось скачать')};const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 export function hero(title,desc,action='',eyebrow='АКАДЕМИЯ КОМАНДЫ'){return `<div class="hero"><div><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(title)}</h2><p>${esc(desc)}</p>${action}</div><div class="hero-graphic" aria-hidden="true"><div class="orb"><div class="paper">${icon('book')}<i></i><i></i><i></i></div><span class="spark">${icon('spark')}</span><span class="check">${icon('check')}</span></div></div></div>`}
 export const ring=(value,label)=>`<div class="ring" style="--value:${Math.min(100,Math.max(0,value||0))}"><div><strong>${Math.round(value||0)}%</strong><small>${esc(label)}</small></div></div>`;

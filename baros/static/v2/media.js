@@ -1,9 +1,9 @@
-import {esc,api,toast} from './core.js?v=2.13.3';
+import {esc,api,toast,state} from './core.js?v=2.14.0';
 
 export function mediaText(value){
  const text=String(value||''),re=/!\[([^\]\n]{0,200})\]\((\/api\/media\/[A-Za-z0-9_-]{20,80})\)/g;let out='',at=0;
  const plain=s=>esc(s).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
- for(const m of text.matchAll(re)){out+=plain(text.slice(at,m.index))+`<span class="course-photo"><img src="${esc(m[2])}" alt="${esc(m[1]||'Иллюстрация к обучению')}" loading="lazy" decoding="async"></span>`;at=m.index+m[0].length}
+ for(const m of text.matchAll(re)){out+=plain(text.slice(at,m.index))+`<span class="course-photo"><img src="${esc(m[2]+(state.me?.account?.role==='manager'&&state.org&&state.org!==String(state.me.account.organization_id)?'?venue='+encodeURIComponent(state.org):''))}" alt="${esc(m[1]||'Иллюстрация к обучению')}" loading="lazy" decoding="async"></span>`;at=m.index+m[0].length}
  return out+plain(text.slice(at));
 }
 

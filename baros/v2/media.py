@@ -23,9 +23,9 @@ def validate_media(db,oid,value):
 
 @router.post('/api/media')
 async def upload(request:Request, file:UploadFile=File(...), global_asset:bool=False, a=Depends(actor), db=Depends(get_db)):
-    if global_asset: owner(a);oid=None
-    else: oid=manager(request,db,a,'courses_manage',True)
+    if global_asset: owner(a)
     rate(db,'course-media:'+str(a.id),40,3600)
+    oid=None if global_asset else manager(request,db,a,'courses_manage',True)
     raw=await file.read(8*1024*1024+1);require(0<len(raw)<=8*1024*1024,'Размер фото — не больше 8 МБ',413)
     try:
         with warnings.catch_warnings():
@@ -50,10 +50,10 @@ async def upload(request:Request, file:UploadFile=File(...), global_asset:bool=F
     return {'url':'/api/media/'+row.id,'width':clean.width,'height':clean.height,'size':row.size}
 
 @router.get('/api/media/{mid}')
-def image(mid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
+def image(mid:str,request:Request,venue:int|None=None,a=Depends(actor),db=Depends(get_db)):
     row=db.get(CourseMedia,mid);require(row,'Фото не найдено',404)
     if a.role!='owner':
-        oid=tenant(request,db,a,learning=a.role=='employee');require(row.organization_id in {oid,None},'Фото не найдено',404)
+        oid=tenant(request,db,a,learning=a.role=='employee',media_venue=venue);require(row.organization_id in {oid,None},'Фото не найдено',404)
         if a.role=='employee' or row.organization_id is None:
             needle='/api/media/'+mid;allowed=False
             if a.role=='manager':

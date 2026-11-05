@@ -15,7 +15,7 @@ function input(s,value){const x=e(s);x.value=value;x.dispatchEvent(new Event('in
 const submit=s=>e(s).dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
 async function raw(path,body){const r=await fetch('/api'+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});assert(r.ok,await r.clone().text());return r.json()}
 await raw('/auth/setup',{token:'baros-ui-audit-only',name:'Audit owner',login:'pilot.owner',password:'audit-owner-password'});
-const core=await import('./ui/core.js?v=2.13.3');await core.reloadMe();
+const core=await import('./ui/core.js?v=2.14.0');await core.reloadMe();
 const venue=await core.api('/venues','POST',{name:'Pilot UI venue'}),invite=await core.api('/venues/'+venue.id+'/invite','POST',{});
 await core.api('/auth/logout','POST',{});core.state.me=null;
 await raw('/invites/'+invite.url.split('/').at(-1),{name:'Pilot manager',organization:venue.name});await core.reloadMe();
@@ -26,7 +26,7 @@ core.go('/app/drafts');await until(()=>document.querySelector('[data-draft-sourc
 const drafts=await core.api('/drafts');assert.equal(drafts.items.length,2);assert(drafts.items.every(d=>!d.published));
 const course=drafts.items.find(d=>d.kind==='course');assert.deepEqual(course.positions,['bartender']);core.go('/app/courses/'+course.id);await until(()=>document.querySelector('.photo-picker [type=file]'),'Lesson photo picker');
 assert.equal(document.querySelector('.photo-picker [type=file]').accept,'image/jpeg,image/png,image/webp');
-const {mediaText}=await import('./ui/media.js?v=2.13.3');const html=mediaText('![<script>](/api/media/abcdefghijklmnopqrstuvwx) <script>alert(1)</script> ![](https://bad.test/x.png)');
+const {mediaText}=await import('./ui/media.js?v=2.14.0');const html=mediaText('![<script>](/api/media/abcdefghijklmnopqrstuvwx) <script>alert(1)</script> ![](https://bad.test/x.png)');
 assert(html.includes('src="/api/media/abcdefghijklmnopqrstuvwx"'));assert(!html.includes('<script>'));assert(!html.includes('src="https://'));assert(html.includes('&lt;script&gt;'));
 core.go('/legal/privacy');await until(()=>document.querySelector('[data-legal-ack]'),'Legal document and acknowledgement');assert(e('.legal-document').textContent.includes('121524098311'));click('[data-legal-ack]');await until(()=>document.querySelector('.legal-accepted'),'Persist acknowledgement');
 assert.equal((await core.api('/legal/acknowledgements')).length,1);

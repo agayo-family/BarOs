@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload,defer
 from ..db import get_db
 from ..models import Course
-from .auth import actor,manager
+from .auth import check_venue_permission, actor,manager
 from .models import DraftOrigin,SourceFile,CourseSettings,CourseProgram,CourseRevision,ImportedAssessment
 from .domain import dump,parse,require,digest,log,course_settings,payload,iso,positions
 from .source_review import fingerprint
@@ -80,7 +80,7 @@ def drafts(request:Request,a=Depends(actor),db=Depends(get_db)):
 
 @router.put('/api/drafts/sources')
 def edit_origin(data:OriginIn,request:Request,a=Depends(actor),db=Depends(get_db)):
-    oid=manager(request,db,a,'courses_manage',True);cls=Course if data.kind=='course' else ImportedAssessment
+    oid=manager(request,db,a,'courses_manage',True);check_venue_permission(db,a,oid,'uploads_manage');cls=Course if data.kind=='course' else ImportedAssessment
     query=select(cls).where(cls.id==data.resource_id,cls.organization_id==oid)
     resource=db.scalar(query.with_for_update() if data.kind=='assessment' else query)
     require(resource,'Черновик не найден',404)
@@ -102,7 +102,7 @@ def edit_origin(data:OriginIn,request:Request,a=Depends(actor),db=Depends(get_db
 
 @router.post('/api/drafts/materials')
 def materials(data:SourcesIn,request:Request,a=Depends(actor),db=Depends(get_db)):
-    oid=manager(request,db,a);src=selected_sources(db,oid,data.source_ids)
+    oid=manager(request,db,a);check_venue_permission(db,a,oid,'uploads_manage');src=selected_sources(db,oid,data.source_ids)
     require(src,'Выберите материалы')
     require(all(s.extraction_status=='ready' and s.text.strip() for s in src),'Проверьте и сохраните распознанный текст материалов')
     text='# Материалы для подготовки обучения\n\nПодготовьте обучение по источникам. Не выдумывайте факты, цифры, составы и правила. Неизвестное оформите вопросами к управляющему. Пишите простыми словами. Используйте правдоподобные ответы сопоставимой длины и письменные ситуации с рубриками. Не добавляйте домашние задания в теорию.\n\n'
@@ -112,7 +112,9 @@ def materials(data:SourcesIn,request:Request,a=Depends(actor),db=Depends(get_db)
 
 @router.post('/api/assessments')
 def create(data:CreateIn,request:Request,a=Depends(actor),db=Depends(get_db)):
-    oid=manager(request,db,a,'courses_manage',True);src=selected_sources(db,oid,data.source_ids)
+    oid=manager(request,db,a,'courses_manage',True)
+    if data.source_ids:check_venue_permission(db,a,oid,'uploads_manage')
+    src=selected_sources(db,oid,data.source_ids)
     title=data.title.strip();require(len(title)>=2,'Укажите название теста')
     p={'title':title,'description':'','instructions':'','positions':positions(data.positions),'sections':[{'id':'main','title':'Проверка знаний','instructions':''}],'tasks':[],'time_limit_minutes':60,'max_attempts':3,'passing_score':80,'sequential_sections':True}
     t=ImportedAssessment(organization_id=oid,title=title,payload=dump(p));db.add(t);db.flush();record_origin(db,oid,'assessment',t.id,src)

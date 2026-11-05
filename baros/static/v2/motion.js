@@ -13,11 +13,29 @@ export function arrive(element,delay=0){
  // Leave hover transforms independent of the reveal animation's lifecycle.
  return respectPreference(element.animate([{opacity:.3},{opacity:1}],{duration:480,delay,easing:'cubic-bezier(.22,1,.36,1)'}));
 }
-export function resizeArrive(element,previousHeight){
+export function fadeChange(element){
  if(!element?.animate||reducedMotion())return null;
- const height=element.getBoundingClientRect().height;
- const frames=Math.abs(height-previousHeight)<.5?[{opacity:.55},{opacity:1}]:[{opacity:.55,height:previousHeight+'px'},{opacity:1,height:height+'px'}];
- return respectPreference(element.animate(frames,{duration:420,easing:'cubic-bezier(.22,1,.36,1)'}));
+ return respectPreference(element.animate([{opacity:.72},{opacity:1}],{duration:180,easing:'ease-out'}));
+}
+
+// Measure each variant at the real content width without touching live regions.
+export function reserveHeight(element,variants){
+ const width=parseFloat(window.getComputedStyle(element).width);
+ if(!width||!variants.length)return;
+ const sample=element.cloneNode(false);
+ for(const name of ['id','role','aria-live','aria-atomic'])sample.removeAttribute(name);
+ sample.setAttribute('aria-hidden','true');
+ sample.inert=true;
+ Object.assign(sample.style,{position:'fixed',left:'0',top:'0',width:width+'px',minHeight:'0',height:'auto',visibility:'hidden',pointerEvents:'none'});
+ element.parentElement.append(sample);
+ try{
+  let height=0;
+  for(const html of variants){
+   sample.innerHTML=html;
+   height=Math.max(height,parseFloat(window.getComputedStyle(sample).height)||0);
+  }
+  if(height)element.style.minHeight=Math.ceil(height)+'px';
+ }finally{sample.remove()}
 }
 export function revealSections(root){
  if(reducedMotion()||!window.IntersectionObserver)return ()=>{};

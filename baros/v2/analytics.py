@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import defer
 from ..db import get_db
 from ..models import Course
-from .auth import actor,manager
+from .auth import check_venue_permission, actor,manager
 from .models import Account,CourseSettings,CourseRevision,Exam,WrittenAttempt,ImportedAssessment
 from .domain import parse,iso,now,require,POSITIONS,learner_stats_many,applies
 from .readiness import content_key
@@ -157,6 +157,8 @@ def analytics(request:Request,days:int=30,start:date|None=None,end:date|None=Non
 
 @router.get('/api/reports/analytics/export')
 def export(request:Request,section:str='team',days:int=30,start:date|None=None,end:date|None=None,position:str='',account_id:int|None=None,course_id:int|None=None,assessment_id:int|None=None,history:bool=False,include_inactive:bool=False,a=Depends(actor),db=Depends(get_db)):
+    oid=manager(request,db,a)
+    check_venue_permission(db,a,oid,'exports_access')
     result=params(request,db,a,days,start,end,position,account_id,course_id,assessment_id,history,include_inactive)
     cols={'team':[('name','Сотрудник'),('assigned','Назначено'),('complete','Завершено'),('completion_percent','Готовность, %'),('overdue','Просрочено'),('pending_review','Ожидают проверки'),('attempts','Попыток автотеста'),('average_score','Средний балл'),('first_score','Первая оценка'),('latest_score','Последняя оценка'),('improvement_pp','Изменение, п.п.'),('median_seconds','Медиана времени, сек')],'courses':[('title','Курс'),('version','Редакция'),('current','Актуальная'),('assigned','Назначено'),('complete','Завершено'),('participants','Проходили за период'),('attempts','Попыток'),('average_score','Средний балл'),('first_attempt_pass_percent','Зачёт с первой попытки, %'),('median_seconds','Медиана времени, сек')],'questions':[('course_title','Курс'),('version','Редакция'),('prompt','Вопрос'),('checked','Проверено сотрудников'),('mistakes','Ошибок'),('mistake_percent','Ошибок, %')],'attempts':[('name','Сотрудник'),('title','Проверка'),('kind','Тип'),('version','Редакция'),('at','Завершение UTC'),('score','Баллы, %'),('passed','Зачёт'),('seconds','Время, сек')],'review_queue':[('name','Сотрудник'),('title','Работа'),('submitted_at','Сдано UTC'),('waiting_hours','Ожидание, ч')],'rubrics':[('title','Тест'),('revision','Редакция'),('task','Задание'),('criterion','Критерий'),('graded','Оценено'),('average_percent','Средний результат, %')],'timeline':[('date','Дата МСК'),('auto','Автотестов'),('written','Оценено отдельных тестов'),('passed','Зачётов автотеста'),('average_score','Средний балл автотеста')]}
     require(section in cols,'Неизвестный раздел',422)

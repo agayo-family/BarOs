@@ -1,7 +1,7 @@
-import {mediaText,photoPicker} from './media.js?v=2.13.3';
-import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.13.3';
+import {mediaText,photoPicker} from './media.js?v=2.14.0';
+import {$,state,pageCleanup,api,esc,icon,btn,pageHead,empty,badge,progress,toast} from './core.js?v=2.14.0';
 
-import {rewardNotice} from './growth.js?v=2.13.3';
+import {rewardNotice} from './growth.js?v=2.14.0';
 
 export async function cardsPage(root,cid=null){const ticket=state.renderTicket;
  const preview=state.me.account.role!=='employee';
