@@ -84,7 +84,11 @@ export function toast(message,error=false){const el=document.createElement('div'
 export function venueURL(path, venue=state.org) {
  const target=new URL(path, location.origin);
  if(target.origin!==location.origin || !/^\/app(?:\/|$)/.test(target.pathname) || target.pathname==='/app/network')return path;
- if(venue&&!target.searchParams.has('venue'))target.searchParams.set('venue',venue);
+ const account=state.me?.account;
+ const workspaces=state.me?.workspaces;
+ const scoped=new URLSearchParams(location.search).has('venue')||
+  String(account?.organization_id)!==String(venue)||workspaces?.venues.length>1||workspaces?.groups.length;
+ if(venue&&scoped&&!target.searchParams.has('venue'))target.searchParams.set('venue',venue);
  return target.pathname+target.search+target.hash;
 }
 export function go(path,replace=false,beforeNavigate){
