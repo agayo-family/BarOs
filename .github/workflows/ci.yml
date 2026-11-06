@@ -124,6 +124,9 @@ jobs:
         with:
           name: browser-audit-${{ matrix.audit }}
           path: |
+            test-results/browser/performance.json
+            test-results/browser/responsive-extra.json
+            test-results/browser/public-extra-*.png
             test-results/browser/result.json
             test-results/browser/progress.json
             test-results/browser/server.log
@@ -147,4 +150,4 @@ jobs:
             test-results/browser/public-sales-contact-*.png
             test-results/browser/owner-showcase-editor-*.png
             test-results/browser/manager-empty-test-editor-*.png
-          retention-days: 1
+          retention-days: 3

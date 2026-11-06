@@ -12,7 +12,7 @@ export async function auditMotion({page,base,call,output}){
  await call('/owner/showcase','PUT',{version:original.version,items:pair,permission_confirmed:true});
  try{
   await page.emulateMedia({reducedMotion:'no-preference'});
-  for(const width of [360,390,768,1440]){
+  for(const width of [320,375,390,768,1024,1440,1920]){
    await page.setViewportSize({width,height:900});
    await page.goto(base+'/about?employees=50&mode=managed');await page.locator('#team-size').waitFor();
    await page.locator('.site-mode-switch').scrollIntoViewIfNeeded();

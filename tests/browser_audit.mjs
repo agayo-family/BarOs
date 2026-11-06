@@ -3,6 +3,7 @@ import {createRequire} from 'node:module';
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {auditMotion} from './motion_browser_audit.mjs';
+import {auditPages} from './audit_pages_20261106.mjs';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES ? process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES+'/playwright' : 'playwright');
 const base=process.env.BAROS_AUDIT_URL;
@@ -27,7 +28,7 @@ async function call(path,method='GET',data,extra={}){
 async function login(login){await call('/auth/login','POST',{login,password:'browser-audit-password'});me=await call('/me')}
 // Fail early for public layout regressions before the long course sweep.
 await page.goto(base+'/');
-for(const width of [360,390,768,1440])for(const theme of ['light','dark']){
+for(const width of [320,375,390,768,1024,1440,1920])for(const theme of ['light','dark']){
  await page.setViewportSize({width,height:844});
  await page.evaluate(theme=>localStorage.setItem('baros:theme',theme),theme);
  await page.reload();await page.waitForFunction(()=>document.querySelector('#app')?.getAttribute('aria-busy')==='false');
@@ -114,7 +115,7 @@ async function shot(role,path,label,width,theme){
  if(label==='sales-contact'){await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator('#app').getAttribute('inert'),null)}
  writeFileSync(join(output,'progress.json'),JSON.stringify({screens:screens.length,last:name,errors,server_failures:failures}));
 }
-const sizes=process.env.BAROS_AUDIT_REVERSE?[1440,768,390,360]:[360,390,768,1440];
+const sizes=process.env.BAROS_AUDIT_REVERSE?[1920,1440,1024,768,390,375,320]:[320,375,390,768,1024,1440,1920];
 const themes=process.env.BAROS_AUDIT_REVERSE?['dark','light']:['light','dark'];
 async function sweep(role,routes){for(const width of sizes)for(const theme of themes)for(const [path,label]of routes)if(!process.env.BAROS_AUDIT_FOCUS||process.env.BAROS_AUDIT_FOCUS===role+'/'+label)await shot(role,path,label,width,theme)}
 await sweep('employee',[['/app/shifts','shifts-batch'],['/app','home'],['/app/learning','learning'],['/app/learn/'+c.id,'lesson'],['/app/learn/'+writtenCourse.id,'written-only-lesson'],['/app/exam/'+exam.id,'exam'],['/app/cards/'+c.id,'cards'],['/app/games/'+c.id,'games'],['/app/mentor','mentor'],['/app/shifts','shifts'],['/app/history','history'],['/app/notices','notices'],['/app/profile','profile'],['/app/settings','settings'],['/app/support','support'],['/app/assessments','assessments']]);
@@ -271,6 +272,7 @@ await sweep('public',[...['privacy','terms','processing','confidentiality','paym
 const result={screens:screens.length,errors,server_failures:failures,layout_issues:screens.filter(s=>s.scroll>s.width+1||s.error),details:screens};
 writeFileSync(join(output,'result.json'),JSON.stringify(result,null,2));
 console.log(JSON.stringify({screens:result.screens,errors,server_failures:failures,layout_issues:result.layout_issues.map(s=>({name:s.name,width:s.width,scroll:s.scroll,error:s.error}))},null,2));
+await auditPages({browser,base,output,venueId:venue.id,managerStorage:networkStorage});
 await browser.close();
 assert.equal(errors.length,0,'Browser runtime errors');assert.equal(failures.length,0,'Server 5xx');
 assert.equal(result.layout_issues.length,0,'Screen overflow or error panels');
