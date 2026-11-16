@@ -126,6 +126,7 @@ async function shot(role,path,label,width,theme){
   assert.equal(await page.locator('[data-publish]').count(),0,'Shared draft does not expose publication');
  }
  if(label==='written-only-lesson'){assert.equal(await page.locator('[data-start-exam]').count(),0);assert.equal(await page.locator('a[href^="/app/cards/"]').count(),0)}
+ if(label==='reports'&&width>=1200)assert(await page.locator('.analytics-stats .stat').evaluateAll(nodes=>nodes.length===4&&nodes.every(n=>Math.abs(n.offsetTop-nodes[0].offsetTop)<=1)),'Four KPIs remain on one desktop row');
  if(label.startsWith('reports')){for(const checkbox of await page.locator('.analytics-filters input[type=checkbox]').all()){const size=await checkbox.boundingBox();if(!size)continue;assert(size.width<=24&&size.height<=24,'Filter checkbox keeps a compact size')}for(const label of await page.locator('.analytics-filters .check-label').all()){const size=await label.boundingBox();if(!size)continue;assert(size.height<100,'Filter labels remain readable on mobile')}}
  if(role==='public'&&label.startsWith('landing')){assert.equal(await page.locator('.site-login').getAttribute('href'),'/login');assert.equal(await page.locator('#auth-form').count(),0);assert(await page.locator('#price-result').innerText().then(s=>s.replace(/\s/g,'').includes(label==='landing-custom'?'Индивидуально':label==='landing-self'?'4900':'9900')))}
  if(label==='exam')assert.equal(await page.locator('[data-retry-answer]').isVisible(),false,'Retry saving is hidden until a save fails');

@@ -46,7 +46,7 @@ export async function analyticsPage(root){
    <div class="stats analytics-stats section-space">
    ${stat('Обучение завершено',percent(s.completion_percent),`${s.complete} из ${s.assigned} назначений`,'book')}
    ${stat('Просрочено',s.overdue,'текущих назначений','clock')}
-   ${stat('Ждут проверки',s.pending_review,'работ','file')}
+   ${stat('Ждут проверки',s.pending_review,'в очереди','file')}
    ${stat('Зачёт с первой попытки',percent(s.first_attempt_pass_percent),'по автотестам за период','check')}
    </div>
    <div class="tabs analytics-tabs" role="tablist" aria-label="Разделы аналитики">${Object.entries(tabs).map(([key,label])=>
