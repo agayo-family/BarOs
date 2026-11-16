@@ -388,7 +388,8 @@ def onboarding(a=Depends(actor), db=Depends(get_db)):
     for field, model, conditions in [
         ('managers', Account, [Account.role == 'manager', Account.active == True]),
         ('employees', Account, [Account.role == 'employee', Account.active == True]),
-        ('sources', SourceFile, []), ('courses', Course, [Course.published == True])]:
+        ('sources', SourceFile, []), ('courses', Course, [Course.published == True,
+         Course.id.not_in(select(CourseSettings.course_id).where(CourseSettings.archived.is_(True)))])]:
         counts[field] = dict(db.execute(select(model.organization_id, func.count(model.id))
             .where(model.organization_id.in_(ids), *conditions).group_by(model.organization_id)).all()) if ids else {}
     configs = {s.organization_id: s for s in db.scalars(select(VenueSettings).where(VenueSettings.organization_id.in_(ids))).all()} if ids else {}

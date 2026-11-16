@@ -234,7 +234,8 @@ def venue_data(db,org,counts=None,venue_settings=None):
     s=venue_settings or settings(db,org.id)
     if counts is None:
         count=db.scalar(select(func.count(Account.id)).where(Account.organization_id==org.id,Account.role=='employee',Account.active==True)) or 0
-        course_count=db.scalar(select(func.count(Course.id)).where(Course.organization_id==org.id)) or 0
+        course_count=db.scalar(select(func.count(Course.id)).outerjoin(CoursePresentation)
+            .where(Course.organization_id==org.id,CoursePresentation.deleted_at.is_(None))) or 0
     else: count,course_count=counts
     return {'id':org.id,'name':org.name,'join_code':s.join_code,'status':s.status,'plan':s.plan,
             'subscription_status':s.subscription_status,'paid_until':iso(s.paid_until),'seat_limit':s.seat_limit,
@@ -278,7 +279,8 @@ def venues(a=Depends(actor),db=Depends(get_db)):
     if not ids:return []
     configs={s.organization_id:s for s in db.scalars(select(VenueSettings).where(VenueSettings.organization_id.in_(ids))).all()}
     staff_counts=dict(db.execute(select(Account.organization_id,func.count(Account.id)).where(Account.organization_id.in_(ids),Account.role=='employee',Account.active==True).group_by(Account.organization_id)).all())
-    course_counts=dict(db.execute(select(Course.organization_id,func.count(Course.id)).where(Course.organization_id.in_(ids)).group_by(Course.organization_id)).all())
+    course_counts=dict(db.execute(select(Course.organization_id,func.count(Course.id)).outerjoin(CoursePresentation)
+        .where(Course.organization_id.in_(ids),CoursePresentation.deleted_at.is_(None)).group_by(Course.organization_id)).all())
     return [venue_data(db,o,(staff_counts.get(o.id,0),course_counts.get(o.id,0)),configs.get(o.id)) for o in orgs]
 
 

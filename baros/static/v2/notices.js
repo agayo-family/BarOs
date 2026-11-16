@@ -26,11 +26,12 @@ export function watchNotices(){
   try{if(JSON.parse(event.newValue)?.account===state.me?.account?.id)refresh()}catch{}
  };
  window.addEventListener('storage',storage);
+ window.addEventListener('focus',refresh);
  document.addEventListener('visibilitychange',refresh);
- const interval=window.setInterval(refresh,45000);
+ refresh();
  return ()=>{
-  window.clearInterval(interval);
   window.removeEventListener('storage',storage);
+  window.removeEventListener('focus',refresh);
   document.removeEventListener('visibilitychange',refresh);
  };
 }
