@@ -1,4 +1,5 @@
-import {$,$$,state,api,esc,icon,btn,pageHead,badge,progress,modal,on,toast,fmtDate} from './core.js?v=2.14.0';
+import {petEyes} from './pet-eyes.js?v=2.14.0';
+import {$,$$,state,api,esc,icon,btn,pageHead,badge,progress,modal,on,toast,fmtDate,positionTags} from './core.js?v=2.14.0';
 let lastReaction=null;
 let catalogue=null,flight=null,phraseTimer=null,accountId=null;
 const stages=level=>level>=8?3:level>=4?2:1;
@@ -8,15 +9,68 @@ const itemFor=id=>catalogue?.shop.find(x=>x.id===id);
 export function companionName(){return petFor(state.growth?.pet_id)?.name||'Питомец'}
 export const rewardNotice=r=>{if(!r)return;if(r.xp||r.gold)toast(`+${r.xp} опыта · +${r.gold} золота${r.achievements?.length?' · '+r.achievements.join(', '):''}`);window.dispatchEvent(new Event('baros:growth'))};
 async function getCatalog(){if(!catalogue)catalogue=await api('/growth/catalog');return catalogue}
-export function petFigure(p,level=1,equipped={}){if(!p)return '';const wing=itemFor(equipped.wings),artifact=itemFor(equipped.artifact);return `<div class="pet-figure stage-${stages(level)} ${wing?'has-wings wings-'+wing.style:''} ${artifact?'has-artifact artifact-'+artifact.style:''}" style="--pet-color:${p.color}"><span class="pet-aura" aria-hidden="true"></span>${wing?'<span class="pet-wings" aria-hidden="true"></span>':''}<img class="pet-sprite" src="${sprite(p,level)}" alt="${esc(p.name)}" width="192" height="192" loading="lazy">${artifact?'<span class="pet-artifact" aria-hidden="true"></span>':''}</div>`}
+const shopSlots={
+ avatar_frame:['Рамки','camera'],wings:['Крылья','spark'],artifact:['Артефакты','shield'],
+ headwear:['Головные уборы','trophy'],collar:['Платки и ошейники','heart'],
+ aura:['Сияние','sun'],backdrop:['Фоны','image'],badge:['Значки','star'],
+};
+const gesture={
+ ember:['flap',8],aurora:['flap',9.5],moss:['twitch',11],tide:['wave',8.5],moon:['tilt',10],
+ storm:['flap',10.5],prism:['glide',12],clock:['tilt',9],ink:['twitch',8.8],
+ snow:['stomp',12.5],star:['wave',11.5],sprout:['twitch',9.8],sand:['glide',10.8],forge:['stomp',9.4],dream:['wave',13],
+};
+const frameStyle=inventory=>itemFor(inventory?.avatar_frame)?.style||'';
+const profileBadge=inventory=>{
+ const item=itemFor(inventory?.badge);
+ return item?`<span class="profile-cosmetic-badge badge-${item.style}" title="${esc(item.name)}" aria-label="${esc(item.name)}">${icon(item.style==='clover'?'spark':'star')}</span>`:'';
+};
+export function petFigure(p,level=1,equipped={},compact=false){
+ if(!p)return '';
+ const gear=['wings','artifact','headwear','collar','aura','backdrop'].map(slot=>itemFor(equipped[slot]));
+ const classes=gear.filter(Boolean).map(i=>i.slot+'-'+i.style).join(' ');
+ const stage=stages(level),[move,speed]=gesture[p.id]||gesture.dream;
+ const eyes=(petEyes[p.id]?.[stage-1]||[]).map(([x,y,color])=>`<span class="pet-blink" style="--eye-x:${(x-1)*100/48}%;--eye-y:${(y-1)*100/48}%;--face:${color}"></span>`).join('');
+ return `<div class="pet-figure stage-${stage} ${classes} ${compact?'pet-compact':''}" style="--pet-color:${p.color};--pet-gesture:idle-${move};--pet-cycle:${speed}s">
+ ${gear[5]?'<span class="pet-backdrop"></span>':''}<div class="pet-idle">
+ <span class="pet-aura" aria-hidden="true"></span>${gear[0]?'<span class="pet-wings" aria-hidden="true"></span>':''}
+ <div class="pet-frame"><img class="pet-sprite" src="${sprite(p,level)}" alt="${esc(p.name)}" width="192" height="192" loading="lazy">${eyes}</div>
+ ${gear[1]?'<span class="pet-artifact" aria-hidden="true"></span>':''}
+ ${gear[2]?'<span class="pet-hat" aria-hidden="true"></span>':''}
+ ${gear[3]?'<span class="pet-collar" aria-hidden="true"></span>':''}
+ </div></div>`;
+}
+
+export async function teamPage(root){
+ const [staff]=await Promise.all([api('/growth/team'),getCatalog()]);
+ root.innerHTML=pageHead('Команда','Коллеги вашего заведения.')+
+  `<label class="field team-search"><span class="sr-only">Найти коллегу</span><input type="search" placeholder="Имя коллеги" data-team-search></label>
+  <div class="grid-3" data-team-members></div>`;
+ function draw(query=''){
+  $('[data-team-members]',root).innerHTML=staff.filter(member=>member.name.toLocaleLowerCase('ru').includes(query))
+   .map(member=>{
+    const pet=petFor(member.pet_id);
+    const initials=member.name.split(/\s+/).slice(0,2).map(word=>word[0]).join('');
+    return `<article class="card team-member"><div class="row">
+    <div class="profile-avatar framed-avatar frame-${frameStyle(member.decorations)}">
+     ${member.avatar_url?`<img src="${esc(member.avatar_url)}" alt="" loading="lazy" width="64" height="64">`:esc(initials)}</div>
+    <div><h2>${esc(member.name)} ${profileBadge(member.decorations)}</h2><div class="tags">${positionTags(member.positions)}</div></div></div>
+    ${pet?`<div class="team-pet">${petFigure(pet,1,{},true)}<div><strong>${esc(pet.name)}</strong><small>${esc(pet.species)}</small></div></div>`:''}</article>`;
+   }).join('')||'<p class="muted">Коллеги не найдены.</p>';
+ }
+ draw();
+ $('[data-team-search]',root).addEventListener('input',e=>draw(e.target.value.trim().toLocaleLowerCase('ru')));
+}
 function money(gold){return `<span class="gold-count"><span aria-hidden="true" class="gold-coin">B</span>${gold} золота</span>`}
 export async function profilePage(root){
  const ticket=state.renderTicket;const [p]=await Promise.all([api('/growth'),getCatalog()]);if(ticket!==state.renderTicket)return;state.growth=p;
- let tab='journey';
+ let tab='journey',shopSlot='all';
  const draw=()=>{
   const pet=petFor(p.pet_id);const hue=[255,225,185,145,40,285][Math.min(5,Math.floor((p.level-1)/3))];
-  root.innerHTML=pageHead('Мой профиль','Знания помогают на смене. Спутник и награды поддерживают ваш путь.',`<a class="btn soft" href="/app/settings">${icon('settings')}Настройки</a>`,'ВАШ ПУТЬ В BAROS')+`<section class="profile-hero card" style="--profile-hue:${hue}"><div class="profile-identity"><div class="profile-avatar">${p.avatar_url?`<img src="${esc(p.avatar_url)}" alt="Ваша аватарка" width="88" height="88">`:`<span>${esc(p.name.split(/\s+/).slice(0,2).map(s=>s[0]).join(''))}</span>`}<label class="avatar-change" title="Загрузить аватарку">${icon('camera')}<input type="file" data-avatar accept="image/jpeg,image/png,image/webp" aria-label="Загрузить аватарку"></label></div><div><h2>${esc(p.name)}</h2><div class="profile-level">${badge('Уровень '+p.level,'purple')}${money(p.gold)}</div><p>${p.xp} опыта · до следующего уровня ${p.next-p.progress}</p>${progress(p.percent)}${p.avatar_url?btn('Убрать аватарку','close','text sm','data-remove-avatar'):''}</div></div><div class="profile-pet-mini">${pet?petFigure(pet,p.pet_level,p.equipped):'<div class="pet-placeholder">'+icon('spark')+'</div>'}<div><strong>${pet?esc(pet.name):'Спутник ещё не выбран'}</strong><small>${pet?'Уровень '+p.pet_level+' · '+(stages(p.pet_level)===1?'Малыш':stages(p.pet_level)===2?'Исследователь':'Хранитель'):'15 существ со своей историей'}</small></div></div></section><div class="profile-tabs" role="tablist" aria-label="Разделы профиля">${[['journey','Достижения','spark'],['pet','Мой питомец','heart'],['shop','Магазин','bag']].map(([id,name,ic])=>`<button class="btn ${tab===id?'primary':'ghost'}" role="tab" id="profile-tab-${id}" aria-controls="profile-panel" tabindex="${tab===id?0:-1}" aria-selected="${tab===id}" data-profile-tab="${id}">${icon(ic)}${name}</button>`).join('')}</div><div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-tab-${tab}">${tab==='journey'?achievements(p):tab==='pet'?petPanel(p):shopPanel(p)}</div><p class="footnote">Золото — внутренняя награда, его нельзя купить или вывести. Предметы меняют внешний вид и не влияют на оценки. Питомец получает опыт вместе с вами и не теряет его за перерывы. Дневной предел: ${p.daily_limits.xp} опыта и ${p.daily_limits.gold} золота (сброс в 03:00 по Москве).</p>`;
+  root.innerHTML=pageHead('Мой профиль','Знания помогают на смене. Спутник и награды поддерживают ваш путь.',`<a class="btn soft" href="/app/settings">${icon('settings')}Настройки</a>`,'ВАШ ПУТЬ В BAROS')+`<section class="profile-hero card" style="--profile-hue:${hue}"><div class="profile-identity"><div class="profile-avatar framed-avatar frame-${frameStyle(p.equipped)}">${p.avatar_url?`<img src="${esc(p.avatar_url)}" alt="Ваша аватарка" width="88" height="88">`:`<span>${esc(p.name.split(/\s+/).slice(0,2).map(s=>s[0]).join(''))}</span>`}<label class="avatar-change" title="Загрузить аватарку">${icon('camera')}<input type="file" data-avatar accept="image/jpeg,image/png,image/webp" aria-label="Загрузить аватарку"></label></div><div><h2>${esc(p.name)} ${profileBadge(p.equipped)}</h2><div class="profile-level">${badge('Уровень '+p.level,'purple')}${money(p.gold)}</div><p>${p.xp} опыта · до следующего уровня ${p.next-p.progress}</p>${progress(p.percent)}${p.avatar_url?btn('Убрать аватарку','close','text sm','data-remove-avatar'):''}</div></div><div class="profile-pet-mini">${pet?petFigure(pet,p.pet_level,p.equipped):'<div class="pet-placeholder">'+icon('spark')+'</div>'}<div><strong>${pet?esc(pet.name):'Спутник ещё не выбран'}</strong><small>${pet?'Уровень '+p.pet_level+' · '+(stages(p.pet_level)===1?'Малыш':stages(p.pet_level)===2?'Исследователь':'Хранитель'):'15 существ со своей историей'}</small></div></div></section><div class="profile-tabs" role="tablist" aria-label="Разделы профиля">${[['journey','Достижения','spark'],['pet','Мой питомец','heart'],['shop','Магазин','bag']].map(([id,name,ic])=>`<button class="btn ${tab===id?'primary':'ghost'}" role="tab" id="profile-tab-${id}" aria-controls="profile-panel" tabindex="${tab===id?0:-1}" aria-selected="${tab===id}" data-profile-tab="${id}">${icon(ic)}${name}</button>`).join('')}</div><div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-tab-${tab}">${tab==='journey'?achievements(p):tab==='pet'?petPanel(p):shopPanel(p,shopSlot)}</div><p class="footnote">Золото — внутренняя награда, его нельзя купить или вывести. Предметы меняют внешний вид и не влияют на оценки. Питомец получает опыт вместе с вами и не теряет его за перерывы. Дневной предел: ${p.daily_limits.xp} опыта и ${p.daily_limits.gold} золота (сброс в 03:00 по Москве).</p>`;
   on('[data-profile-tab]','click',(_,b)=>{tab=b.dataset.profileTab;draw();$(`[data-profile-tab="${tab}"]`,root)?.focus({preventScroll:true})},root);
+  on('[data-shop-slot]','click',(_,b)=>{
+   shopSlot=b.dataset.shopSlot;draw();$('[data-shop-slot='+shopSlot+']',root)?.focus({preventScroll:true});
+  },root);
   on('[data-pet-picker]','click',()=>pickPet(p,draw),root);
   on('[data-buy]','click',async(_,b)=>{b.disabled=true;try{Object.assign(p,await api('/growth/buy','POST',{item_id:b.dataset.buy}));state.growth=p;draw();toast('Предмет в вашей коллекции')}finally{b.disabled=false}},root);
   on('[data-equip]','click',async(_,b)=>{b.disabled=true;Object.assign(p,await api('/growth/equip','PUT',{slot:b.dataset.slot,item_id:b.dataset.equip||null}));state.growth=p;draw();await syncCompanion(false)},root);
@@ -28,7 +82,27 @@ export async function profilePage(root){
 }
 function achievements(p){return `<div class="profile-achievement-grid">${p.achievements.map(a=>`<article class="card achievement ${a.earned_at?'earned':''}"><div class="achievement-icon">${icon(a.icon)}</div><div><h3>${esc(a.name)}</h3><p>${esc(a.description)}</p>${a.earned_at?`<small>${icon('check')} Получено ${fmtDate(a.earned_at)}</small>`:`<small>${a.progress} / ${a.target}</small>${progress(a.progress/a.target*100)}`}</div></article>`).join('')}</div>`}
 function petPanel(p){const pet=petFor(p.pet_id);return pet?`<section class="card pet-home"><div class="pet-stage" style="--pet-color:${pet.color}">${petFigure(pet,p.pet_level,p.equipped)}<span class="pet-stage-shadow" aria-hidden="true"></span></div><div><span class="eyebrow">${esc(pet.species)}</span><h2>${esc(pet.name)}</h2><p>${esc(pet.lore)}</p><div class="pet-growth-label">${badge('Уровень '+p.pet_level,'purple')}<span>${p.pet_progress.progress} / ${p.pet_progress.next} опыта</span></div>${progress(p.pet_progress.percent)}<p class="muted">Теория, карточки, попытки тестов и игры помогают ему расти. Успешные тесты дают больше опыта. Новый облик открывается на 4 и 8 уровнях.</p><a class="btn primary" href="/app/mentor">${icon('book')}Поговорить с ${esc(pet.name)}</a><label class="check-label"><input type="checkbox" data-companion-enabled ${p.companion_enabled?'checked':''}>Показывать спутника на страницах</label>${p.pet_swaps_left?btn('Выбрать другого','refresh','soft','data-pet-picker'):badge('Единственная смена использована','outline')}<p class="footnote">Питомца можно поменять один раз. Новый начнёт с 1 уровня; ваш уровень, золото и покупки сохранятся.</p></div></section>`:`<section class="card pet-empty"><div class="pet-preview-strip">${catalogue.pets.slice(0,5).map(x=>petFigure(x)).join('')}</div><h2>Кто будет рядом с вами?</h2><p>Спокойный хранитель, любопытный дракон или ткач сновидений — выберите характер, который вам близок.</p>${btn('Выбрать спутника','spark','primary','data-pet-picker')}<p class="footnote">Выбор добровольный. Обучение доступно и без питомца.</p></section>`}
-function shopPanel(p){return `<div class="shop-head"><div><h2>Маленькие награды за большие шаги</h2><p>Покупки за золото обучения. Все предметы — косметические.</p></div>${money(p.gold)}</div><div class="shop-grid">${catalogue.shop.map(i=>{const owned=p.inventory.includes(i.id),equipped=p.equipped[i.slot]===i.id;return `<article class="card shop-item"><div class="shop-item-art ${i.slot} ${i.style}" aria-hidden="true"><span></span>${petFor(p.pet_id)?petFigure(petFor(p.pet_id),p.pet_level,{[i.slot]:i.id}):icon(i.slot==='wings'?'spark':'shield')}</div>${badge(i.slot==='wings'?'Крылья':'Артефакт','outline')}<h3>${esc(i.name)}</h3><p>${esc(i.description)}</p><small>С ${i.level} уровня профиля · ${i.price} золота</small>${owned?btn(equipped?'Снять':'Надеть',equipped?'close':'check',equipped?'soft':'primary',`data-equip="${equipped?'':i.id}" data-slot="${i.slot}"`):btn(p.level<i.level?'Откроется позже':!p.pet_id?'Сначала выберите питомца':p.gold<i.price?'Пока мало золота':'Купить','bag','primary',`data-buy="${i.id}" ${p.level<i.level||p.gold<i.price||!p.pet_id?'disabled':''}`)}</article>`}).join('')}</div>`}
+function shopPanel(p,slot){
+ const pet=petFor(p.pet_id)||catalogue.pets[0];
+ const catalog=catalogue.shop.filter(item=>slot==='all'||item.slot===slot);
+ return `<div class="shop-head"><h2>Магазин</h2>${money(p.gold)}</div>
+  <div class="shop-categories" aria-label="Категории магазина">${[['all',['Все предметы','bag']],...Object.entries(shopSlots)].map(([key,[label,visual]])=>
+   `<button class="btn ${slot===key?'soft':'ghost'}" data-shop-slot="${key}" aria-pressed="${slot===key}">${icon(visual)} ${label}</button>`).join('')}</div>
+  <div class="shop-grid">${catalog.map(item=>{
+   const owned=p.inventory.includes(item.id),equipped=p.equipped[item.slot]===item.id;
+   const needsPet=!p.pet_id&&!['avatar_frame','badge'].includes(item.slot);
+   const art=item.slot==='avatar_frame'?`<div class="profile-avatar framed-avatar frame-${item.style}">${icon('user')}</div>`:
+    item.slot==='badge'?profileBadge({badge:item.id}):petFigure(pet,2,{[item.slot]:item.id},true);
+   const purchase=p.level<item.level?'С уровня '+item.level:needsPet?'Выберите питомца':p.gold<item.price?'Не хватает золота':'Купить';
+   return `<article class="card shop-item">
+    <div class="shop-item-art item-${item.style}" aria-hidden="true">${art}</div>
+    <small class="muted">${shopSlots[item.slot][0]}</small><h3>${esc(item.name)}</h3><p>${esc(item.description)}</p>
+    <small>${item.price} золота · уровень ${item.level}+</small>
+    ${owned?btn(equipped?'Снять':'Надеть',equipped?'close':'check',equipped?'soft':'primary',`data-equip="${equipped?'':item.id}" data-slot="${item.slot}"`):
+    btn(purchase,'bag','primary',`data-buy="${item.id}" ${p.level<item.level||p.gold<item.price||needsPet?'disabled':''}`)}
+   </article>`;
+  }).join('')}</div>`;
+}
 function pickPet(p,draw){const swapping=!!p.pet_id;const m=modal(swapping?'Смена спутника':'Выберите своего спутника',`<p>${swapping?'Это единственная смена. Новый питомец начнёт с 1 уровня.':'Каждый спутник поддерживает вас по-своему. Выберите того, чья история близка.'}</p><div class="pet-picker-grid">${catalogue.pets.map(x=>`<article class="pet-option ${p.pet_id===x.id?'selected':''}">${petFigure(x)}<div><h3>${esc(x.name)}</h3><small>${esc(x.species)}</small><p>${esc(x.lore)}</p></div>${btn(p.pet_id===x.id?'Ваш спутник':'Выбрать','check',p.pet_id===x.id?'soft':'primary',`data-choose-pet="${x.id}" ${p.pet_id===x.id?'disabled':''}`)}</article>`).join('')}</div>`,{wide:true});on('[data-choose-pet]','click',(_,b)=>{const pet=petFor(b.dataset.choosePet);m.close();const confirm=modal('Ваш спутник — '+pet.name,petFigure(pet)+`<p>${esc(pet.lore)}</p><p>${swapping?'Подтверждая, вы используете единственную смену и начнёте развитие нового питомца с первого уровня.':'Питомец будет расти вместе с вашими знаниями. Позднее его можно заменить один раз.'}</p>`+btn('Подтвердить выбор','check','primary','data-confirm-pet'));on('[data-confirm-pet]','click',async(_,button)=>{button.disabled=true;try{Object.assign(p,await api('/growth/pet','POST',{pet_id:pet.id,confirm_swap:swapping}));state.growth=p;confirm.close();draw();await syncCompanion(false);toast(pet.name+' теперь с вами')}finally{button.disabled=false}},confirm.root)},m.root)}
 function nextPhrase(pet){const key=`baros:phrases:${accountId}:${pet.id}`;let used=[];try{used=JSON.parse(localStorage.getItem(key)||'[]')}catch{}if(!Array.isArray(used))used=[];let free=pet.phrases.map((_,i)=>i).filter(i=>!used.includes(i));if(!free.length){used=used.slice(-3);free=pet.phrases.map((_,i)=>i).filter(i=>!used.includes(i))}const index=free[Math.floor(Math.random()*free.length)];try{localStorage.setItem(key,JSON.stringify([...used,index]))}catch{}return pet.phrases[index]}
 export function clearCompanion(){document.querySelector('#companion-root')?.remove();clearTimeout(phraseTimer);state.growth=null;accountId=null}

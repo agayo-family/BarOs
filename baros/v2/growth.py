@@ -12,7 +12,7 @@ from .auth import actor, manager, tenant, rate
 from .domain import require, parse, dump, now, iso
 from .models import Account, LearningProfile, RewardEvent
 from .schemas import StrictModel
-from .companions import PET_IDS, SHOP, ACHIEVEMENTS, catalog
+from .companions import PET_IDS, SHOP, SHOP_SLOTS, ACHIEVEMENTS, catalog
 
 router=APIRouter(prefix='/api/growth')
 DAILY_XP=400
@@ -81,6 +81,20 @@ def growth_profile(a=Depends(actor),db=Depends(get_db)):
     p=locked_profile(db,a);db.commit();return profile_data(db,a,p)
 
 
+@router.get('/team')
+def team_directory(request:Request,a=Depends(actor),db=Depends(get_db)):
+    require(a.role=='employee','Откройте кабинет сотрудника',403)
+    oid=tenant(request,db,a)
+    query=select(Account.id,Account.name,Account.positions_json,LearningProfile.pet_id,
+        LearningProfile.avatar_version,LearningProfile.avatar.is_not(None),LearningProfile.equipped).outerjoin(
+        LearningProfile,LearningProfile.account_id==Account.id).where(Account.organization_id==oid,
+        Account.role=='employee',Account.active.is_(True)).order_by(Account.name,Account.id)
+    return [{'id':aid,'name':name,'positions':parse(roles,[]),'pet_id':pet if pet in PET_IDS else None,
+             'avatar_url':f'/api/growth/avatar/{aid}?v={version}' if has_avatar else None,
+             'decorations':{slot:value for slot,value in parse(equipped).items() if slot in {'avatar_frame','badge'}}}
+            for aid,name,roles,pet,version,has_avatar,equipped in db.execute(query)]
+
+
 @router.get('/employees/{aid}')
 def employee_growth(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
@@ -116,7 +130,7 @@ def buy(data:ItemIn,a=Depends(actor),db=Depends(get_db)):
     item=next((x for x in SHOP if x['id']==data.item_id),None);require(item,'Предмет не найден',404)
     p=locked_profile(db,a);inventory=parse(p.inventory,[])
     if item['id'] not in inventory:
-        require(p.pet_id,'Сначала выберите питомца',409)
+        require(p.pet_id or item['slot'] in {'avatar_frame','badge'},'Сначала выберите питомца',409)
         require(level_info(p.xp)['level']>=item['level'],'Предмет откроется на следующем уровне',409)
         require(p.gold>=item['price'],'Недостаточно золота',409)
         p.gold-=item['price'];inventory.append(item['id']);p.inventory=dump(inventory)
@@ -124,12 +138,13 @@ def buy(data:ItemIn,a=Depends(actor),db=Depends(get_db)):
 
 
 class EquipIn(StrictModel):
-    slot:str=Field(pattern='^(wings|artifact)$')
+    slot:str=Field(max_length=24)
     item_id:str|None=Field(default=None,max_length=40)
 
 
 @router.put('/equip')
 def equip(data:EquipIn,a=Depends(actor),db=Depends(get_db)):
+    require(data.slot in SHOP_SLOTS,'Неизвестный тип предмета')
     p=locked_profile(db,a);items=parse(p.equipped)
     if data.item_id:
         item=next((x for x in SHOP if x['id']==data.item_id and x['slot']==data.slot),None)
@@ -171,7 +186,9 @@ def avatar_delete(a=Depends(actor),db=Depends(get_db)):
 @router.get('/avatar/{aid}')
 def avatar_image(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     if aid!=a.id:
-        oid=manager(request,db,a);target=db.get(Account,aid)
-        require(target and target.organization_id==oid,'Аватар недоступен',404)
+        oid=tenant(request,db,a) if a.role=='employee' else manager(request,db,a)
+        target=db.get(Account,aid)
+        require(target and target.organization_id==oid and (a.role!='employee' or
+                target.role=='employee' and target.active),'Аватар недоступен',404)
     p=db.get(LearningProfile,aid);require(p and p.avatar,'Аватар не найден',404)
     return Response(p.avatar,media_type='image/jpeg',headers={'Cache-Control':'private, no-store'})

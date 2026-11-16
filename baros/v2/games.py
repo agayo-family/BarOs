@@ -25,11 +25,13 @@ MODES = {
     'truth': {'title': 'Верно или нет', 'subtitle': 'Замечайте неточности и объясняйте себе разницу', 'icon': 'shield'},
     'scenario': {'title': 'Рабочая ситуация', 'subtitle': 'Тренируйте решения для работы с гостями', 'icon': 'interview'},
     'recall': {'title': 'Вспомни сам', 'subtitle': 'Ответьте без вариантов, затем проверьте себя', 'icon': 'brain'},
+    'duel': {'title': 'Дуэль ответов', 'subtitle': 'Найдите точный ответ среди двух похожих', 'icon': 'target'},
+    'eliminate': {'title': 'Отбрось лишнее', 'subtitle': 'Отметьте все неподходящие ответы', 'icon': 'filter'},
 }
 
 
 class StartIn(StrictModel):
-    mode: Literal['mix', 'pairs', 'words', 'truth', 'scenario', 'recall']
+    mode: Literal['mix', 'pairs', 'words', 'truth', 'scenario', 'recall', 'duel', 'eliminate']
     scope: Literal['all', 'review'] = 'all'
     difficulty: Literal['easy','normal','hard'] = 'normal'
     size: int = Field(default=5, ge=1, le=20)
@@ -171,9 +173,13 @@ def variant(q, mode, index, rng, difficulty='normal'):
         if difficulty=='hard': wrong.sort(key=lambda i:SequenceMatcher(None,q['answer'].casefold(),q['choices'][i].casefold()).ratio(),reverse=True);wrong=wrong[:2]
         idx = q['correct_index'] if rng.random() < .5 else rng.choice(wrong)
         result['claim'] = q['choices'][idx]; result['claim_true'] = idx == q['correct_index']
-    if mode == 'scenario':
+    if mode in {'scenario', 'duel', 'eliminate'}:
         order = list(range(len(q['choices'])))
-        if difficulty!='hard':
+        if mode == 'duel':
+            wrong = [i for i in order if i != q['correct_index']]
+            other = max(wrong,key=lambda i:SequenceMatcher(None,q['answer'].casefold(),q['choices'][i].casefold()).ratio()) if difficulty=='hard' else rng.choice(wrong)
+            order = [q['correct_index'],other]
+        elif difficulty!='hard':
             wrong=[i for i in order if i!=q['correct_index']];rng.shuffle(wrong);order=[q['correct_index'],*wrong[:1 if difficulty=='easy' else 2]]
         rng.shuffle(order)
         result['choices'] = [q['choices'][i] for i in order]; result['correct_index'] = order.index(q['correct_index'])
@@ -274,6 +280,12 @@ def grade(q, data, questions, pair_options=None):
         tokens={x['id']:x['text'] for x in q['tokens']}
         require(isinstance(data.value,list) and data.value and len(set(data.value))==len(data.value) and all(i in tokens for i in data.value),'Выберите нужные слова без повторений')
         return [tokens[i] for i in data.value] == words(q['answer']), False
+    if mode == 'eliminate':
+        wrong = set(range(len(q['choices']))) - {q['correct_index']}
+        require(isinstance(data.value,list) and len(data.value)==len(wrong) and
+                len(set(data.value))==len(wrong) and all(0<=i<len(q['choices']) for i in data.value),
+                'Отметьте все неподходящие ответы')
+        return set(data.value)==wrong, False
     require(type(data.value) is int, 'Выберите один ответ')
     if mode == 'pairs':
         require(data.value in {x['id'] for x in (pair_options or questions)}, 'Ответ не найден')

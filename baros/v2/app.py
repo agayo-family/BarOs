@@ -51,7 +51,7 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
 
 
-app = FastAPI(title='BarOS', version='2.14.0', lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(title='BarOS', version='2.15.0', lifespan=lifespan, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware,minimum_size=1024,compresslevel=5)
 app.mount('/static/v2',StaticFiles(directory=STATIC),name='assets')
 
@@ -70,7 +70,9 @@ async def guard(request, call_next):
         except ValueError: return JSONResponse({'detail':'Некорректный запрос'},status_code=400)
         # Bodyless action endpoints (publish/archive/start exam) are valid; when a
         # body is present, require JSON everywhere except the multipart uploader.
-        if request.url.path.startswith('/api/') and request.url.path not in {'/api/sources','/api/growth/avatar','/api/media','/api/owner/showcase/logo'} and int(content_len or 0) > 0 and 'application/json' not in request.headers.get('content-type',''):
+        multipart = {'/api/sources','/api/growth/avatar','/api/media','/api/owner/showcase/logo',
+                     '/api/packages/zip/preview','/api/packages/zip/import'}
+        if request.url.path.startswith('/api/') and request.url.path not in multipart and int(content_len or 0) > 0 and 'application/json' not in request.headers.get('content-type',''):
             return JSONResponse({'detail':'Ожидается JSON'},status_code=415)
     response=await call_next(request)
     if request.url.path.startswith('/static/v2/') and request.url.path.endswith(('.js','.css')):
@@ -100,13 +102,13 @@ async def validation_error(request, exc):
 @app.get('/health')
 def health(db=Depends(get_db)):
     db.execute(text('SELECT 1'))
-    return {'status':'ok','service':'baros','version':'2.14.0'}
+    return {'status':'ok','service':'baros','version':'2.15.0'}
 
 
 @app.get('/api/public')
 def public(db=Depends(get_db)):
     return {'positions':POSITIONS,'setup_required':not db.scalar(select(Account.id).limit(1)),
-            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.14.0'}
+            'owner_recovery_configured':len(FIRST_RUN_TOKEN)>=24, 'version':'2.15.0'}
 
 
 @app.post('/api/auth/setup')
@@ -248,7 +250,10 @@ def me(request:Request,a=Depends(actor),db=Depends(get_db)):
     workspaces = manager_workspaces(db, a) if a.role == 'manager' else None
     if workspaces is not None and not any(v['id'] == a.organization_id and v['available'] for v in workspaces['venues']):
         org = None
-    return {'account':account_data(a),'venue':venue_data(db,org) if org else None,'csrf':request.state.csrf,
+    venue_info=venue_data(db,org) if org else None
+    if venue_info and a.role=='employee':
+        venue_info={key:venue_info[key] for key in ('id','name','status','subscription_status','paid_until','expired')}
+    return {'account':account_data(a),'venue':venue_info,'csrf':request.state.csrf,
             **({'workspaces': workspaces} if workspaces is not None else {}),
             'positions':POSITIONS,'permissions':{k:v for k,v in PERMISSIONS.items() if not k.startswith('ai') or os.getenv('BAROS_AI_ENABLED','0')=='1'},'question_types':QTYPES,'unread':unread,'ai':ai.status() if a.role!='employee' else None}
 
@@ -384,7 +389,7 @@ def staff_history(account_id:int,request:Request,a=Depends(actor),db=Depends(get
 
 def history_data(db,a):
     rows=[]
-    exams=exams_for(db,a)
+    exams=[exam for exam in exams_for(db,a) if exam.result_json!=INTERRUPTED_EXAM]
     revisions={r.id:r for r in db.scalars(select(CourseRevision).where(CourseRevision.id.in_({e.revision_id for e in exams}))).all()} if exams else {}
     for exam in exams:
         rev=revisions[exam.revision_id];data=parse(rev.payload)
@@ -410,7 +415,27 @@ def notices(a=Depends(actor),db=Depends(get_db)):
 @app.post('/api/notices/read')
 def notice_read(a=Depends(actor),db=Depends(get_db)):
     from sqlalchemy import update
-    db.execute(update(Notice).where(Notice.account_id==a.id).values(read=True));db.commit();return {'ok':True}
+    db.execute(update(Notice).where(Notice.account_id==a.id,Notice.read.is_(False)).values(read=True))
+    db.commit()
+    return {'ok':True,'unread':notice_count(db,a.id)}
+
+
+def notice_count(db, account_id):
+    return db.scalar(select(func.count(Notice.id)).where(Notice.account_id==account_id,Notice.read.is_(False))) or 0
+
+
+@app.get('/api/notices/count')
+def unread_notices(a=Depends(actor),db=Depends(get_db)):
+    return {'unread':notice_count(db,a.id)}
+
+
+@app.post('/api/notices/{nid}/read')
+def mark_notice(nid:int,a=Depends(actor),db=Depends(get_db)):
+    row=db.get(Notice,nid)
+    require(row and row.account_id==a.id,'Уведомление не найдено',404)
+    row.read=True
+    db.commit()
+    return {'ok':True,'unread':notice_count(db,a.id)}
 
 
 @app.get('/api/export')
@@ -449,6 +474,12 @@ from .catalog import router as catalog_router
 app.include_router(catalog_router)
 app.include_router(reports_router)
 app.include_router(packages_router)
+from .bulk_packages import router as bulk_packages_router
+app.include_router(bulk_packages_router)
+from .role_exams import router as role_exams_router
+app.include_router(role_exams_router)
+from .stop_list import router as stop_list_router
+app.include_router(stop_list_router)
 app.include_router(mentor_router)
 app.include_router(growth_router)
 app.include_router(content_router);app.include_router(learning_router);app.include_router(push_router);app.include_router(shifts_router);app.include_router(games_router)
@@ -459,7 +490,8 @@ def manifest():
     return JSONResponse({'id':'/','name':'BarOS — академия команды','short_name':'BarOS','lang':'ru','start_url':'/app','scope':'/',
                          'display':'standalone','background_color':'#f7f7fb','theme_color':'#5b47d6',
                          'icons':[{'src':f'/static/v2/icon-{s}.png','sizes':f'{s}x{s}','type':'image/png','purpose':'any maskable'} for s in [192,512]],
-                         'shortcuts':[{'name':'Мои смены','url':'/app/shifts'},{'name':'Моё обучение','url':'/app/learning'},{'name':'Уведомления','url':'/app/notices'}]})
+                         'shortcuts':[{'name':'Стоп-лист','url':'/app/stop-list'},{'name':'Мои смены','url':'/app/shifts'},{'name':'Моё обучение','url':'/app/learning'},{'name':'Уведомления','url':'/app/notices'}]},
+                        media_type='application/manifest+json')
 
 
 @app.get('/sw.js')

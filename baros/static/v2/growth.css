@@ -12,3 +12,68 @@ body:has(.companion-root) .content{padding-bottom:100px}@media(max-width:760px){
 .shop-item-art .pet-figure{width:120px;height:120px}.avatar-change{width:44px;height:44px}.shop-item-art.prism{background:linear-gradient(120deg,var(--bg),#9ac1d322)}.shop-item-art.cosmos{background:linear-gradient(120deg,var(--bg),#8d79ae22)}
 
 .companion-animation{position:relative}.companion-effect{display:none;position:absolute;width:160px;height:160px;top:-20px;left:calc(50% - 80px);color:var(--pet-color);pointer-events:none;z-index:0}.companion-effect svg{width:100%;height:100%}.pet-trick .companion-effect{display:block;animation:legend-trick 3s ease-out both}.pet-trick .companion-animation .pet-figure{z-index:1}@keyframes legend-trick{0%{opacity:0;transform:scale(.55) translateY(15px)}30%{opacity:.9;transform:scale(1)}75%{opacity:.8;transform:scale(1.05)}100%{opacity:0;transform:scale(1.12) translateY(-12px)}}@media(prefers-reduced-motion:reduce){.pet-trick .companion-effect{animation:none;opacity:.35}}
+
+.shop-categories{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
+.shop-item-art{height:142px;overflow:hidden;background:radial-gradient(ellipse at 45% 25%,var(--lav),var(--bg));border:1px solid var(--line)}
+.shop-item-art .profile-avatar{width:65px;height:65px;border-radius:20px}
+.shop-item-art .profile-avatar .icon{width:27px;height:27px}
+.framed-avatar{outline-offset:2px}
+.frame-silver{outline:3px solid #adb8c9;box-shadow:0 0 0 7px #8192a02b}
+.frame-copper{outline:3px solid #ce976d;box-shadow:0 0 0 7px #d19a732b}
+.frame-opal{outline:3px solid #9cc7cc;box-shadow:0 0 0 7px #b894e7a1}
+.profile-cosmetic-badge{display:inline-grid;place-items:center;width:1.65em;height:1.65em;border-radius:8px;vertical-align:middle;background:#dbece1;color:#245543}
+.profile-cosmetic-badge .icon{height:1em;width:1em}
+.profile-cosmetic-badge.badge-north{background:#e1e7fa;color:#4b4975}
+.shop-item-art>.profile-cosmetic-badge{font-size:38px;box-shadow:0 10px 30px #25233d27;border-radius:22px}
+.team-member{min-width:0}
+.team-member h2{font-size:1.06rem;overflow-wrap:anywhere;margin-bottom:8px}
+.team-member .profile-avatar{width:56px;height:56px;border-radius:18px;font-size:1.05rem}
+.team-pet{display:flex;align-items:center;margin-top:14px;gap:8px;border-top:1px solid var(--line)}
+.team-pet .pet-figure{width:72px;height:72px}
+.team-pet small{display:block;color:var(--muted)}
+.team-search{max-width:21rem}
+.pet-idle,.pet-frame{position:absolute;inset:0}
+.pet-idle{animation:var(--pet-gesture) var(--pet-cycle) ease-in-out infinite;transform-origin:50% 78%}
+.pet-frame{z-index:2}
+.pet-figure.stage-1 .pet-sprite,.pet-figure.stage-2 .pet-sprite{transform:none}
+.pet-figure.stage-1 .pet-frame{transform:scale(.8)}
+.pet-figure.stage-2 .pet-frame{transform:scale(.9)}
+.pet-blink{position:absolute;z-index:3;left:var(--eye-x);top:var(--eye-y);width:8.33%;height:10.42%;background:var(--face);opacity:0;
+ animation:pet-blink var(--pet-cycle) linear infinite}
+.pet-blink::after{content:"";position:absolute;left:25%;top:52%;width:55%;height:18%;background:#2d3041}
+.pet-backdrop{position:absolute;inset:7%;border-radius:24%}
+.backdrop-harbor .pet-backdrop{background:repeating-linear-gradient(172deg,transparent 0 11%,#87bac136 12% 13%),
+ linear-gradient(152deg,#25284c,#335c70 58%,#609c9e)}
+.backdrop-sunroom .pet-backdrop{background:radial-gradient(ellipse at 18% 0%,#fef9d5,transparent 65%),
+ repeating-linear-gradient(99deg,transparent 0 16%,#63774c29 17% 23%),linear-gradient(140deg,#e6c98f,#88b58e)}
+.aura-mint .pet-aura,.aura-rose .pet-aura{inset:2%;filter:blur(7px);animation:pet-shine 6.5s ease-in-out infinite}
+.aura-mint .pet-aura{background:radial-gradient(ellipse,#8edcb6ad,transparent 68%)}
+.aura-rose .pet-aura{background:radial-gradient(ellipse,#f09fc0bd,transparent 68%)}
+.wings-frost .pet-wings{background:linear-gradient(150deg,#e9f8ff,#8cd4ee 55%,#6ca1c9)}
+.wings-flame .pet-wings{background:linear-gradient(150deg,#ffe295,#e88a54 50%,#763b65)}
+.has-wings .pet-wings,.wings-frost .pet-wings,.wings-flame .pet-wings,.wings-cosmos .pet-wings,.wings-dawn .pet-wings,.wings-prism .pet-wings{
+ animation:pet-wingbeat var(--pet-cycle) ease-in-out infinite}
+.pet-hat,.pet-collar{position:absolute;z-index:4}
+.pet-hat{top:23%;left:33%;width:34%;height:12%}
+.headwear-captain .pet-hat{border-radius:70% 72% 22% 20%;background:linear-gradient(120deg,#555d77,#212539);border-bottom:3px solid #131829}
+.headwear-captain .pet-hat::after{content:"";position:absolute;right:-16%;bottom:-24%;width:75%;height:30%;background:#292d44;border-radius:8px}
+.headwear-night .pet-hat{top:11%;height:25%;background:linear-gradient(100deg,#6252a0,#a08dcf);clip-path:polygon(0 100%,18% 74%,54% 2%,77% 66%,100% 90%,60% 94%)}
+.pet-collar{top:58%;left:36%;width:28%;height:8%;border-radius:5px 6px 15px 15px}
+.collar-scarf .pet-collar{background:linear-gradient(140deg,#edab63,#9d4b2e)}
+.collar-sapphire .pet-collar{background:linear-gradient(135deg,#3963aa,#6baad5 60%,#283963)}
+.pet-collar::after{content:"";position:absolute;right:8%;top:34%;width:22%;aspect-ratio:1;background:#fcdf92;border-radius:2px}
+.artifact-compass .pet-artifact,.artifact-comet .pet-artifact{right:7%;bottom:20%;width:16%;aspect-ratio:1}
+.artifact-compass .pet-artifact{background:conic-gradient(#ffefbd,#81522e,#bd8457,#ffefbd);border:3px double #724f35;border-radius:50%}
+.artifact-compass .pet-artifact::after{content:"";position:absolute;inset:15% 38%;background:#fff1c4;transform:rotate(24deg);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.artifact-comet .pet-artifact{background:linear-gradient(140deg,#d3fdee,#59b7c2,#5547a0);transform:rotate(28deg);clip-path:polygon(50% 0,98% 33%,87% 76%,45% 100%,2% 66%,10% 16%)}
+@keyframes pet-blink{0%,61%,64%,87%,90%,100%{opacity:0}62%,63%,88%,89%{opacity:1}}
+@keyframes idle-flap{0%,29%,50%,100%{transform:none}33%{transform:translateY(-4%) rotate(-3deg)}37%{transform:translateY(-8%) rotate(3deg)}42%{transform:translateY(-3%) rotate(-2deg)}}
+@keyframes idle-stomp{0%,35%,56%,100%{transform:none}38%,47%{transform:translateY(-3%) rotate(-2deg)}42%,51%{transform:scale(1.045,.955)}}
+@keyframes idle-twitch{0%,28%,48%,100%{transform:none}31%,41%{transform:rotate(-4deg) scale(1.035)}36%{transform:rotate(3deg)}}
+@keyframes idle-wave{0%,26%,59%,100%{transform:none}34%{transform:translate(-4%,-3%) rotate(-6deg)}45%{transform:translate(5%,-4%) rotate(7deg)}}
+@keyframes idle-tilt{0%,32%,64%,100%{transform:none}40%,49%{transform:rotate(-8deg)}57%{transform:rotate(3deg)}}
+@keyframes idle-glide{0%,28%,66%,100%{transform:none}47%{transform:translateY(-8%) rotate(4deg)}}
+@keyframes pet-wingbeat{0%,29%,52%,100%{scale:1 1}34%,43%{scale:.76 1.13}39%,48%{scale:1.10 .87}}
+@keyframes pet-shine{0%,100%{opacity:.68}50%{opacity:1}}
+.pet-compact .pet-idle,.pet-compact .pet-blink,.pet-compact .pet-wings,.pet-compact .pet-aura{animation:none}
+@media(prefers-reduced-motion:reduce){.pet-idle,.pet-blink,.pet-wings,.pet-aura{animation:none!important}}

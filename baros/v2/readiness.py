@@ -1,7 +1,7 @@
 """Current-version assessment completion; snapshots and old history are preserved."""
 import copy
 from sqlalchemy import select
-from .models import ImportedAssessment,WrittenAttempt
+from .models import ImportedAssessment,WrittenAttempt,RoleExam
 from .domain import applies,dump,parse,now,digest
 
 def content_key(value):
@@ -13,9 +13,9 @@ def content_key(value):
 
 def assessment_stats(db,accounts):
     if not accounts:return {}
-    tests=[(t,parse(t.payload)) for t in db.scalars(select(ImportedAssessment).where(ImportedAssessment.organization_id.in_({a.organization_id for a in accounts}),ImportedAssessment.published==True,ImportedAssessment.archived==False)).all()]
+    tests=[(t,parse(t.payload)) for t in db.scalars(select(ImportedAssessment).where(ImportedAssessment.organization_id.in_({a.organization_id for a in accounts}),ImportedAssessment.published==True,ImportedAssessment.archived==False,ImportedAssessment.id.not_in(select(RoleExam.assessment_id)))).all()]
     keys={t.id:content_key(p) for t,p in tests};latest={}
-    for x in db.scalars(select(WrittenAttempt).where(WrittenAttempt.account_id.in_([a.id for a in accounts]),WrittenAttempt.assessment_id.in_(keys)).order_by(WrittenAttempt.started_at.desc(),WrittenAttempt.id.desc())).all() if keys else []:
+    for x in db.scalars(select(WrittenAttempt).where(WrittenAttempt.account_id.in_([a.id for a in accounts]),WrittenAttempt.status!='interrupted',WrittenAttempt.assessment_id.in_(keys)).order_by(WrittenAttempt.started_at.desc(),WrittenAttempt.id.desc())).all() if keys else []:
         key=(x.account_id,x.assessment_id)
         if key not in latest and content_key(parse(x.snapshot))==keys[x.assessment_id]:latest[key]=x
     out={}

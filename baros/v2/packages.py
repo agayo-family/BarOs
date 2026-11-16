@@ -12,7 +12,7 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
 from ..db import get_db
 from ..models import Course
-from .models import Account, ImportedAssessment, PackageReceipt, WrittenAttempt, Exam, Notice
+from .models import Account, ImportedAssessment, PackageReceipt, WrittenAttempt, Exam, Notice, RoleExam
 from .auth import check_venue_permission, actor, manager, tenant
 from .domain import POSITIONS, applies, course_settings, dump, iso, log, now, parse, require
 from .schemas import CourseIn
@@ -146,25 +146,42 @@ def preview(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get_db)):
 
 @router.post('/api/packages/import')
 def import_package(data:ImportIn,request:Request,a=Depends(actor),db=Depends(get_db)):
-    oid=manager(request,db,a,'courses_manage',True);p=data.package;fp=fingerprint(p)
+    oid=manager(request,db,a,'courses_manage',True)
+    result=save_package(db,oid,a,data.package,data.source_ids)
+    db.commit()
+    return result
+
+
+def save_package(db,oid,a,p,source_ids=()):
+    fp=fingerprint(p)
     from .media import validate_media
     validate_media(db,oid,(p.course or p.assessment).model_dump(mode='json'))
     old=db.scalar(select(PackageReceipt).where(PackageReceipt.organization_id==oid,PackageReceipt.fingerprint==fp))
     from .drafts import selected_sources,record_origin
-    if data.source_ids:check_venue_permission(db,a,oid,'uploads_manage')
-    sources=selected_sources(db,oid,data.source_ids)
-    if old:return import_info(old,True)
+    if source_ids:check_venue_permission(db,a,oid,'uploads_manage')
+    sources=selected_sources(db,oid,source_ids)
+    if old:
+        result=import_info(old,True)
+        if old.course_id:
+            from .models import CoursePresentation
+            meta=db.get(CoursePresentation,old.course_id)
+            if meta and meta.deleted_at:result.update(deleted=True,url='/app/courses?trash=1')
+        return result
     receipt=PackageReceipt(organization_id=oid,fingerprint=fp)
-    if p.course:
-        from .content import save_course
-        c=Course(organization_id=oid,title=p.course.title,published=False);db.add(c);db.flush();save_course(db,c,p.course);receipt.course_id=c.id
-    else:
-        test=ImportedAssessment(organization_id=oid,title=p.assessment.title,payload=dump(p.assessment.model_dump(mode='json')));db.add(test);db.flush();receipt.assessment_id=test.id
-    record_origin(db,oid,p.kind,receipt.course_id or receipt.assessment_id,sources)
-    db.add(receipt);log(db,a,oid,'Импортирован учебный пакет',kind=p.kind,title=(p.course or p.assessment).title)
-    try:db.commit()
+    try:
+        with db.begin_nested():
+            if p.course:
+                from .content import save_course
+                c=Course(organization_id=oid,title=p.course.title,published=False)
+                db.add(c);db.flush();save_course(db,c,p.course);receipt.course_id=c.id
+            else:
+                test=ImportedAssessment(organization_id=oid,title=p.assessment.title,payload=dump(p.assessment.model_dump(mode='json')))
+                db.add(test);db.flush();receipt.assessment_id=test.id
+            record_origin(db,oid,p.kind,receipt.course_id or receipt.assessment_id,sources)
+            db.add(receipt)
+            log(db,a,oid,'Импортирован учебный пакет',kind=p.kind,title=(p.course or p.assessment).title)
     except IntegrityError:
-        db.rollback();old=db.scalar(select(PackageReceipt).where(PackageReceipt.organization_id==oid,PackageReceipt.fingerprint==fp))
+        old=db.scalar(select(PackageReceipt).where(PackageReceipt.organization_id==oid,PackageReceipt.fingerprint==fp))
         if old:return import_info(old,True)
         raise
     return import_info(receipt)
@@ -190,12 +207,12 @@ def card(test,p):
 @router.get('/api/assessments')
 def assessments(request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=tenant(request,db,a,learning=True) if a.role=='employee' else manager(request,db,a)
-    tests=[(test,parse(test.payload)) for test in db.scalars(select(ImportedAssessment).where(ImportedAssessment.organization_id==oid).order_by(ImportedAssessment.id.desc())).all()]
+    tests=[(test,parse(test.payload)) for test in db.scalars(select(ImportedAssessment).where(ImportedAssessment.organization_id==oid,ImportedAssessment.id.not_in(select(RoleExam.assessment_id))).order_by(ImportedAssessment.id.desc())).all()]
     previous={}
     if a.role=='employee':
         unassigned=[test.id for test,p in tests if test.published and not test.archived and not applies(a,p)]
         if unassigned:
-            for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.organization_id==oid,WrittenAttempt.account_id==a.id,WrittenAttempt.assessment_id.in_(unassigned)).order_by(WrittenAttempt.started_at.desc())).all():
+            for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.organization_id==oid,WrittenAttempt.account_id==a.id,WrittenAttempt.status!='interrupted',WrittenAttempt.assessment_id.in_(unassigned)).order_by(WrittenAttempt.started_at.desc())).all():
                 if attempt.assessment_id in previous:continue
                 snapshot=parse(attempt.snapshot)
                 if applies(a,snapshot):previous[attempt.assessment_id]=snapshot
@@ -218,7 +235,7 @@ def assessments(request:Request,a=Depends(actor),db=Depends(get_db)):
     elif ids:
         latest={}
         for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.organization_id==oid,
-            WrittenAttempt.account_id==a.id,WrittenAttempt.assessment_id.in_(ids))
+            WrittenAttempt.account_id==a.id,WrittenAttempt.status!='interrupted',WrittenAttempt.assessment_id.in_(ids))
             .order_by(WrittenAttempt.started_at.desc())).all():
             if attempt.assessment_id not in latest:
                 status=attempt.status
@@ -231,11 +248,12 @@ def assessments(request:Request,a=Depends(actor),db=Depends(get_db)):
 @router.get('/api/assessments/{aid}')
 def assessment(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     test,p=accessible(request,db,a,aid,check_assignment=False)
+    require(not p.get('role_exam_position'),'Откройте экзамен по должности',404)
     if a.role!='employee':
-        attempts=db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid).order_by(WrittenAttempt.started_at.desc())).all()
+        attempts=db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.status!='interrupted').order_by(WrittenAttempt.started_at.desc())).all()
         names={x.id:x.name for x in db.scalars(select(Account).where(Account.id.in_({r.account_id for r in attempts}))).all()} if attempts else {}
         return {**card(test,p),'package':p,'revision':assessment_revision(test.payload),'attempts':[{**attempt_data(x,False),'account_name':names.get(x.account_id,'Участник')} for x in attempts]}
-    attempts=[attempt for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.account_id==a.id).order_by(WrittenAttempt.started_at.desc())).all() if applies(a,parse(attempt.snapshot))]
+    attempts=[attempt for attempt in db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.account_id==a.id,WrittenAttempt.status!='interrupted').order_by(WrittenAttempt.started_at.desc())).all() if applies(a,parse(attempt.snapshot))]
     can_start=applies(a,p)
     if not can_start:
         require(attempts,'Тест недоступен',403);p=parse(attempts[0].snapshot)
@@ -244,6 +262,7 @@ def assessment(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
 @router.put('/api/assessments/{aid}')
 def edit_assessment(aid:int,data:AssessmentEditIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     test,p=accessible(request,db,a,aid,True,lock=True)
+    require(not p.get('role_exam_position'),'Банк экзамена формируется из курсов',409)
     require(data.revision==assessment_revision(test.payload),'Тест изменён в другом окне. Обновите редактор.',409)
     require(not test.published or data.reviewed,'Подтвердите проверку изменений опубликованного теста')
     protect_linked_courses(db,test,data.assessment.positions)
@@ -275,6 +294,7 @@ def publish(aid:int,data:ConfirmIn,request:Request,a=Depends(actor),db=Depends(g
 @router.post('/api/assessments/{aid}/archive')
 def archive(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     test,p=accessible(request,db,a,aid,True,lock=True)
+    require(not p.get('role_exam_position'),'Экзамен управляется программой должности',409)
     if not test.archived:protect_linked_courses(db,test)
     test.archived=not test.archived;db.commit();return {'archived':test.archived}
 
@@ -309,7 +329,10 @@ def attempt_data(attempt,questions=True,keys=False):
     p=parse(attempt.snapshot)
     result={'id':attempt.id,'assessment_id':attempt.assessment_id,'account_id':attempt.account_id,'title':p['title'],'status':attempt.status,'version':attempt.version,
             'section_index':attempt.section_index,'started_at':iso(attempt.started_at),'expires_at':iso(attempt.expires_at),'server_time':iso(now()),
-            'result':score_result(attempt) if attempt.status=='graded' or keys else None}
+            'role_exam_position':p.get('role_exam_position'),
+            'result':score_result(attempt) if attempt.status=='graded' or keys and attempt.status!='interrupted' else None}
+    if attempt.status=='interrupted':
+        return {**result,'sections':[],'tasks':[],'answers':{}}
     if questions:
         allowed=p['sections'] if keys or not p['sequential_sections'] else p['sections'][:attempt.section_index+1]
         ids={s['id'] for s in allowed};items=[t for t in p['tasks'] if t['section_id'] in ids]
@@ -323,6 +346,7 @@ def start(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     require(a.role=='employee','Откройте кабинет сотрудника',403)
     # Assessment before Account matches publication's assessment -> Notice account FK order.
     test,p=accessible(request,db,a,aid,lock=True,check_assignment=False)
+    require(not p.get('role_exam_position'),'Откройте экзамен по должности',404)
     db.execute(select(Account).where(Account.id==a.id).with_for_update()).first()
     previous=db.scalars(select(WrittenAttempt).where(WrittenAttempt.assessment_id==aid,WrittenAttempt.account_id==a.id).order_by(WrittenAttempt.started_at.desc()).with_for_update().execution_options(populate_existing=True)).all()
     for attempt in previous:
@@ -330,7 +354,7 @@ def start(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
             if attempt.expires_at<=now():submit_attempt(attempt)
             elif applies(a,parse(attempt.snapshot)):db.commit();return attempt_data(attempt)
     require(applies(a,p),'Тест недоступен',403)
-    require(len(previous)<p['max_attempts'],'Лимит попыток исчерпан',409)
+    require(sum(row.status!='interrupted' for row in previous)<p['max_attempts'],'Лимит попыток исчерпан',409)
     require(not db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==a.id,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now())),'Завершите другой письменный тест',409)
     require(not db.scalar(select(Exam.id).where(Exam.account_id==a.id,Exam.finished_at.is_(None),Exam.expires_at>now())),'Завершите текущий итоговый тест',409)
     rng=secrets.SystemRandom()
@@ -344,6 +368,18 @@ def start(aid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
 def attempt(rid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
     row=attempt_access(request,db,a,rid);result=attempt_data(row,keys=a.role!='employee')
     if a.role!='employee':result['account_name']=db.get(Account,row.account_id).name
+    db.commit()
+    return result
+
+@router.post('/api/assessment-attempts/{rid}/interrupt')
+def interrupt_attempt(rid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
+    require(a.role=='employee','Только участник может прервать свою работу',403)
+    row=attempt_access(request,db,a,rid)
+    if row.status=='in_progress':
+        row.status='interrupted'
+        row.version+=1
+        row.answers='{}'
+    result=attempt_data(row,False)
     db.commit()
     return result
 

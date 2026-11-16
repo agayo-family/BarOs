@@ -4,9 +4,10 @@ from collections import Counter
 from datetime import timedelta
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, update, func
+from sqlalchemy.orm import defer
 from ..db import get_db
 from ..models import Course
-from .models import Account, CourseRevision, Enrollment, LessonRead, Exam
+from .models import Account, CoursePresentation, CourseRevision, Enrollment, LessonRead, Exam, RoleExam, WrittenAttempt
 from .domain import *
 from .auth import actor, tenant
 from .schemas import ReadIn, AnswerIn
@@ -47,6 +48,54 @@ def history(request:Request,a=Depends(actor),db=Depends(get_db)):
     return history_data(db,a)
 
 
+@router.get('/api/learning/journey')
+def journey(request:Request,a=Depends(actor),db=Depends(get_db)):
+    require(a.role=='employee','Откройте кабинет сотрудника',403)
+    oid=tenant(request,db,a)
+    from .media import plain_media
+    from .packages import score_result
+    active={revision.id for _,_,revision,_ in accessible_courses(db,a)}
+    cutoff=now()-timedelta(days=90)
+    rows=db.execute(select(Exam,Course.id,Course.title).join(CourseRevision,
+        CourseRevision.id==Exam.revision_id).join(Course,Course.id==CourseRevision.course_id)
+        .options(defer(Exam.questions_json),defer(Exam.answers_json)).where(
+        Exam.account_id==a.id,Course.organization_id==oid,Exam.result_json!=INTERRUPTED_EXAM)
+        .order_by(Exam.started_at.desc(),Exam.id.desc()).limit(80)).all()
+    timeline=[]
+    mistakes={}
+    for exam,cid,title in rows:
+        result=parse(exam.result_json) if exam.finished_at else {}
+        if exam.finished_at and 'score' not in result:
+            continue
+        timeline.append({'id':exam.id,'title':title,'course_id':cid,'score':result.get('score'),
+                         'passed':result.get('passed'),'at':iso(exam.finished_at or exam.started_at),
+                         'active':exam.revision_id in active,'kind':'auto'})
+        if exam.revision_id not in active or not exam.finished_at or exam.finished_at<cutoff:
+            continue
+        for q in result.get('review',[]):
+            prompt=plain_media(q.get('prompt','')).strip()
+            if not prompt:continue
+            key=(cid,' '.join(prompt.casefold().split()))
+            entry=mistakes.setdefault(key,{'title':title,'course_id':cid,'prompt':prompt,
+                                           'seen':0,'mistakes':0,'type':q.get('type','knowledge')})
+            entry['seen']+=1
+            entry['mistakes']+=int(not q.get('correct'))
+    problems=sorted((r for r in mistakes.values() if r['mistakes']),
+        key=lambda r:(-r['mistakes'],-r['mistakes']/r['seen'],r['title'],r['prompt']))[:6]
+    attempts=db.execute(select(WrittenAttempt,RoleExam.position).join(RoleExam,
+        RoleExam.assessment_id==WrittenAttempt.assessment_id).where(WrittenAttempt.account_id==a.id,
+        RoleExam.organization_id==oid,WrittenAttempt.status!='interrupted')
+        .order_by(WrittenAttempt.started_at.desc()).limit(12)).all()
+    roles=[]
+    for row,position in attempts:
+        result=score_result(row) if row.status=='graded' else None
+        roles.append({'id':row.id,'title':POSITIONS.get(position,position),'status':row.status,
+                      'score':result['percent'] if result else None,'passed':result['passed'] if result else None,
+                      'at':iso(row.graded_at or row.submitted_at or row.started_at)})
+    return {'history':timeline[:20],'scores':list(reversed([r for r in timeline if r['score'] is not None][:12])),
+            'mistakes':problems,'role_results':roles}
+
+
 @router.get('/api/learning/{cid}')
 def lesson_list(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     c,s,rev,data,e=learning_course(request,db,a,cid)
@@ -55,12 +104,14 @@ def lesson_list(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     written=next((x for x in assessment_stats(db,[a]).get(a.id,[]) if x['id']==aid),None) if aid else None
     reads={r.lesson_index:r for r in db.scalars(select(LessonRead).where(LessonRead.account_id==a.id,LessonRead.revision_id==rev.id)).all()}
     exams=exams_for(db,a,rev.id)
+    from .content import presentation_card
+    cover=presentation_card(cid,db.get(CoursePresentation,cid))['cover_url']
     db.commit()
-    return {'id':cid,'revision_id':rev.id,'version':rev.version,'title':data['title'],'description':data['description'],
+    return {'id':cid,'revision_id':rev.id,'version':rev.version,'title':data['title'],'description':data['description'],'cover_url':cover,
             'program':data.get('program'),'written_status':written['status'] if written else None,
             'lessons':[{**l,'index':i,'completed':bool(reads.get(i) and reads[i].completed_at),'seconds':reads[i].seconds if i in reads else 0} for i,l in enumerate(data['lessons'])],
             'quiz_size':data['quiz_size'],'bank_size':len(data['questions']),'passing_score':data['passing_score'],
-            'time_limit_minutes':data['time_limit_minutes'],'max_attempts':data['max_attempts'],'attempt_count':len(exams),
+            'time_limit_minutes':data['time_limit_minutes'],'max_attempts':data['max_attempts'],'attempt_count':sum(x.result_json!=INTERRUPTED_EXAM for x in exams),
             'due_at':iso(e.due_at),'min_read_seconds':MIN_READ_SECONDS,'exam_id':next((x.id for x in exams if not x.finished_at),None)}
 
 
@@ -100,8 +151,10 @@ def practice_cards(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
 
 
 def visible_exam(exam,data):
+    if exam.result_json==INTERRUPTED_EXAM:
+        return {'id':exam.id,'title':data['title'],'course_id':data.get('course_id'),'finished':True,'interrupted':True}
     q=parse(exam.questions_json,[])
-    return {'id':exam.id,'title':data['title'],'started_at':iso(exam.started_at),'expires_at':iso(exam.expires_at),
+    return {'id':exam.id,'title':data['title'],'course_id':data.get('course_id'),'started_at':iso(exam.started_at),'expires_at':iso(exam.expires_at),
             'server_time':iso(now()),'questions':[{'id':i,'prompt':x['prompt'],'choices':x['choices'],'type':x['type']} for i,x in enumerate(q)],
             'answers':parse(exam.answers_json),'finished':bool(exam.finished_at),'result':parse(exam.result_json) if exam.finished_at else None}
 
@@ -146,6 +199,7 @@ def start_exam(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     db.execute(select(Account).where(Account.id==a.id).with_for_update()).first()
     require(not db.scalar(select(WrittenAttempt.id).where(WrittenAttempt.account_id==a.id,WrittenAttempt.status=='in_progress',WrittenAttempt.expires_at>now())),'Сначала завершите письменный тест',409)
     c,s,rev,data,e=learning_course(request,db,a,cid)
+    data['course_id']=c.id
     require(data['quiz_size']>0,'Пройдите отдельную итоговую проверку этого курса',409)
     attempts=exams_for(db,a,rev.id)
     for exam in attempts:
@@ -155,7 +209,10 @@ def start_exam(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     required=set(range(len(data['lessons'])))
     done={r.lesson_index for r in db.scalars(select(LessonRead).where(LessonRead.account_id==a.id,LessonRead.revision_id==rev.id,LessonRead.completed_at.is_not(None))).all()}
     require(required<=done,'Сначала изучите и отметьте все теоретические уроки',409)
-    require(not data['max_attempts'] or len(attempts)<data['max_attempts'],'Лимит попыток исчерпан. Обратитесь к управляющему.',409)
+    require(not db.scalar(select(Exam.id).where(Exam.account_id==a.id,Exam.finished_at.is_(None),
+            Exam.expires_at>now(),Exam.revision_id!=rev.id).limit(1)),'Сначала завершите начатый тест',409)
+    counted=sum(exam.result_json!=INTERRUPTED_EXAM for exam in attempts)
+    require(not data['max_attempts'] or counted<data['max_attempts'],'Лимит попыток исчерпан. Обратитесь к управляющему.',409)
     pool=data['questions'];n=data['quiz_size']
     require(len(pool)>=n and n>0,'Недостаточно вопросов в опубликованной версии',409)
     rng=secrets.SystemRandom()
@@ -171,11 +228,13 @@ def start_exam(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
 
 def exam_access(request,db,a,eid):
     learner(request,db,a)
+    db.scalar(select(Account.id).where(Account.id==a.id).with_for_update())
     exam=db.scalar(select(Exam).where(Exam.id==eid).with_for_update())
     require(exam and exam.account_id==a.id,'Попытка не найдена',404)
     rev=db.get(CourseRevision,exam.revision_id);c=db.get(Course,rev.course_id)
     require(c and c.organization_id==a.organization_id and c.published and not course_settings(db,c).archived,'Курс недоступен',403)
     data=parse(rev.payload)
+    data['course_id']=c.id
     require(applies(a,data),'Курс больше не назначен вашим должностям',403)
     # An already-started exam uses its immutable revision even if a manager publishes another.
     return exam,data
@@ -205,7 +264,7 @@ def finish(db,exam,data):
     exam.finished_at=ended
     account=db.get(Account,exam.account_id)
     if len(answers)>=max(1,len(questions)//2):
-        attempt_no=db.scalar(select(func.count(Exam.id)).where(Exam.account_id==account.id,Exam.finished_at>=now().replace(hour=0,minute=0,second=0,microsecond=0))) or 0
+        attempt_no=db.scalar(select(func.count(Exam.id)).where(Exam.account_id==account.id,Exam.result_json!=INTERRUPTED_EXAM,Exam.finished_at>=now().replace(hour=0,minute=0,second=0,microsecond=0))) or 0
         if attempt_no<3: result['reward']=reward(db,account,'exam:'+exam.id,'exam',30 if result['passed'] else 8,15 if result['passed'] else 4,exam_attempts=1)
         if result['passed']:
             perfect=score==100 and len(questions)>=10
@@ -224,9 +283,25 @@ def get_exam(eid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
     return visible_exam(exam,data)
 
 
+@router.post('/api/exams/{eid}/interrupt')
+def interrupt_exam(eid:str,request:Request,a=Depends(actor),db=Depends(get_db)):
+    exam,data=exam_access(request,db,a,eid)
+    if not exam.finished_at:
+        if now()>=exam.expires_at:
+            finish(db,exam,data)
+        else:
+            exam.finished_at=now()
+            exam.result_json=INTERRUPTED_EXAM
+            exam.answers_json='{}'
+        db.commit()
+    return {'interrupted':exam.result_json==INTERRUPTED_EXAM,
+            'course_id':db.get(CourseRevision,exam.revision_id).course_id}
+
+
 @router.put('/api/exams/{eid}')
 def save_answers(eid:str,data:AnswerIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     exam,p=exam_access(request,db,a,eid)
+    require(exam.result_json!=INTERRUPTED_EXAM,'Попытка прервана. Начните тест заново.',409)
     if exam.finished_at:return {'finished':True,'result':parse(exam.result_json)}
     if exam.expires_at<=now():result=finish(db,exam,p);db.commit();return {'finished':True,'result':result}
     validate_answers(exam,data)
@@ -237,6 +312,7 @@ def save_answers(eid:str,data:AnswerIn,request:Request,a=Depends(actor),db=Depen
 @router.post('/api/exams/{eid}/finish')
 def submit(eid:str,data:AnswerIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     exam,p=exam_access(request,db,a,eid)
+    require(exam.result_json!=INTERRUPTED_EXAM,'Попытка прервана. Начните тест заново.',409)
     if exam.finished_at:return parse(exam.result_json)
     if now()<exam.expires_at:
         validate_answers(exam,data);answers=parse(exam.answers_json);answers.update(data.answers);exam.answers_json=dump(answers)

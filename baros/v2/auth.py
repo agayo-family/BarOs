@@ -105,7 +105,7 @@ def tenant(request, db, account, capability=None, write=False, learning=False, m
     cfg = settings(db, oid)
     perms = parse(cfg.permissions_json)
     require(cfg.status not in {'suspended', 'archived'}, 'Доступ к заведению приостановлен. Обратитесь в поддержку.', 403)
-    require(perms.get('employee_access' if learning else 'manager_access', True),
+    require(perms.get('employee_access' if account.role == 'employee' else 'manager_access', True),
             'Доступ временно ограничен. Обратитесь в поддержку.', 403)
     if learning or write:
         require(cfg.subscription_status not in {'past_due', 'suspended'} and

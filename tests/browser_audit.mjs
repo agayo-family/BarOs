@@ -72,11 +72,36 @@ await login('browser.worker0');
 const shiftMonth=new Date().toISOString().slice(0,7),shiftDays=[10,12,15].map(d=>shiftMonth+'-'+String(d).padStart(2,'0'));
 await call('/shifts/batch','POST',{account_id:me.account.id,template_id:shiftTemplate.id,template_version:shiftTemplate.version,days:shiftDays});
 for(let i=0;i<lessons.length;i++)await call(`/learning/${c.id}/lessons/${i}`,'POST',{complete:true});
-const exam=await call('/learning/'+c.id+'/exam','POST',{});
+const startQuiz=()=>call('/learning/'+c.id+'/exam','POST',{});
+let exam=await startQuiz(),activeWritten;
+await page.goto(base+'/app/exam/'+exam.id);
+await page.locator('#page-content.exam-focused').waitFor();
+assert.equal(await page.locator('#sidebar').isVisible(),false,'Navigation is hidden during a live test');
+await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
+await page.getByRole('heading',{name:'Попытка прервана',exact:true}).waitFor();
+assert.equal((await call('/exams/'+exam.id)).interrupted,true);
+await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+await page.waitForURL(url=>url.pathname.startsWith('/app/exam/')&&!url.pathname.endsWith(exam.id));
+await page.locator('#page-content.exam-focused').waitFor();
+exam=await startQuiz();
+await call('/exams/'+exam.id+'/interrupt','POST',{});
+console.log('FOCUS PASS: active quiz hides navigation, a focus loss invalidates the old attempt, return starts a new one');
 await page.goto(base+'/');
 async function shot(role,path,label,width,theme){
  await page.setViewportSize({width,height:width<800?844:1000});
  await page.evaluate(({theme,oid})=>{localStorage.setItem('baros:theme',theme);if(oid)localStorage.setItem('baros:venue',String(oid));else localStorage.removeItem('baros:venue')},{theme,oid:role==='remote'?oid:null});
+ if(label==='exam'){
+  await page.goto(base+'/app/learning');
+  if(exam)await call('/exams/'+exam.id+'/interrupt','POST',{});
+  exam=await startQuiz();
+  path='/app/exam/'+exam.id;
+ }
+ if(label==='written'){
+  await page.goto(base+'/app/assessments');
+  if(activeWritten)await call('/assessment-attempts/'+activeWritten.id+'/interrupt','POST',{});
+  activeWritten=await beginWritten();
+  path='/app/assessment-attempts/'+activeWritten.id;
+ }
  await page.goto(base+path);
  await page.waitForFunction(()=>document.querySelector('#app')?.getAttribute('aria-busy')==='false');
  await page.evaluate(()=>document.fonts.ready);
@@ -87,7 +112,7 @@ async function shot(role,path,label,width,theme){
   assert.equal(await page.locator('[data-publish]').count(),0,'Shared draft does not expose publication');
  }
  if(label==='written-only-lesson'){assert.equal(await page.locator('[data-start-exam]').count(),0);assert.equal(await page.locator('a[href^="/app/cards/"]').count(),0)}
- if(label.startsWith('reports')){for(const checkbox of await page.locator('.analytics-filters input[type=checkbox]').all()){const size=await checkbox.boundingBox();assert(size.width<=24&&size.height<=24,'Filter checkbox keeps a compact size')}for(const label of await page.locator('.analytics-filters .check-label').all()){const size=await label.boundingBox();assert(size.height<100,'Filter labels remain readable on mobile')}}
+ if(label.startsWith('reports')){for(const checkbox of await page.locator('.analytics-filters input[type=checkbox]').all()){const size=await checkbox.boundingBox();if(!size)continue;assert(size.width<=24&&size.height<=24,'Filter checkbox keeps a compact size')}for(const label of await page.locator('.analytics-filters .check-label').all()){const size=await label.boundingBox();if(!size)continue;assert(size.height<100,'Filter labels remain readable on mobile')}}
  if(role==='public'&&label.startsWith('landing')){assert.equal(await page.locator('.site-login').getAttribute('href'),'/login');assert.equal(await page.locator('#auth-form').count(),0);assert(await page.locator('#price-result').innerText().then(s=>s.replace(/\s/g,'').includes(label==='landing-custom'?'Индивидуально':label==='landing-self'?'4900':'9900')))}
  if(label==='exam')assert.equal(await page.locator('[data-retry-answer]').isVisible(),false,'Retry saving is hidden until a save fails');
  if(width<431)for(const action of await page.locator('.page-head .actions .btn').all()){
@@ -101,6 +126,7 @@ async function shot(role,path,label,width,theme){
  }
  if(label==='login')assert.equal(await page.locator('a[href="/owner-recovery"]').count(),0);
  if(label==='landing-self'){assert((await page.locator('#price-result').innerText()).replace(/\s/g,'').includes('4900'));assert.equal(await page.locator('.site-setup-price').count(),0)}
+ if(label==='lesson'&&!await page.locator('.course-photo img').count())await page.locator('[data-read-lesson]').first().click();
  if(['lesson','cards','written'].includes(label)){const images=page.locator('.course-photo img');assert(await images.count()>0,'Private course photo rendered');await page.waitForFunction(()=>[...document.querySelectorAll('.course-photo img')].every(img=>img.complete&&img.naturalWidth>0));}
  if(label==='shifts-batch'){await page.locator('[data-toggle-multi]').click();await page.locator('[data-quick-template]').first().click();for(const d of [20,23])await page.locator(`[data-day="${shiftMonth}-${d}"]`).click();await page.locator('[data-preview-batch]').click();await page.locator('[data-apply-batch]:not([disabled])').waitFor()}
  if(label==='support'&&role!=='owner'){await page.locator('[data-new-support]').click();await page.screenshot({path:join(output,`${role}-support-dialog-${width}-${theme}.png`),fullPage:true});await page.keyboard.press('Escape')}
@@ -117,12 +143,19 @@ async function shot(role,path,label,width,theme){
 const sizes=process.env.BAROS_AUDIT_REVERSE?[1440,768,390,360]:[360,390,768,1440];
 const themes=process.env.BAROS_AUDIT_REVERSE?['dark','light']:['light','dark'];
 async function sweep(role,routes){for(const width of sizes)for(const theme of themes)for(const [path,label]of routes)if(!process.env.BAROS_AUDIT_FOCUS||process.env.BAROS_AUDIT_FOCUS===role+'/'+label)await shot(role,path,label,width,theme)}
-await sweep('employee',[['/app/shifts','shifts-batch'],['/app','home'],['/app/learning','learning'],['/app/learn/'+c.id,'lesson'],['/app/learn/'+writtenCourse.id,'written-only-lesson'],['/app/exam/'+exam.id,'exam'],['/app/cards/'+c.id,'cards'],['/app/games/'+c.id,'games'],['/app/mentor','mentor'],['/app/shifts','shifts'],['/app/history','history'],['/app/notices','notices'],['/app/profile','profile'],['/app/settings','settings'],['/app/support','support'],['/app/assessments','assessments']]);
-await call('/exams/'+exam.id+'/finish','POST',{answers:{'0':0,'1':0,'2':0,'3':0}});
-let written=await call('/assessments/'+assessment.id+'/start','POST',{});
-written=await call('/assessment-attempts/'+written.id,'PUT',{version:written.version,answers:{q1:0}});
-written=await call('/assessment-attempts/'+written.id+'/advance','POST',{version:written.version});
-await sweep('employee',[['/app/assessment-attempts/'+written.id,'written']]);
+await sweep('employee',[['/app/shifts','shifts-batch'],['/app','home'],['/app/learning','learning'],['/app/learn/'+c.id,'lesson'],['/app/learn/'+writtenCourse.id,'written-only-lesson'],['/app/exam/'+exam.id,'exam'],['/app/cards/'+c.id,'cards'],['/app/games/'+c.id,'games'],['/app/mentor','mentor'],['/app/shifts','shifts'],['/app/history','history'],['/app/notices','notices'],['/app/profile','profile'],['/app/team','team'],['/app/stop-list','stop-list'],['/app/role-exams','role-exams'],['/app/settings','settings'],['/app/support','support'],['/app/assessments','assessments']]);
+await call('/exams/'+exam.id+'/interrupt','POST',{});
+exam=await startQuiz();
+await call('/exams/'+exam.id+'/finish','POST',{answers:Object.fromEntries(exam.questions.map((_,i)=>[String(i),0]))});
+async function beginWritten(){
+ let row=await call('/assessments/'+assessment.id+'/start','POST',{});
+ row=await call('/assessment-attempts/'+row.id,'PUT',{version:row.version,answers:{q1:0}});
+ return call('/assessment-attempts/'+row.id+'/advance','POST',{version:row.version});
+}
+await sweep('employee',[['/app/assessment-attempts/draft','written']]);
+await page.goto(base+'/app/assessments');
+if(activeWritten)await call('/assessment-attempts/'+activeWritten.id+'/interrupt','POST',{});
+let written=await beginWritten();
 written=await call('/assessment-attempts/'+written.id,'PUT',{version:written.version,answers:{q2:'Сначала сверю рецепт и единицы, затем рассчитаю себестоимость и зафиксирую результат.'}});
 written=await call('/assessment-attempts/'+written.id+'/submit','POST',{version:written.version});
 await sweep('employee',[['/app/assessment-attempts/'+written.id,'submitted']]);

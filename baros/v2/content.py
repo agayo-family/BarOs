@@ -4,9 +4,10 @@ import os
 import secrets
 from datetime import timedelta
 from pathlib import Path
+from typing import Literal
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from fastapi.responses import Response
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import defer
 from pydantic import ValidationError
 from ..db import get_db
@@ -22,15 +23,32 @@ from . import source_review
 router=APIRouter()
 
 
-def get_course(db,oid,cid):
-    c=db.get(Course,cid);require(c and c.organization_id==oid,'Курс не найден',404);return c
+def get_course(db, oid, cid, include_deleted=False):
+    c = db.get(Course, cid)
+    require(c and c.organization_id == oid, 'Курс не найден', 404)
+    if not include_deleted:
+        presentation = db.get(CoursePresentation, cid)
+        require(not presentation or not presentation.deleted_at, 'Курс в корзине', 404)
+    return c
 
 
-def course_card(db,c,s=None,counts=None,program=None):
+def presentation_card(cid, row):
+    return {
+        'cover_url': f'/api/course-covers/{cid}?v={row.cover_id}' if row and row.cover_id else None,
+        'priority': (row.priority_override or row.priority_default) if row else None,
+        'priority_default': row.priority_default if row else None,
+        'priority_override': row.priority_override if row else None,
+        'display_order': row.display_order if row else None,
+        'deleted_at': iso(row.deleted_at) if row else None,
+    }
+
+
+def course_card(db,c,s=None,counts=None,program=None,presentation=...):
     s=s or course_settings(db,c)
     lesson_count,question_count=counts if counts is not None else (len(c.lessons),len(c.questions))
     program=program if program is not None else parse(getattr(db.get(CourseProgram,c.id),'payload',None))
-    return {'id':c.id,'title':c.title,'description':c.description,'published':c.published,'archived':s.archived,'version':s.version,
+    if presentation is ...:presentation=db.get(CoursePresentation,c.id)
+    return {**presentation_card(c.id,presentation),'id':c.id,'title':c.title,'description':c.description,'published':c.published,'archived':s.archived,'version':s.version,
             'edit_version':s.edit_version,'positions':parse(s.positions_json,['all']),'lessons':lesson_count,'questions':question_count,
             'quiz_size':s.quiz_size,'is_intro':s.is_intro,'ai_generated':s.ai_generated,'bank_target':s.bank_target,'required':c.required,
             'passing_score':c.passing_score,'due_at':iso(s.due_at),'updated_at':iso(s.updated_at),
@@ -39,16 +57,118 @@ def course_card(db,c,s=None,counts=None,program=None):
 
 
 @router.get('/api/courses')
-def courses(request:Request,a=Depends(actor),db=Depends(get_db)):
+def courses(request:Request,trash:bool=False,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a)
-    rows=db.scalars(select(Course).where(Course.organization_id==oid).order_by(Course.id.desc())).all()
+    query=select(Course,CoursePresentation).outerjoin(CoursePresentation).where(Course.organization_id==oid)
+    query=query.where(CoursePresentation.deleted_at.is_not(None) if trash else CoursePresentation.deleted_at.is_(None))
+    entries=db.execute(query.order_by(Course.id.desc())).all()
+    rows=[c for c,_ in entries]
     ids=[c.id for c in rows]
     if not ids:return []
     configs={s.course_id:s for s in db.scalars(select(CourseSettings).where(CourseSettings.course_id.in_(ids))).all()}
     lessons=dict(db.execute(select(Lesson.course_id,func.count(Lesson.id)).where(Lesson.course_id.in_(ids)).group_by(Lesson.course_id)).all())
     questions=dict(db.execute(select(Question.course_id,func.count(Question.id)).where(Question.course_id.in_(ids)).group_by(Question.course_id)).all())
     programs={p.course_id:parse(p.payload) for p in db.scalars(select(CourseProgram).where(CourseProgram.course_id.in_(ids))).all()}
-    return [course_card(db,c,configs.get(c.id),(lessons.get(c.id,0),questions.get(c.id,0)),programs.get(c.id,{})) for c in rows]
+    return [course_card(db,c,configs.get(c.id),(lessons.get(c.id,0),questions.get(c.id,0)),programs.get(c.id,{}),meta) for c,meta in entries]
+
+
+class CoursePresentationIn(StrictModel):
+    cover_id: str | None = Field(default=None, pattern=r'^[A-Za-z0-9_-]{20,64}$')
+    priority_override: Literal['P0','P1','P2'] | None = None
+
+
+def lock_course_settings(db, c):
+    course_settings(db, c)
+    return db.scalar(select(CourseSettings).where(CourseSettings.course_id==c.id)
+                     .with_for_update().execution_options(populate_existing=True))
+
+
+def check_not_deleted(db, cid):
+    meta=db.get(CoursePresentation,cid,populate_existing=True)
+    require(not meta or not meta.deleted_at,'Курс в корзине',404)
+    return meta
+
+
+def interrupt_course_exams(db, cid):
+    db.execute(update(Exam).where(
+        Exam.revision_id.in_(select(CourseRevision.id).where(CourseRevision.course_id==cid)),
+        Exam.finished_at.is_(None)).values(finished_at=now(),result_json=INTERRUPTED_EXAM,answers_json='{}'))
+
+
+@router.put('/api/courses/{cid}/presentation')
+def update_presentation(cid:int,data:CoursePresentationIn,request:Request,a=Depends(actor),db=Depends(get_db)):
+    oid=manager(request,db,a,'courses_manage',True)
+    c=get_course(db,oid,cid)
+    lock_course_settings(db,c)
+    meta=check_not_deleted(db,cid) or CoursePresentation(course_id=cid)
+    if 'cover_id' in data.model_fields_set:
+        if data.cover_id:
+            image=db.get(CourseMedia,data.cover_id)
+            require(image and image.organization_id==oid,'Фото не найдено в этом заведении',404)
+        meta.cover_id=data.cover_id
+    if 'priority_override' in data.model_fields_set:
+        meta.priority_override=data.priority_override
+    db.add(meta)
+    log(db,a,oid,'Обновлено оформление курса',course_id=cid)
+    db.commit()
+    return presentation_card(cid,meta)
+
+
+@router.get('/api/course-covers/{cid}')
+def course_cover(cid:int,request:Request,venue:int|None=None,a=Depends(actor),db=Depends(get_db)):
+    from .auth import tenant
+    oid=tenant(request,db,a,learning=a.role=='employee',media_venue=venue)
+    c=get_course(db,oid,cid)
+    if a.role=='employee':
+        s=course_settings(db,c)
+        rev=revision(db,c) if c.published and not s.archived else None
+        require(rev and applies(a,parse(rev.payload)),'Фото недоступно',404)
+    meta=db.get(CoursePresentation,cid)
+    image=db.get(CourseMedia,meta.cover_id) if meta and meta.cover_id else None
+    require(image and image.organization_id==oid,'Фото не найдено',404)
+    return Response(image.content,media_type=image.mime)
+
+
+@router.delete('/api/courses/{cid}')
+def delete_course(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
+    oid=manager(request,db,a,'courses_manage',True)
+    c=get_course(db,oid,cid,include_deleted=True)
+    s=lock_course_settings(db,c)
+    meta=db.get(CoursePresentation,cid,populate_existing=True) or CoursePresentation(course_id=cid)
+    if meta.deleted_at:
+        return {'ok':True}
+    require(not db.scalar(select(Job.id).where(Job.course_id==cid,Job.status.in_(['queued','running'])).limit(1)),
+            'Дождитесь окончания сборки курса',409)
+    meta.was_archived=s.archived
+    meta.deleted_at=now()
+    s.archived=True
+    s.edit_version+=1
+    interrupt_course_exams(db,cid)
+    db.add(meta)
+    log(db,a,oid,'Курс перемещён в корзину',course_id=cid)
+    db.commit()
+    return {'ok':True}
+
+
+@router.post('/api/courses/{cid}/restore')
+def restore_course(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
+    oid=manager(request,db,a,'courses_manage',True)
+    c=get_course(db,oid,cid,include_deleted=True)
+    s=lock_course_settings(db,c)
+    meta=db.get(CoursePresentation,cid,populate_existing=True)
+    if not meta or not meta.deleted_at:
+        return {'ok':True,'archived':s.archived}
+    if not meta.was_archived and c.published:
+        rev=revision(db,c)
+        data=parse(rev.payload) if rev else {}
+        aid=(data.get('program') or {}).get('written_assessment_id')
+        if aid:validate_final(db,oid,aid,data['positions'])
+    s.archived=meta.was_archived
+    meta.deleted_at=None
+    s.edit_version+=1
+    log(db,a,oid,'Курс восстановлен из корзины',course_id=cid)
+    db.commit()
+    return {'ok':True,'archived':s.archived}
 
 
 @router.get('/api/courses/{cid}')
@@ -89,7 +209,7 @@ def create_course(data:CourseIn,request:Request,a=Depends(actor),db=Depends(get_
 @router.put('/api/courses/{cid}')
 def update_course(cid:int,data:CourseIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'courses_manage',True);c=get_course(db,oid,cid)
-    s=db.scalar(select(CourseSettings).where(CourseSettings.course_id==cid).with_for_update())
+    s=lock_course_settings(db,c);check_not_deleted(db,cid)
     require(data.edit_version==s.edit_version,'Курс изменён в другом окне. Обновите страницу перед сохранением.',409)
     if os.getenv('BAROS_AI_ENABLED','0')=='1':
         require(not db.scalar(select(Job.id).where(Job.course_id==cid,Job.status.in_(['queued','running']))),'Дождитесь окончания генерации',409)
@@ -100,7 +220,7 @@ def update_course(cid:int,data:CourseIn,request:Request,a=Depends(actor),db=Depe
 @router.post('/api/courses/{cid}/publish')
 def publish(cid:int,data:PublishIn,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'courses_manage',True);c=get_course(db,oid,cid)
-    s=db.scalar(select(CourseSettings).where(CourseSettings.course_id==cid).with_for_update())
+    s=lock_course_settings(db,c);check_not_deleted(db,cid)
     require(s.edit_version==data.edit_version,'Сначала сохраните актуальный черновик',409)
     require(data.reviewed,'Подтвердите проверку фактов, теории и ответов')
     require(c.lessons,'Добавьте хотя бы один теоретический урок')
@@ -137,11 +257,12 @@ def publish(cid:int,data:PublishIn,request:Request,a=Depends(actor),db=Depends(g
 @router.post('/api/courses/{cid}/archive')
 def archive_course(cid:int,request:Request,a=Depends(actor),db=Depends(get_db)):
     oid=manager(request,db,a,'courses_manage',True);c=get_course(db,oid,cid)
-    s=db.scalar(select(CourseSettings).where(CourseSettings.course_id==cid).with_for_update())
+    s=lock_course_settings(db,c);check_not_deleted(db,cid)
     if s.archived and c.published:
         rev=revision(db,c);published=parse(rev.payload) if rev else {};aid=(published.get('program') or {}).get('written_assessment_id')
         if aid:validate_final(db,oid,aid,published['positions'])
     s.archived=not s.archived
+    if s.archived:interrupt_course_exams(db,cid)
     log(db,a,oid,'Курс архивирован' if s.archived else 'Курс восстановлен',course_id=cid);db.commit();return {'archived':s.archived}
 
 
