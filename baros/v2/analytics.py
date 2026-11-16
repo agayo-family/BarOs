@@ -11,7 +11,7 @@ from ..db import get_db
 from ..models import Course
 from .auth import check_venue_permission, actor,manager
 from .models import Account,CourseSettings,CourseRevision,Exam,WrittenAttempt,ImportedAssessment
-from .domain import parse,iso,now,require,POSITIONS,learner_stats_many,applies
+from .domain import parse,iso,now,require,POSITIONS,learner_stats_many,applies,INTERRUPTED_EXAM
 from .readiness import content_key
 from .packages import score_result
 
@@ -71,7 +71,7 @@ def build(db,oid,days=30,start=None,end=None,position='',account_id=None,course_
     per_test={t.id:{'id':t.id,'title':t.title,'published':t.published,'archived':t.archived,'assigned':sum(any(x['id']==t.id for x in r['assessments']) for r in rows.values()),'graded':0,'submitted':0,'scores':[],'durations':[]} for t in all_tests if (history or t.published and not t.archived) and (not assessment_id or t.id==assessment_id) and (not course_id or t.id in linked)}
     daily=defaultdict(lambda:{'auto':0,'written':0,'passed':0,'scores':[]})
     attempts=[];question_last={};progressions=defaultdict(list);timed_out=0
-    q=select(Exam).options(defer(Exam.questions_json),defer(Exam.answers_json)).where(Exam.account_id.in_(aids),Exam.revision_id.in_(selected_revisions),Exam.finished_at.is_not(None),Exam.finished_at<high)
+    q=select(Exam).options(defer(Exam.questions_json),defer(Exam.answers_json)).where(Exam.account_id.in_(aids),Exam.revision_id.in_(selected_revisions),Exam.finished_at.is_not(None),Exam.result_json!=INTERRUPTED_EXAM,Exam.finished_at<high)
     if low:q=q.where(Exam.finished_at>=low)
     for x in db.scalars(q.order_by(Exam.finished_at,Exam.started_at,Exam.id)).yield_per(200):
         p=data[x.revision_id]
@@ -99,11 +99,13 @@ def build(db,oid,days=30,start=None,end=None,position='',account_id=None,course_
                 row['mistakes']+=1;row['employees'].append({'id':uid,'name':name});sel=item.get('selected');choices=item.get('choices',[])
                 if isinstance(sel,int) and 0<=sel<len(choices):row['distractors'][choices[sel]]=row['distractors'].get(choices[sel],0)+1
     queue_ids=[t.id for t in all_tests if (not assessment_id or t.id==assessment_id) and (not course_id or t.id in linked)]
-    rubric_rows={};queue=[];written_keys={t.id:content_key(parse(t.payload)) for t in all_tests};test_versions={}
+    test_payloads={t.id:parse(t.payload) for t in all_tests}
+    rubric_rows={};queue=[];written_keys={tid:content_key(p) for tid,p in test_payloads.items()};test_versions={}
     for tid,t in per_test.items():test_versions[(tid,written_keys[tid])]={**t,'revision':written_keys[tid][:12],'current':True,'scores':[],'durations':[]}
-    q=select(WrittenAttempt).options(defer(WrittenAttempt.answers)).where(WrittenAttempt.organization_id==oid,WrittenAttempt.account_id.in_(aids),WrittenAttempt.assessment_id.in_(queue_ids)).order_by(WrittenAttempt.started_at,WrittenAttempt.id)
+    q=select(WrittenAttempt).options(defer(WrittenAttempt.answers)).where(WrittenAttempt.organization_id==oid,WrittenAttempt.account_id.in_(aids),WrittenAttempt.assessment_id.in_(queue_ids),WrittenAttempt.status!='interrupted').order_by(WrittenAttempt.started_at,WrittenAttempt.id)
     for x in db.scalars(q).yield_per(20):
-        p=parse(x.snapshot);is_current=content_key(p)==written_keys[x.assessment_id]
+        p=parse(x.snapshot);position_key=test_payloads[x.assessment_id].get('role_exam_position')
+        is_current=bool(position_key) or content_key(p)==written_keys[x.assessment_id]
         status=x.status
         expired=status=='in_progress' and x.expires_at<=now()
         if expired:status='submitted' if any(t['kind']=='written' for t in p['tasks']) else 'graded'
@@ -115,7 +117,7 @@ def build(db,oid,days=30,start=None,end=None,position='',account_id=None,course_
         if status!='graded' or not graded_at or graded_at>=high or low and graded_at<low:continue
         result=score_result(x);score=result['percent'];seconds=max(0,((x.submitted_at or x.expires_at)-x.started_at).total_seconds())
         row=rows[x.account_id];row['written_graded']+=1;row['written_scores'].append(score)
-        signature=content_key(p)
+        signature=written_keys[x.assessment_id] if position_key else content_key(p)
         t=test_versions.setdefault((x.assessment_id,signature),{'id':x.assessment_id,'title':p['title'],'revision':signature[:12],'current':is_current,'published':tests[x.assessment_id].published,'archived':tests[x.assessment_id].archived,'assigned':None,'graded':0,'submitted':0,'scores':[],'durations':[]});t['graded']+=1;t['scores'].append(score);t['durations'].append(seconds)
         day=daily[local_day(graded_at)];day['written']+=1
         attempts.append({'id':x.id,'kind':'written','account_id':x.account_id,'name':row['name'],'title':p['title'],'assessment_id':x.assessment_id,'current':is_current,'at':iso(graded_at),'score':score,'passed':result['passed'],'seconds':seconds,'url':'/app/assessment-attempts/'+x.id})
@@ -152,8 +154,20 @@ def params(request:Request,db,a,days,start,end,position,account_id,course_id,ass
     return build(db,oid,days,start,end,position,account_id,course_id,assessment_id,history,include_inactive)
 
 @router.get('/api/reports/analytics')
-def analytics(request:Request,days:int=30,start:date|None=None,end:date|None=None,position:str='',account_id:int|None=None,course_id:int|None=None,assessment_id:int|None=None,history:bool=False,include_inactive:bool=False,a=Depends(actor),db=Depends(get_db)):
-    return params(request,db,a,days,start,end,position,account_id,course_id,assessment_id,history,include_inactive)
+def analytics(request:Request,days:int=30,start:date|None=None,end:date|None=None,position:str='',account_id:int|None=None,course_id:int|None=None,assessment_id:int|None=None,history:bool=False,include_inactive:bool=False,view:str='',a=Depends(actor),db=Depends(get_db)):
+    result=params(request,db,a,days,start,end,position,account_id,course_id,assessment_id,history,include_inactive)
+    if not view:return result
+    shared={key:result[key] for key in ('summary','period','filters','scope_note')}
+    if view=='overview':
+        team=sorted(result['team'],key=lambda r:(-r['overdue'],-r['pending_review'],r['completion_percent'] if r['completion_percent'] is not None else 101,r['name']))
+        return {**shared,'team':team[:5],'timeline':result['timeline'][-30:],
+                'review_queue':result['review_queue'][:4],
+                'weak':[{key:r[key] for key in ('prompt','course_title','course_id','mistakes','checked')}
+                        for r in result['questions'] if r['mistakes']>0 and r['checked']>=2][:4]}
+    sections={'team':('team',),'courses':('courses',),'questions':('questions',),
+              'written':('assessments','review_queue','rubrics'),'timeline':('timeline',),'attempts':('attempts',)}
+    require(view in sections,'Неизвестный раздел аналитики',422)
+    return {**shared,**{key:result[key] for key in sections[view]}}
 
 @router.get('/api/reports/analytics/export')
 def export(request:Request,section:str='team',days:int=30,start:date|None=None,end:date|None=None,position:str='',account_id:int|None=None,course_id:int|None=None,assessment_id:int|None=None,history:bool=False,include_inactive:bool=False,a=Depends(actor),db=Depends(get_db)):

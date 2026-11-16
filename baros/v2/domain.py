@@ -11,7 +11,7 @@ from sqlalchemy import select, func, and_
 from fastapi import HTTPException
 from ..models import Organization, User, Employee, Course, Lesson, Question, Upload, Attempt, VenueControl, ManagerControl
 from ..security import hash_password
-from .models import Account, VenueSettings, CourseSettings, CourseRevision, Enrollment, LessonRead, Exam, Notice, SourceFile, Event, Setting
+from .models import Account, VenueSettings, CourseSettings, CourseRevision, CoursePresentation, Enrollment, LessonRead, Exam, Notice, SourceFile, Event, Setting
 
 POSITIONS = {'bartender': 'Бармен', 'waiter': 'Официант', 'manager': 'Менеджер зала', 'host': 'Хостес', 'cook': 'Повар', 'barista': 'Бариста', 'administrator': 'Администратор', 'sommelier': 'Сомелье', 'hookah_master': 'Кальянный мастер', 'cleaner': 'Клининг-мастер'}
 PERMISSIONS = {'employees_manage': 'Сотрудники', 'courses_manage': 'Уроки и тесты', 'uploads_manage': 'Материалы', 'ai_use': 'AI-методист', 'onboarding_edit': 'Интервью', 'shifts_manage': 'График смен'}
@@ -20,6 +20,7 @@ QTYPES = {'knowledge': 'Знание', 'understanding': 'Понимание', 's
 
 def now(): return datetime.utcnow()
 def dump(x): return json.dumps(x, ensure_ascii=False)
+INTERRUPTED_EXAM = dump({'interrupted': True})
 def parse(s, default=None):
     try: return json.loads(s)
     except (TypeError, ValueError): return default if default is not None else {}
@@ -158,21 +159,26 @@ def learner_stats_many(db, accounts, ensure=False, bundle=None):
     if ensure:
         for a in accounts: ensure_enrollments(db, a, bundles[a.organization_id], enrolled)
     exams = defaultdict(list)
-    for exam in db.scalars(select(Exam).where(Exam.account_id.in_(aids)).order_by(Exam.started_at.desc())).all():
+    for exam in db.scalars(select(Exam).where(Exam.account_id.in_(aids),Exam.result_json!=INTERRUPTED_EXAM).order_by(Exam.started_at.desc())).all():
         exams[exam.account_id].append(exam)
     reads = {(aid, rid): count for aid, rid, count in db.execute(select(LessonRead.account_id, LessonRead.revision_id, func.count(LessonRead.id))
         .where(LessonRead.account_id.in_(aids), LessonRead.completed_at.is_not(None))
         .group_by(LessonRead.account_id, LessonRead.revision_id)).all()}
     from .readiness import assessment_stats
     written=assessment_stats(db,accounts)
-    return {a.id: _learner_stats(a, accessible_courses(db, a, bundles[a.organization_id]), enrolled, exams[a.id], reads,written.get(a.id,[])) for a in accounts}
+    ids={c.id for rows in bundles.values() for c,_,_,_ in rows}
+    presentation={row.course_id:row for row in db.scalars(select(CoursePresentation).where(
+        CoursePresentation.course_id.in_(ids))).all()} if ids else {}
+    return {a.id: _learner_stats(a, accessible_courses(db, a, bundles[a.organization_id]), enrolled,
+                                 exams[a.id], reads, written.get(a.id,[]), presentation) for a in accounts}
 
 
 def learner_stats(db, account):
     return learner_stats_many(db, [account])[account.id]
 
 
-def _learner_stats(account, visible, enrolled, all_exams, reads, assessments=None):
+def _learner_stats(account, visible, enrolled, all_exams, reads, assessments=None, presentation=None):
+    from .content import presentation_card
     assessments=assessments or [];written={x['id']:x for x in assessments};linked=set()
     cards = []
     by_revision = defaultdict(list)
@@ -191,7 +197,8 @@ def _learner_stats(account, visible, enrolled, all_exams, reads, assessments=Non
         passed=auto_passed if data['quiz_size'] else complete
         components=len(data['lessons'])+int(data['quiz_size']>0)+int(bool(aid))
         progress=round(100*(read_count+int(auto_passed and data['quiz_size']>0)+int(bool(aid) and written_done))/max(1,components))
-        cards.append({'id': c.id, 'revision_id':rev.id, 'title': data['title'], 'description': data['description'], 'positions': data['positions'],
+        details=presentation_card(c.id,(presentation or {}).get(c.id))
+        cards.append({**details,'id': c.id, 'revision_id':rev.id, 'title': data['title'], 'description': data['description'], 'positions': data['positions'],
                       'required': data['required'], 'is_intro': data.get('is_intro', False), 'version': rev.version,
                       'lesson_count': len(data['lessons']), 'read_count': read_count, 'question_count': data['quiz_size'], 'card_count': len(data['questions'])+len((data.get('program') or {}).get('flashcards',[])),
                       'bank_size': len(data['questions']), 'passing_score': data['passing_score'],
@@ -200,6 +207,9 @@ def _learner_stats(account, visible, enrolled, all_exams, reads, assessments=Non
                       'best_score': max([r.get('score', 0) for r in results], default=None),
                       'latest_score': results[0].get('score') if results else None,
                       'learning_complete':complete,'written_assessment_id':aid,'written_status':w['status'] if w else 'not_assigned' if aid else None,'progress':progress})
+    cards.sort(key=lambda card: ({'P0':0,'P1':1,'P2':2}.get(card['priority'],3),
+                                 card['display_order'] if card['display_order'] is not None else 999999,
+                                 not card['is_intro'], -card['id']))
     done = [parse(x.result_json) for x in all_exams if x.finished_at]
     durations = [r['duration_seconds'] for r in done if r.get('duration_seconds') is not None]
     weak = {}

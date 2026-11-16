@@ -1,7 +1,9 @@
+import {mountStopListWidget} from './stop-list.js?v=2.14.0';
+import {importZip,courseCover,priorities} from './course-tools.js?v=2.14.0';
 import {importPackage} from './packages.js?v=2.14.0';
 import {$,$$,state,api,go,esc,icon,btn,field,textarea,select,check,positions,selected,wirePositions,on,bindForm,modal,toast,notice,empty,pageHead,search,badge,avatar,positionTags,fmtDate,fmtTime,percent,progress,stat,ring,hero,showLink,copy,download,dateValue} from './core.js?v=2.14.0';
 
-export function courseTile(c){return `<article class="card course-card" data-filter-text="${esc((c.title+' '+c.description).toLowerCase())}"><div class="row between"><div class="icon-box ${c.is_intro?'green':''}">${icon(c.is_intro?'building':'book')}</div>${badge(c.archived?'Архив':c.published?'Опубликован':'Черновик',c.archived?'':c.published?'green':'orange')}</div><h3>${esc(c.title)}</h3><p>${esc(c.description||'Добавьте описание курса, чтобы сотрудникам было проще начать.')}</p><div class="tags">${positionTags(c.positions)}${c.source_review_required?badge('Источники изменены','orange'):''}</div><div class="course-meta"><span>${icon('book')}${c.lessons} разделов</span><span>${icon('target')}${c.questions} вопросов</span></div><div class="course-footer"><span>${c.version?'Версия '+c.version:'Ещё не опубликован'}</span><a href="/app/courses/${c.id}">Открыть ${icon('arrow')}</a></div></article>`}
+export function courseTile(c){return `<article class="card course-card" data-filter-text="${esc((c.title+' '+c.description).toLowerCase())}"><div class="row between"><div class="icon-box ${c.is_intro?'green':''}">${c.cover_url?courseCover(c.cover_url,'course-cover-thumb'):icon(c.is_intro?'building':'book')}</div>${badge(c.archived?'Архив':c.published?'Опубликован':'Черновик',c.archived?'':c.published?'green':'orange')}</div><h3>${esc(c.title)}</h3><p>${esc(c.description||'Добавьте описание курса, чтобы сотрудникам было проще начать.')}</p><div class="tags">${positionTags(c.positions)}${c.priority?badge(priorities[c.priority],'purple'):''}${c.source_review_required?badge('Источники изменены','orange'):''}</div><div class="course-meta"><span>${icon('book')}${c.lessons} разделов</span><span>${icon('target')}${c.questions} вопросов</span></div><div class="course-footer"><span>${c.version?'Версия '+c.version:'Ещё не опубликован'}</span>${c.deleted_at?btn('Восстановить','refresh','sm soft','data-restore-course="'+c.id+'"'):`<a href="/app/courses/${c.id}">Открыть ${icon('arrow')}</a>`}</div></article>`}
 
 function overviewStats(staff){const employees=staff.filter(e=>e.role==='employee'&&e.active);const assigned=employees.reduce((n,e)=>n+e.stats.learning_total,0),passed=employees.reduce((n,e)=>n+e.stats.learning_completed,0),attempts=employees.reduce((n,e)=>n+e.stats.attempts,0),overdue=employees.reduce((n,e)=>n+e.stats.overdue,0);return {employees,assigned,passed,attempts,overdue,progress:assigned?Math.round(passed/assigned*100):0}}
 export async function overview(root){const [staff,courses,venue]=await Promise.all([api('/staff'),api('/courses'),api('/venue')]);const s=overviewStats(staff);state.venue=venue;const firstName=state.me.account.name.split(' ')[0];const active=courses.filter(c=>!c.archived);const drafts=active.filter(c=>!c.published);const recent=s.employees.filter(e=>e.last_seen_at).sort((a,b)=>new Date(b.last_seen_at)-new Date(a.last_seen_at)).slice(0,4);
@@ -13,12 +15,49 @@ export async function overview(root){const [staff,courses,venue]=await Promise.a
  <div class="stack"><section class="card"><div class="card-head"><div><h2>Проверка знаний команды</h2><p>Завершены теория и назначенные проверки</p></div></div><div class="ring-wrap">${ring(s.progress,'выполнено')}<div class="legend"><span><i class="dot accent"></i> Завершено · ${s.passed}</span><span><i class="dot gray"></i> Впереди · ${s.assigned-s.passed}</span></div></div><div class="divider"></div><div class="row between"><span class="muted tiny">Всего попыток</span><strong>${s.attempts}</strong></div><a class="btn text section-space" href="/app/reports">Перейти к аналитике ${icon('arrow')}</a></section>
  <section class="card"><div class="card-head"><div><h2>Последняя активность</h2><p>Сотрудники, которые заходили в BarOS</p></div></div>${recent.length?recent.map(e=>`<div class="line-item">${avatar(e.name)}<div class="grow"><strong>${esc(e.name)}</strong><small>${fmtDate(e.last_seen_at)} · ${e.stats.learning_completed}/${e.stats.learning_total} завершено</small></div><span class="score accent">${percent(e.stats.learning_percent)}</span></div>`).join(''):empty('Пока тихо','Пригласите сотрудников — здесь появится их активность.','users')}</section></div></div>`;
  on('[data-create]','click',createCourse,root);
+ root.insertAdjacentHTML('beforeend','<section class="card stop-widget section-space" data-stop-widget>Стоп-лист</section>');
+ mountStopListWidget(root);
 }
 
 export function createCourse(){const m=modal('Новое обучение',`<form id="new-course">${field('title','Название курса','','text','required minlength="2" maxlength="200" placeholder="Например, сезонная коктейльная карта"')}${textarea('description','Что узнает сотрудник?','','maxlength="3000" rows="3"')}<fieldset class="field"><legend>Для каких должностей</legend>${positions()}</fieldset><div class="modal-actions"><a href="/app/drafts" class="btn soft" data-ai-link>${icon('spark')}Черновики обучения</a>${btn('Создать черновик','plus','primary','type="submit"')}</div></form>`);$('[data-ai-link]',m.root).onclick=e=>{e.preventDefault();m.close();go('/app/ai')};bindForm('#new-course',async(d,f)=>{const c=await api('/courses','POST',{title:d.get('title'),description:d.get('description'),positions:selected(f)});m.close();go('/app/courses/'+c.id)},m.root)}
 
-export async function coursesPage(root){let list=await api('/courses'),tab='all',query='';root.innerHTML=pageHead('Академия заведения','Теория и практика, собранные под вашу команду.',`<a class="btn" href="/app/drafts">${icon('spark')}Черновики обучения</a><a class="btn" href="/app/assessments">Тесты и ситуации</a>${btn('Импорт из файла','upload','','data-import-package')}${btn('Новый курс','plus','primary','data-create')}`)+`<div class="toolbar"><div class="tabs"><button class="active" aria-pressed="true" data-filter="all">Все</button><button aria-pressed="false" data-filter="published">Опубликованы</button><button aria-pressed="false" data-filter="draft">Черновики</button><button aria-pressed="false" data-filter="archive">Архив</button></div>${search('Найти курс')}</div><div id="course-list" class="grid-3"></div>`;
- const render=()=>{const filtered=list.filter(c=>(tab==='archive'?c.archived:!c.archived)&&(tab==='published'?c.published:tab==='draft'?!c.published:true)&&(c.title+' '+c.description).toLowerCase().includes(query));$('#course-list',root).innerHTML=filtered.length?filtered.map(courseTile).join(''):`<div class="card" style="grid-column:1/-1">${empty(query?'Курсы не найдены':tab==='all'?'Здесь будут ваши курсы':tab==='archive'?'Архив пока пуст':tab==='draft'?'Нет черновиков':'Нет опубликованных курсов',query?'Попробуйте другое название или очистите поиск.':tab==='all'?'Начните с меню, раскладок или знакомства с заведением.':'Выберите другой фильтр или создайте новый курс.',query?'search':'book',query||tab!=='all'?'':btn('Создать первый курс','plus','soft','data-empty-create'))}</div>`;on('[data-empty-create]','click',createCourse,root)};render();on('[data-import-package]','click',importPackage,root);on('[data-create]','click',createCourse,root);on('[data-filter]','click',(e,b)=>{tab=b.dataset.filter;$$('[data-filter]',root).forEach(x=>(x.classList.toggle('active',x===b),x.setAttribute('aria-pressed',String(x===b))));render()},root);on('[data-search]','input',(e)=>{query=e.target.value.trim().toLowerCase();render()},root);
+export async function coursesPage(root){
+ let tab=new URLSearchParams(location.search).has('trash')?'trash':'all',query='',list=await api(tab==='trash'?'/courses?trash=true':'/courses');
+ const readOnly=state.me.account.role==='manager'&&(state.venue?.permissions?.courses_manage===false||state.venue?.status==='read_only');
+ const actions=readOnly?'':`<a class="btn" href="/app/drafts">${icon('spark')}Черновики</a>
+  ${btn('Импорт из файла','upload','','data-import-package')}${btn('Импорт ZIP','upload','','data-import-zip')}${btn('Новый курс','plus','primary','data-create')}`;
+ const filters={all:'Все',published:'Опубликованы',draft:'Черновики',archive:'Архив',trash:'Корзина'};
+ root.innerHTML=pageHead('Академия заведения','Курсы и учебные материалы команды.',actions)+`<div class="toolbar">
+ <div class="tabs course-filter-tabs">${Object.entries(filters).map(([id,label])=>`<button class="${tab===id?'active':''}" aria-pressed="${tab===id}" data-filter="${id}">${label}</button>`).join('')}</div>
+ ${search('Найти курс')}</div><div id="course-list" class="grid-3"></div>`;
+ const draw=()=>{
+  const filtered=list.filter(c=>(tab==='trash'||(tab==='archive'?c.archived:!c.archived))&&
+    (tab==='published'?c.published:tab==='draft'?!c.published:true)&&(c.title+' '+c.description).toLocaleLowerCase('ru').includes(query));
+  const titles={all:'Здесь будут ваши курсы',published:'Нет опубликованных курсов',draft:'Нет черновиков',archive:'Архив пока пуст',trash:'Корзина пуста'};
+  $('#course-list',root).innerHTML=filtered.length?filtered.map(courseTile).join(''):`<div class="card" style="grid-column:1/-1">${empty(query?'Курсы не найдены':titles[tab],query?'Попробуйте другое название.':'','book')}</div>`;
+  on('[data-restore-course]','click',async(_,b)=>{
+   await api('/courses/'+b.dataset.restoreCourse+'/restore','POST',{});toast('Курс восстановлен');await refresh();
+  },root);
+ };
+ let load=0;
+ const refresh=async()=>{
+  const current=++load;
+  const result=await api(tab==='trash'?'/courses?trash=true':'/courses');
+  if(current===load){list=result;draw()}
+ };
+ draw();
+ on('[data-import-package]','click',()=>importPackage(),root);
+ on('[data-import-zip]','click',()=>importZip(refresh),root);
+ on('[data-create]','click',createCourse,root);
+ on('[data-filter]','click',async(_,b)=>{
+  const fromTrash=tab==='trash';tab=b.dataset.filter;
+  const url=new URL(location.href);
+  if(tab==='trash')url.searchParams.set('trash','1');else url.searchParams.delete('trash');
+  history.replaceState({},'',url.pathname+url.search);
+  $$('[data-filter]',root).forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b))});
+  if(fromTrash!==(tab==='trash'))await refresh();else draw();
+ },root);
+ $('[data-search]',root).addEventListener('input',e=>{query=e.target.value.trim().toLocaleLowerCase('ru');draw()});
 }
 
 export async function staffPage(root){const [staff,venue]=await Promise.all([api('/staff'),api('/venue')]);let tab='all',query='';root.innerHTML=pageHead('Ваша команда','Должности, прогресс и результаты каждого сотрудника.',btn('Пригласить команду','link','primary','data-invite'))+`<div class="stats">${stat('Сотрудники',staff.filter(e=>e.role==='employee'&&e.active).length,`лимит подписки: ${venue.seat_limit}`,'users')}${stat('Управляющие',staff.filter(e=>e.role==='manager'&&e.active).length,'работают в этом заведении','shield')}${stat('Есть просрочка',staff.filter(e=>e.active&&e.stats?.overdue).length,'сотрудников требуют внимания','clock')}${stat('Завершили всё',staff.filter(e=>e.active&&e.stats?.assigned&&e.stats.learning_completed===e.stats.learning_total).length,'назначенных им курсов','checkcircle')}</div><div class="toolbar"><div class="tabs"><button class="active" aria-pressed="true" data-filter="all">Все</button><button aria-pressed="false" data-filter="employee">Сотрудники</button><button aria-pressed="false" data-filter="manager">Управляющие</button><button aria-pressed="false" data-filter="inactive">Отключённые</button></div>${search('Поиск по имени или должности')}</div><div id="staff-list"></div>`;

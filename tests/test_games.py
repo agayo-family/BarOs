@@ -77,7 +77,7 @@ class GameTests(unittest.TestCase):
     def test_catalog_published_material_roles_and_mode_availability(self):
         catalog=self.client.get('/api/games').json();self.assertEqual(len(catalog['courses']),1)
         self.assertEqual(catalog['courses'][0]['title'],'Published game topic')
-        board=self.client.get('/api/games/'+str(self.cid)).json();self.assertEqual(len(board['modes']),6)
+        board=self.client.get('/api/games/'+str(self.cid)).json();self.assertEqual(len(board['modes']),8)
         self.assertTrue(all(m['available'] for m in board['modes']))
         run=self.start('mix',6);self.assertNotIn('Secret draft',dump(run));self.assertNotIn('Private unpublished',dump(run))
         self.assertEqual(run['revision_id'],self.rev)

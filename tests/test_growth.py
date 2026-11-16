@@ -78,7 +78,7 @@ class GrowthTests(unittest.TestCase):
   self.assertEqual(Image.open(io.BytesIO(res.content)).size,(256,256))
   self.assertEqual(self.client.post('/api/growth/avatar',files={'file':('x.svg',b'<svg><script/></svg>','image/svg+xml')},headers=self.headers).status_code,400)
   self.assertEqual(self.client.post('/api/growth/avatar',files={'file':('x.png',buf.getvalue(),'image/png')}).status_code,403)
-  self.login('peer');self.assertEqual(self.client.get(url).status_code,403)
+  self.login('peer');self.assertEqual(self.client.get(url).status_code,200)
   self.login('manager');self.assertEqual(self.client.get(url).status_code,200)
   self.assertEqual(self.client.get('/api/growth/employees/'+str(self.ids['worker'])).status_code,200)
   self.login('foreign');self.assertEqual(self.client.get(url).status_code,404)

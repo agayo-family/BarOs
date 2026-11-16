@@ -123,6 +123,17 @@ class CourseRevision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
+class CoursePresentation(Base):
+    __tablename__ = 'v2_course_presentation'
+    course_id: Mapped[int] = mapped_column(ForeignKey('courses.id'), primary_key=True)
+    cover_id: Mapped[str | None] = mapped_column(ForeignKey('v2_course_media.id'))
+    priority_default: Mapped[str | None] = mapped_column(String(2))
+    priority_override: Mapped[str | None] = mapped_column(String(2))
+    display_order: Mapped[int | None] = mapped_column(Integer)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    was_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Enrollment(Base):
     __tablename__ = 'v2_enrollments'
     __table_args__ = (UniqueConstraint('account_id', 'revision_id'),)
@@ -432,6 +443,26 @@ class WrittenAttempt(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
     graded_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class RoleExam(Base):
+    __tablename__ = 'v2_role_exams'
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), primary_key=True)
+    position: Mapped[str] = mapped_column(String(25), primary_key=True)
+    assessment_id: Mapped[int] = mapped_column(ForeignKey('v2_imported_assessments.id'), unique=True)
+
+
+class StopListItem(Base):
+    __tablename__ = 'v2_stop_list_items'
+    __table_args__ = (UniqueConstraint('organization_id','station','name_key'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id'), index=True)
+    station: Mapped[str] = mapped_column(String(12))
+    name: Mapped[str] = mapped_column(String(140))
+    name_key: Mapped[str] = mapped_column(String(180))
+    unavailable: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    version: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class DraftOrigin(Base):

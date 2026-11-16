@@ -23,7 +23,8 @@ from .domain import (POSITIONS, applies, digest, dump, iso, log, now, parse,
 from .models import (Account, CourseProgram, CourseRevision, CourseSettings,
                      Enrollment, ImportedAssessment, Job, Notice, Setting, SourceFile, VenueSettings)
 from .packages import AssessmentIn
-from .schemas import CatalogActivateIn, CatalogPauseIn, CatalogCourseEditIn, CourseIn
+from .schemas import CatalogActivateIn, CatalogPauseIn, CatalogCourseEditIn, CourseIn, StrictModel
+from pydantic import Field
 
 router = APIRouter()
 STATE_KEY = 'standard_catalog'
@@ -257,6 +258,54 @@ def catalogue_course(key: str, a=Depends(actor), db=Depends(get_db)):
             'edit_version': draft_state(db).get('revision', 0)}
 
 
+class CatalogDistributionIn(StrictModel):
+    venue_ids: list[int] = Field(min_length=1,max_length=200)
+    fingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+@router.post('/api/owner/catalog/courses/{key}/distribute')
+def distribute_course(key: str, data: CatalogDistributionIn, a=Depends(actor), db=Depends(get_db)):
+    """Copy one library course into explicitly chosen venue drafts."""
+    owner(a)
+    lock_state(db)
+    catalog=editable_catalog(db)
+    require(catalog['fingerprint']==data.fingerprint,'Библиотека изменилась. Откройте курс заново.',409)
+    item=next((x for x in catalog['courses'] if x['key']==key),None)
+    require(item,'Курс библиотеки не найден',404)
+    ids=sorted(set(data.venue_ids))
+    venues=db.scalars(select(VenueSettings).where(
+        VenueSettings.organization_id.in_(ids)).order_by(VenueSettings.organization_id).with_for_update()).all()
+    require(len(venues)==len(ids) and all(v.status in {'active','read_only'} for v in venues),
+            'Выберите действующие заведения',409)
+    from .content import save_course
+    from .models import CoursePresentation
+    copies={}
+    for cid,oid,raw in db.execute(select(Course.id,Course.organization_id,CourseProgram.payload)
+            .join(CourseProgram).where(Course.organization_id.in_(ids)).order_by(Course.id)):
+        if parse(raw).get('standard_catalog',{}).get('key')==key:
+            copies.setdefault(oid,cid)
+    course=CourseIn.model_validate(item['course'])
+    results=[]
+    for oid in ids:
+        if oid in copies:
+            cid=copies[oid]
+            meta=db.get(CoursePresentation,cid)
+            results.append({'venue_id':oid,'course_id':cid,'status':'trash' if meta and meta.deleted_at else 'existing'})
+            continue
+        row=Course(organization_id=oid,title=course.title,published=False)
+        db.add(row)
+        db.flush()
+        save_course(db,row,course)
+        db.add(CourseProgram(course_id=row.id,payload=dump({'standard_catalog':{
+            'key':key,'version':item['version'],'release':data.fingerprint,
+            'content_fingerprint':course_fingerprint(item['course']),'sources':item.get('sources',[]),
+        }})))
+        results.append({'venue_id':oid,'course_id':row.id,'status':'draft'})
+        log(db,a,oid,'Добавлен черновик из общей библиотеки',course_id=row.id,catalog_key=key)
+    db.commit()
+    return results
+
+
 @router.put('/api/owner/catalog/courses/{key}')
 def edit_catalogue_course(key: str, data: CatalogCourseEditIn, a=Depends(actor), db=Depends(get_db)):
     owner(a)
@@ -339,7 +388,8 @@ def onboarding(a=Depends(actor), db=Depends(get_db)):
     for field, model, conditions in [
         ('managers', Account, [Account.role == 'manager', Account.active == True]),
         ('employees', Account, [Account.role == 'employee', Account.active == True]),
-        ('sources', SourceFile, []), ('courses', Course, [Course.published == True])]:
+        ('sources', SourceFile, []), ('courses', Course, [Course.published == True,
+         Course.id.not_in(select(CourseSettings.course_id).where(CourseSettings.archived.is_(True)))])]:
         counts[field] = dict(db.execute(select(model.organization_id, func.count(model.id))
             .where(model.organization_id.in_(ids), *conditions).group_by(model.organization_id)).all()) if ids else {}
     configs = {s.organization_id: s for s in db.scalars(select(VenueSettings).where(VenueSettings.organization_id.in_(ids))).all()} if ids else {}

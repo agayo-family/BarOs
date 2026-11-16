@@ -16,3 +16,8 @@
 @media(max-width:760px){.content:has(.shift-layout) .page-head .eyebrow{display:none}.content:has(.shift-layout) .page-head{margin-bottom:18px}.content:has(.shift-layout) .page-head p{font-size:12px;line-height:1.6;margin-top:8px}.content:has(.shift-layout) .page-head .actions .btn{min-height:40px}.shift-toolbar{margin:0 0 16px;gap:10px}.shift-toolbar.is-personal>.field{display:none}.shift-month-nav{align-items:center}.shift-month-nav .shift-month-field{min-width:0!important;max-width:none;min-height:40px;padding:8px}.shift-month-field>strong{font-size:15px}.shift-month-nav>.btn{min-height:38px;padding:7px 9px}.shift-view-tabs .btn{min-height:36px;padding:8px 5px}.shift-quickbar{margin-bottom:14px;padding:10px 12px}.shift-quickbar:not(.is-selecting) .shift-quick-heading>strong{display:none}.shift-quickbar .footnote{display:none}.shift-quick-heading{margin-bottom:8px}.shift-quick-heading>div{margin-left:0;justify-content:space-between;width:100%}.shift-quick-templates{padding-bottom:5px}.shift-day,.shift-blank{min-height:82px}.shift-template-admin{padding:16px!important}.shift-overview{margin-top:16px}.shift-layout+.shift-period{margin-top:16px}}
 
 @media(max-width:760px){.shift-chip strong{font-size:9px}.shift-chip{min-height:28px}}
+
+.shift-quick-collapsed .shift-quick-templates{display:none}
+.shift-quick-collapsed{padding-block:10px}
+.shift-toolbar .field:empty{display:none}
+.shift-day-number:hover,.shift-day-number:focus-visible{background:var(--lav);color:var(--accent)}

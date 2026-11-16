@@ -11,7 +11,7 @@ from ..db import get_db, SessionLocal
 from ..models import Course
 from .models import Account, LearningProfile, MentorThread, MentorTurn, AIRequest, LessonRead, Exam, GameProgress, GameRun, Setting
 from .auth import actor, tenant, manager, rate
-from .domain import require, now, dump, parse, digest, iso, applies, payload, revision, course_settings, accessible_courses
+from .domain import INTERRUPTED_EXAM, require, now, dump, parse, digest, iso, applies, payload, revision, course_settings, accessible_courses
 from .companions import catalog
 from .games import material, access_run
 from . import ai_providers
@@ -105,7 +105,8 @@ def memory(db, a, oid, rev=None, data=None):
         for row in reads:
             lessons = valid[row.revision_id].get('lessons', [])
             if row.lesson_index < len(lessons): learned.append(lessons[row.lesson_index]['title'])
-        exams = db.scalars(select(Exam).where(Exam.account_id == a.id, Exam.revision_id.in_(valid), Exam.finished_at.is_not(None)).order_by(Exam.finished_at.desc()).limit(30)).all()
+        exams = db.scalars(select(Exam).where(Exam.account_id == a.id, Exam.revision_id.in_(valid),
+            Exam.finished_at.is_not(None), Exam.result_json!=INTERRUPTED_EXAM).order_by(Exam.finished_at.desc()).limit(30)).all()
         for exam in exams:
             result = parse(exam.result_json); attempts += 1; passed += int(bool(result.get('passed')))
             if rev and exam.revision_id == rev.id:
