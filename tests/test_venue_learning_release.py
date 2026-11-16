@@ -78,6 +78,7 @@ class VenueLearningReleaseTests(unittest.TestCase):
                            files={'file':('cover.png',img.getvalue(),'image/png')})
         saved=self.request('PUT',f'/api/courses/{cid}/presentation',headers=self.headers,
                            json={'cover_id':cover['url'].split('/')[-1],'priority_override':'P0'})
+        self.assertEqual(self.request('GET',saved['cover_url']).headers['content-type'],'image/jpeg')
         gallery=self.request('GET','/api/owner/catalog')
         key=gallery['courses'][0]['key']
         path=f'/api/owner/catalog/courses/{key}/distribute'

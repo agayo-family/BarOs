@@ -117,7 +117,12 @@ def update_presentation(cid:int,data:CoursePresentationIn,request:Request,a=Depe
 @router.get('/api/course-covers/{cid}')
 def course_cover(cid:int,request:Request,venue:int|None=None,a=Depends(actor),db=Depends(get_db)):
     from .auth import tenant
-    oid=tenant(request,db,a,learning=a.role=='employee',media_venue=venue)
+    if a.role=='owner':
+        course=db.get(Course,cid)
+        require(course,'Курс не найден',404)
+        oid=course.organization_id
+    else:
+        oid=tenant(request,db,a,learning=a.role=='employee',media_venue=venue)
     c=get_course(db,oid,cid)
     if a.role=='employee':
         s=course_settings(db,c)
