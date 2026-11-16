@@ -4,7 +4,7 @@ from sqlalchemy import select
 from ..db import get_db
 from .auth import actor, manager
 from .models import Account, Exam
-from .domain import applies, course_bundle, parse
+from .domain import INTERRUPTED_EXAM, applies, course_bundle, parse
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ def knowledge_gaps(request: Request, a=Depends(actor), db=Depends(get_db)):
     if not employees or not publications:
         return {'latest_attempts': 0, 'gaps': [], 'affected_employees': 0}
     attempts = db.scalars(select(Exam).where(Exam.account_id.in_(employees),
-        Exam.revision_id.in_(publications), Exam.finished_at.is_not(None))
+        Exam.revision_id.in_(publications), Exam.finished_at.is_not(None), Exam.result_json!=INTERRUPTED_EXAM)
         .order_by(Exam.finished_at.desc(), Exam.id.desc())).all()
     seen, rows, affected = set(), {}, set()
     for attempt in attempts:

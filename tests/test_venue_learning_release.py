@@ -105,7 +105,7 @@ class VenueLearningReleaseTests(unittest.TestCase):
         buffer=io.BytesIO()
         with ZipFile(buffer,'w') as archive:
             for filename,name in [('local.baros.json','Барное меню'),('foreign.baros.json','Чайная карта'),
-                                  ('blocked.baros.json','На проверке')]:
+                                  ('blocked.baros.json','На проверке'),('unlisted.baros.json','Проверка без строки')]:
                 archive.writestr('Пакеты/'+filename,json.dumps({'format':'baros-package','version':1,'kind':'course',
                     'course':course(name,name,4)},ensure_ascii=False))
             archive.writestr('Реестр/packages_manifest.csv','file,venues,priority,readiness\n'
@@ -123,6 +123,12 @@ class VenueLearningReleaseTests(unittest.TestCase):
         self.assertEqual(self.request('POST','/api/packages/zip/import',headers=self.headers,files=files,data=opts)['imported'],1)
         self.assertEqual(self.request('POST','/api/packages/zip/import',headers=self.headers,files=files,data=opts)['imported'],0)
         self.assertEqual(self.request('GET','/api/courses',headers=self.headers)[0]['priority'],'P1')
+        unlisted=next(row for row in preview['entries'] if row['unlisted'])
+        opts['selection']=json.dumps([unlisted['file']])
+        self.request('POST','/api/packages/zip/import',409,headers=self.headers,files=files,data=opts)
+        opts['include_unlisted']='true'
+        self.assertEqual(self.request('POST','/api/packages/zip/import',headers=self.headers,files=files,data=opts)['imported'],1)
+
 
     def test_interruption_refreshes_course_and_role_questions_and_omits_scoring(self):
         first=self.publish('Барная практика','Процедура у стойки')

@@ -61,7 +61,8 @@ def read_archive(raw, db, oid):
                 priority = (meta.get('priority') or '').strip().upper()
                 info = {'file': entry.filename, 'title': '', 'kind': None, 'venues': allowed,
                         'readiness': readiness, 'priority': priority if priority in {'P0', 'P1', 'P2'} else None,
-                        'blocked': blocked, 'error': None, 'duplicate': False}
+                        'blocked': blocked, 'unlisted': bool(manifest and not meta),
+                        'error': None, 'duplicate': False}
                 p = None
                 try:
                     require(entry.file_size <= PACKAGE_LIMIT, 'Файл .baros.json превышает 2 МБ', 413)
@@ -80,8 +81,6 @@ def read_archive(raw, db, oid):
                     info['error'] = 'Не удалось прочитать файл'
                 if blocked:
                     info['error'] = 'Пакет заблокирован в реестре для проверки содержания'
-                if manifest and not meta:
-                    info['error'] = 'Пакет отсутствует в реестре'
                 result.append((info, p))
             return result
     except (BadZipFile, RuntimeError, UnicodeError, NotImplementedError, ValueError, csv.Error) as error:
@@ -108,7 +107,7 @@ async def preview_zip(request: Request, file: UploadFile = File(...), a=Depends(
 
 @router.post('/import')
 async def import_zip(request: Request, file: UploadFile = File(...), selection: str = Form(...),
-                     archive_hash: str = Form(...), archive_venue: str = Form(''),
+                     archive_hash: str = Form(...), archive_venue: str = Form(''), include_unlisted: bool = Form(False),
                      a=Depends(actor), db=Depends(get_db)):
     oid = manager(request, db, a, 'courses_manage', True)
     raw = await archive_bytes(file)
@@ -124,6 +123,7 @@ async def import_zip(request: Request, file: UploadFile = File(...), selection: 
     require(len(entries) == len(selected), 'Один из файлов уже отсутствует в ZIP', 409)
     for info, _ in entries:
         require(not info['error'], f"{PurePosixPath(info['file']).name}: {info['error']}", 409)
+        require(not info['unlisted'] or include_unlisted, 'Подтвердите заведение для файлов без строки в реестре', 409)
         require(not info['venues'] or archive_venue in info['venues'],
                 'Один из файлов предназначен для другого заведения', 409)
     # Start a real write transaction before per-package savepoints, including SQLite.

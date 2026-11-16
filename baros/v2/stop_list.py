@@ -40,7 +40,10 @@ def stations(account):
 
 def scope(request, db, account, write=False):
     if account.role == 'employee':
-        return tenant(request, db, account, write=write, learning=write)
+        oid = tenant(request, db, account, write=write, learning=write)
+        if write:
+            require(db.get(VenueSettings, oid).status != 'read_only', 'Заведение доступно только для чтения', 403)
+        return oid
     return manager(request, db, account, 'courses_manage' if write else None, write)
 
 
@@ -58,7 +61,7 @@ def list_items(request: Request, current: bool = False, a=Depends(actor), db=Dep
         from .auth import venue_permissions
         if cfg.status == 'read_only' or not venue_permissions(db, a, oid, ['courses_manage'])['courses_manage']:
             editable = set()
-    if a.role != 'owner' and (cfg.subscription_status in {'past_due', 'suspended'} or
+    if a.role != 'owner' and (cfg.status == 'read_only' or cfg.subscription_status in {'past_due', 'suspended'} or
             cfg.paid_until and cfg.paid_until <= now()):
         editable = set()
     query = select(StopListItem).where(StopListItem.organization_id == oid)

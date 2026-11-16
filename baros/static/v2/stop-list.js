@@ -22,9 +22,9 @@ export function mountStopListWidget(root){
   }
  }
  refresh();
- const interval=setInterval(refresh,30000);
+ const interval=window.setInterval(refresh,30000);
  document.addEventListener('visibilitychange',refresh);
- pageCleanup(()=>{disposed=true;clearInterval(interval);document.removeEventListener('visibilitychange',refresh)},ticket);
+ pageCleanup(()=>{disposed=true;window.clearInterval(interval);document.removeEventListener('visibilitychange',refresh)},ticket);
 }
 
 export async function stopListPage(root){

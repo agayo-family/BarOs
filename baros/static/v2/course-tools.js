@@ -93,9 +93,11 @@ export function importZip(refresh){
   area.innerHTML=`<form id="zip-import"><p>Заведение для загрузки: <strong>${esc(preview.venue)}</strong>. Материалы будут черновиками.</p>
   ${preview.archive_venues.length?`<label class="field"><span>К каким материалам заведения в реестре относится эта точка</span><select name="archive_venue" required>
   <option value="">Выберите заведение в реестре</option>${preview.archive_venues.map(x=>`<option ${x===preview.suggested_venue?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`:''}
+  ${preview.entries.some(item=>item.unlisted)?`<label class="check-label"><input type="checkbox" name="include_unlisted">
+  Разрешить ручной выбор файлов без строки в реестре. Проверьте, к какому заведению они относятся.</label>`:''}
   <div class="row between"><strong data-zip-count></strong>${btn('Выбрать доступные','check','soft','type="button" data-zip-select')}</div>
   <div data-zip-entries class="import-receipt"></div><div class="modal-actions">${btn('Импортировать выбранное','upload','primary','type="submit"')}</div></form>`;
-  const venue=$('[name=archive_venue]',area),list=$('[data-zip-entries]',area),submit=$('button[type=submit]',area);
+  const venue=$('[name=archive_venue]',area),unlisted=$('[name=include_unlisted]',area),list=$('[data-zip-entries]',area),submit=$('button[type=submit]',area);
   const count=()=>{
    const n=$$('input:checked',list).length;
    $('[data-zip-count]',area).textContent='Выбрано: '+n;submit.disabled=!n;
@@ -103,23 +105,26 @@ export function importZip(refresh){
   const renderRows=()=>{
    list.innerHTML=preview.entries.map(item=>{
     const wrongVenue=item.venues.length&&!item.venues.includes(venue?.value);
-    const detail=item.error||(wrongVenue?'Из реестра: '+item.venues.join(', '):item.duplicate?'Уже импортирован':item.kind==='assessment'?'Отдельный тест':'Курс');
+    const needsReview=item.unlisted&&!unlisted?.checked;
+    const detail=item.error||(wrongVenue?'Из реестра: '+item.venues.join(', '):item.duplicate?'Уже импортирован':item.unlisted?'Без строки в реестре':item.kind==='assessment'?'Отдельный тест':'Курс');
     return `<label class="zip-entry">
-     <input type="checkbox" name="package" value="${esc(item.file)}" ${item.error||wrongVenue||item.duplicate?'disabled':''}>
+     <input type="checkbox" name="package" value="${esc(item.file)}" ${item.unlisted?'data-unlisted':''} ${item.error||wrongVenue||item.duplicate||needsReview?'disabled':''}>
      <span><strong>${esc(item.title||item.file.split('/').at(-1))}</strong><small>${esc(detail)}${item.priority?' · '+esc(item.priority):''}</small></span></label>`;
    }).join('');
    count();
   };
   venue?.addEventListener('change',renderRows);
+  unlisted?.addEventListener('change',renderRows);
   list.addEventListener('change',count);
   on('[data-zip-select]','click',()=>{
-   $$('input:not(:disabled)',list).forEach(x=>x.checked=true);count();
+   $$('input:not([data-unlisted]):not(:disabled)',list).forEach(x=>x.checked=true);count();
   },area);
   bindForm('#zip-import',async data=>{
    const selection=data.getAll('package');
    if(!selection.length)return;
    const fields=upload(file);fields.append('archive_hash',preview.hash);fields.append('selection',JSON.stringify(selection));
    fields.append('archive_venue',data.get('archive_venue')||'');
+   if(data.has('include_unlisted'))fields.append('include_unlisted','true');
    input.disabled=true;
    try{
     const result=await api('/packages/zip/import','POST',fields);

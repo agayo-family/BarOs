@@ -27,9 +27,9 @@ export function watchNotices(){
  };
  window.addEventListener('storage',storage);
  document.addEventListener('visibilitychange',refresh);
- const interval=setInterval(refresh,45000);
+ const interval=window.setInterval(refresh,45000);
  return ()=>{
-  clearInterval(interval);
+  window.clearInterval(interval);
   window.removeEventListener('storage',storage);
   document.removeEventListener('visibilitychange',refresh);
  };
