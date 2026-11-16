@@ -129,6 +129,8 @@ class VenueLearningReleaseTests(unittest.TestCase):
         self.request('POST','/api/packages/zip/import',409,headers=self.headers,files=files,data=opts)
         opts['include_unlisted']='true'
         self.assertEqual(self.request('POST','/api/packages/zip/import',headers=self.headers,files=files,data=opts)['imported'],1)
+        self.join('zip.worker')
+        self.assertEqual(self.request('GET','/api/learning')['courses'],[])
 
 
     def test_interruption_refreshes_course_and_role_questions_and_omits_scoring(self):
