@@ -2,7 +2,12 @@ import {petEyes} from './pet-eyes.js?v=2.14.0';
 import {$,$$,state,api,esc,icon,btn,pageHead,badge,progress,modal,on,toast,fmtDate,positionTags} from './core.js?v=2.14.0';
 let lastReaction=null;
 let catalogue=null,flight=null,phraseTimer=null,accountId=null;
-const stages=level=>level>=8?3:level>=4?2:1;
+const petStages=[
+ {level:1,label:'Малыш'},
+ {level:4,label:'Исследователь'},
+ {level:8,label:'Хранитель'},
+];
+const stages=level=>level>=petStages[2].level?3:level>=petStages[1].level?2:1;
 const sprite=(p,level=1)=>`/static/v2/pets/${p.id}-${stages(level)}.svg`;
 const petFor=id=>catalogue?.pets.find(x=>x.id===id);
 const itemFor=id=>catalogue?.shop.find(x=>x.id===id);
@@ -40,6 +45,43 @@ export function petFigure(p,level=1,equipped={},compact=false){
  </div></div>`;
 }
 
+function petLooks(pet,compact){
+ return `<div class="pet-looks" style="--gallery-pet-color:${pet.color}">${petStages.map(({level,label})=>`
+  <figure class="pet-look">
+   <div class="pet-look-art" aria-hidden="true">${petFigure(pet,level,{},compact)}</div>
+   <figcaption><strong>${label}</strong><small>${level} уровень</small></figcaption>
+  </figure>`).join('')}</div>`;
+}
+
+export async function petGalleryPage(root){
+ const {pets}=await getCatalog();
+ root.innerHTML=pageHead('Галерея питомцев','Сравните облики на 1, 4 и 8 уровнях. Откройте крупный план, чтобы увидеть анимацию.')+
+  `<label class="field pet-gallery-search"><span>Найти питомца</span><input type="search" placeholder="Имя или вид" data-pet-filter></label>
+  <div class="pet-gallery-grid" data-pet-gallery>${pets.map(pet=>`
+   <article class="card pet-gallery-card" data-pet-search="${esc(`${pet.name} ${pet.species}`.toLocaleLowerCase('ru'))}">
+    <header class="pet-gallery-heading">
+     <div><h2>${esc(pet.name)}</h2><small>${esc(pet.species)}</small></div>
+     <button class="btn soft sm" data-pet-preview="${esc(pet.id)}" aria-label="Крупный план · ${esc(pet.name)}">${icon('eye')}Крупный план</button>
+    </header>
+    ${petLooks(pet,true)}
+   </article>`).join('')}</div>
+  <p class="muted" role="status" data-pet-no-results hidden>Питомцы не найдены.</p>`;
+ const gallery=$('[data-pet-gallery]',root),noResults=$('[data-pet-no-results]',root);
+ $('[data-pet-filter]',root).addEventListener('input',event=>{
+  const query=event.target.value.trim().toLocaleLowerCase('ru');
+  let matched=false;
+  for(const card of gallery.children){
+   card.hidden=!card.dataset.petSearch.includes(query);
+   matched=matched||!card.hidden;
+  }
+  noResults.hidden=matched;
+ });
+ on('[data-pet-preview]','click',(_,button)=>{
+  const pet=petFor(button.dataset.petPreview);
+  modal(pet.name,`<div class="pet-gallery-preview"><p class="muted">${esc(pet.species)}</p>${petLooks(pet,false)}<p>${esc(pet.lore)}</p></div>`,{wide:true});
+ },root);
+}
+
 export async function teamPage(root){
  const [staff]=await Promise.all([api('/growth/team'),getCatalog()]);
  root.innerHTML=pageHead('Команда','Коллеги вашего заведения.')+
@@ -63,10 +105,11 @@ export async function teamPage(root){
 function money(gold){return `<span class="gold-count"><span aria-hidden="true" class="gold-coin">B</span>${gold} золота</span>`}
 export async function profilePage(root){
  const ticket=state.renderTicket;const [p]=await Promise.all([api('/growth'),getCatalog()]);if(ticket!==state.renderTicket)return;state.growth=p;
+ const galleryLink=state.me?.account?.role==='owner'?`<a class="btn soft" href="/app/pets">${icon('heart')}Галерея питомцев</a>`:'';
  let tab='journey',shopSlot='all';
  const draw=()=>{
   const pet=petFor(p.pet_id);const hue=[255,225,185,145,40,285][Math.min(5,Math.floor((p.level-1)/3))];
-  root.innerHTML=pageHead('Мой профиль','Знания помогают на смене. Спутник и награды поддерживают ваш путь.',`<a class="btn soft" href="/app/settings">${icon('settings')}Настройки</a>`,'ВАШ ПУТЬ В BAROS')+`<section class="profile-hero card" style="--profile-hue:${hue}"><div class="profile-identity"><div class="profile-avatar framed-avatar frame-${frameStyle(p.equipped)}">${p.avatar_url?`<img src="${esc(p.avatar_url)}" alt="Ваша аватарка" width="88" height="88">`:`<span>${esc(p.name.split(/\s+/).slice(0,2).map(s=>s[0]).join(''))}</span>`}<label class="avatar-change" title="Загрузить аватарку">${icon('camera')}<input type="file" data-avatar accept="image/jpeg,image/png,image/webp" aria-label="Загрузить аватарку"></label></div><div><h2>${esc(p.name)} ${profileBadge(p.equipped)}</h2><div class="profile-level">${badge('Уровень '+p.level,'purple')}${money(p.gold)}</div><p>${p.xp} опыта · до следующего уровня ${p.next-p.progress}</p>${progress(p.percent)}${p.avatar_url?btn('Убрать аватарку','close','text sm','data-remove-avatar'):''}</div></div><div class="profile-pet-mini">${pet?petFigure(pet,p.pet_level,p.equipped):'<div class="pet-placeholder">'+icon('spark')+'</div>'}<div><strong>${pet?esc(pet.name):'Спутник ещё не выбран'}</strong><small>${pet?'Уровень '+p.pet_level+' · '+(stages(p.pet_level)===1?'Малыш':stages(p.pet_level)===2?'Исследователь':'Хранитель'):'15 существ со своей историей'}</small></div></div></section><div class="profile-tabs" role="tablist" aria-label="Разделы профиля">${[['journey','Достижения','spark'],['pet','Мой питомец','heart'],['shop','Магазин','bag']].map(([id,name,ic])=>`<button class="btn ${tab===id?'primary':'ghost'}" role="tab" id="profile-tab-${id}" aria-controls="profile-panel" tabindex="${tab===id?0:-1}" aria-selected="${tab===id}" data-profile-tab="${id}">${icon(ic)}${name}</button>`).join('')}</div><div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-tab-${tab}">${tab==='journey'?achievements(p):tab==='pet'?petPanel(p):shopPanel(p,shopSlot)}</div><p class="footnote">Золото — внутренняя награда, его нельзя купить или вывести. Предметы меняют внешний вид и не влияют на оценки. Питомец получает опыт вместе с вами и не теряет его за перерывы. Дневной предел: ${p.daily_limits.xp} опыта и ${p.daily_limits.gold} золота (сброс в 03:00 по Москве).</p>`;
+  root.innerHTML=pageHead('Мой профиль','Знания помогают на смене. Спутник и награды поддерживают ваш путь.',`${galleryLink}<a class="btn soft" href="/app/settings">${icon('settings')}Настройки</a>`,'ВАШ ПУТЬ В BAROS')+`<section class="profile-hero card" style="--profile-hue:${hue}"><div class="profile-identity"><div class="profile-avatar framed-avatar frame-${frameStyle(p.equipped)}">${p.avatar_url?`<img src="${esc(p.avatar_url)}" alt="Ваша аватарка" width="88" height="88">`:`<span>${esc(p.name.split(/\s+/).slice(0,2).map(s=>s[0]).join(''))}</span>`}<label class="avatar-change" title="Загрузить аватарку">${icon('camera')}<input type="file" data-avatar accept="image/jpeg,image/png,image/webp" aria-label="Загрузить аватарку"></label></div><div><h2>${esc(p.name)} ${profileBadge(p.equipped)}</h2><div class="profile-level">${badge('Уровень '+p.level,'purple')}${money(p.gold)}</div><p>${p.xp} опыта · до следующего уровня ${p.next-p.progress}</p>${progress(p.percent)}${p.avatar_url?btn('Убрать аватарку','close','text sm','data-remove-avatar'):''}</div></div><div class="profile-pet-mini">${pet?petFigure(pet,p.pet_level,p.equipped):'<div class="pet-placeholder">'+icon('spark')+'</div>'}<div><strong>${pet?esc(pet.name):'Спутник ещё не выбран'}</strong><small>${pet?'Уровень '+p.pet_level+' · '+petStages[stages(p.pet_level)-1].label:'15 существ со своей историей'}</small></div></div></section><div class="profile-tabs" role="tablist" aria-label="Разделы профиля">${[['journey','Достижения','spark'],['pet','Мой питомец','heart'],['shop','Магазин','bag']].map(([id,name,ic])=>`<button class="btn ${tab===id?'primary':'ghost'}" role="tab" id="profile-tab-${id}" aria-controls="profile-panel" tabindex="${tab===id?0:-1}" aria-selected="${tab===id}" data-profile-tab="${id}">${icon(ic)}${name}</button>`).join('')}</div><div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-tab-${tab}">${tab==='journey'?achievements(p):tab==='pet'?petPanel(p):shopPanel(p,shopSlot)}</div><p class="footnote">Золото — внутренняя награда, его нельзя купить или вывести. Предметы меняют внешний вид и не влияют на оценки. Питомец получает опыт вместе с вами и не теряет его за перерывы. Дневной предел: ${p.daily_limits.xp} опыта и ${p.daily_limits.gold} золота (сброс в 03:00 по Москве).</p>`;
   on('[data-profile-tab]','click',(_,b)=>{tab=b.dataset.profileTab;draw();$(`[data-profile-tab="${tab}"]`,root)?.focus({preventScroll:true})},root);
   on('[data-shop-slot]','click',(_,b)=>{
    shopSlot=b.dataset.shopSlot;draw();$('[data-shop-slot='+shopSlot+']',root)?.focus({preventScroll:true});

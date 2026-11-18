@@ -31,6 +31,22 @@ await request('/auth/setup','POST',{token:'baros-ui-audit-only',name:'Тесто
 await import('./ui/app.js');
 const core=await import('./ui/core.js?v=2.14.0');
 await until(()=>document.querySelector('[data-new-venue]'),'Owner screen');
+const petCatalog=await core.api('/growth/catalog');
+const beforeGallery=requests.length;
+click('#sidebar a[href="/app/pets"]');
+await until(()=>document.querySelector('[data-pet-gallery]'),'Owner pet gallery');
+const petSprites=[...document.querySelectorAll('[data-pet-gallery] .pet-sprite')];
+assert.deepEqual(petSprites.map(img=>img.getAttribute('src')),
+ petCatalog.pets.flatMap(pet=>[1,2,3].map(stage=>`/static/v2/pets/${pet.id}-${stage}.svg`)));
+input('[data-pet-filter]','ГРОМИК');
+assert.equal(document.querySelectorAll('.pet-gallery-card:not([hidden])').length,1);
+click('[data-pet-preview="storm"]');
+assert.equal(element('[role="dialog"]').getAttribute('aria-label'),'Громик');
+assert.deepEqual([...document.querySelectorAll('[role="dialog"] .pet-look small')].map(el=>el.textContent),['1 уровень','4 уровень','8 уровень']);
+click('[data-close]');
+assert(!requests.slice(beforeGallery).some(r=>r.path.startsWith('/api/growth')&&r.method!=='GET'));
+core.go('/app');
+await until(()=>document.querySelector('[data-new-venue]'),'Return to owner screen');
 click('[data-new-venue]');
 assert(document.querySelector('#venue-form'),'Owner button must retain its handler after shell mounting');
 input('#venue-form [name=name]','UI аудит заведения');
