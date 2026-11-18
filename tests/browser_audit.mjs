@@ -265,6 +265,46 @@ await page.getByRole('heading',{name:'Все мои заведения',exact:tr
 await login('browser.owner');
 console.log('WORKSPACES PASS: owner grant, multiple venue scope, isolated browser tabs, group and venue dashboards');
 
+await page.setViewportSize({width:1440,height:1000});
+await page.goto(base+'/app');
+await page.locator('#sidebar a[href="/app/pets"]').click();
+await page.getByRole('heading',{name:'Галерея питомцев',exact:true}).waitFor();
+assert.equal(await page.locator('.pet-gallery-card').count(),15);
+const galleryImages=page.locator('.pet-gallery-card .pet-sprite');
+assert.equal(await galleryImages.count(),45);
+await galleryImages.evaluateAll(images=>images.forEach(image=>image.loading='eager'));
+await page.waitForFunction(()=>[...document.querySelectorAll('.pet-gallery-card .pet-sprite')].every(image=>image.complete&&image.naturalWidth>0));
+assert.equal(await galleryImages.evaluateAll(images=>new Set(images.map(image=>image.src)).size),45);
+const petSearch=page.getByRole('searchbox',{name:'Найти питомца'});
+await petSearch.fill('ВИВЕРН');
+assert.equal(await page.locator('.pet-gallery-card:visible').count(),1);
+await page.getByRole('button',{name:'Крупный план · Громик'}).click();
+const petDialog=page.getByRole('dialog',{name:'Громик'});
+await petDialog.waitFor();
+assert.equal(await petDialog.locator('.pet-sprite').count(),3);
+await page.emulateMedia({reducedMotion:'no-preference'});
+assert(await petDialog.locator('.pet-idle').evaluateAll(nodes=>nodes.every(node=>getComputedStyle(node).animationName==='idle-flap')));
+await page.emulateMedia({reducedMotion:'reduce'});
+assert(await petDialog.locator('.pet-idle,.pet-blink').evaluateAll(nodes=>nodes.every(node=>getComputedStyle(node).animationName==='none')));
+await page.screenshot({path:join(output,'owner-pet-gallery-preview-1440.png'),fullPage:true});
+await page.keyboard.press('Escape');
+assert.equal(await petDialog.count(),0);
+assert.equal(await page.locator('[data-pet-preview="storm"]').evaluate(node=>document.activeElement===node),true);
+await petSearch.fill('Неизвестный питомец');
+assert.equal(await page.locator('.pet-gallery-card:visible').count(),0);
+await page.locator('[data-pet-no-results]').waitFor({state:'visible'});
+for(const width of [360,390,768,1440]){
+ await page.setViewportSize({width,height:844});
+ await petSearch.fill('Громик');
+ await page.getByRole('button',{name:'Крупный план · Громик'}).click();
+ assert(await petDialog.evaluate(dialog=>[...dialog.querySelectorAll('.pet-look-art,figcaption')].every(node=>{
+  const bounds=node.getBoundingClientRect();return bounds.left>=0&&bounds.right<=innerWidth+1;
+ })),`Pet preview fits ${width}`);
+ await page.keyboard.press('Escape');
+}
+await petSearch.fill('');
+console.log('PETS PASS: owner navigation, 45 loaded appearances, search, animated preview, reduced motion, focus restoration and mobile preview');
+
 await page.goto(base+'/app/pricing');await page.locator('#pricing-form').waitFor();
 await page.locator('[name=price_50]').fill('10000');await page.locator('#pricing-form button[type=submit]').click();
 await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Тарифы на сайте обновлены'));
@@ -273,7 +313,7 @@ await page.goto(base+'/about?employees=50');await page.locator('#price-result').
 await page.goto(base+'/app/pricing');await page.locator('#pricing-form').waitFor();await page.locator('[name=price_50]').fill('9900');await page.locator('#pricing-form button[type=submit]').click();
 await page.waitForFunction(()=>document.querySelector('#toast-root')?.textContent.includes('Тарифы на сайте обновлены'));
 assert.equal((await call('/pricing')).tiers[0].monthly,9900);
-await sweep('owner',[['/app','platform'],['/app/legal','legal-editor'],['/app/showcase','showcase-editor'],['/app/venues','venues'],['/app/audit','audit'],['/app/pricing','pricing-editor'],['/app/settings','settings'],['/app/support','support'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
+await sweep('owner',[['/app','platform'],['/app/legal','legal-editor'],['/app/showcase','showcase-editor'],['/app/venues','venues'],['/app/audit','audit'],['/app/pricing','pricing-editor'],['/app/settings','settings'],['/app/support','support'],['/app/onboarding','onboarding'],['/app/catalog','catalog'],['/app/pets','pet-gallery'],...['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].map(key=>['/app/catalog/'+key,'catalog-'+key])]);
 await sweep('owner',['bar-02-classics','waiter-03-difficult','admin-02-guest','hookah-01-bowls','cook-03-allergens','clean-02-chemistry'].flatMap(key=>['theory','questions','settings'].map(section=>['/app/catalog/'+key+'/edit','library-editor-'+key+'-'+section])));
 for(const item of (await call('/owner/catalog')).courses)for(const width of sizes)for(const theme of themes)await shot('owner','/app/catalog/'+item.key,'full-'+item.key,width,theme);
 await page.goto(base+'/app/catalog');await page.locator('[data-catalog-activate]').click();await page.screenshot({path:join(output,'catalog-approval-modal-1440.png'),fullPage:true});await page.keyboard.press('Escape');

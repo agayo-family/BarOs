@@ -138,6 +138,7 @@ jobs:
             test-results/browser/public-preflight-*.png
             test-results/browser/public-landing-custom-390-*.png
             test-results/browser/owner-pricing-editor-390-*.png
+            test-results/browser/owner-pet-gallery-*.png
             test-results/browser/*-legal-*.png
             test-results/browser/*-shifts*.png
             test-results/browser/*-photo*.png
