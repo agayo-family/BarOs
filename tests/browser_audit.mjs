@@ -265,6 +265,7 @@ await page.getByRole('heading',{name:'Все мои заведения',exact:tr
 await login('browser.owner');
 console.log('WORKSPACES PASS: owner grant, multiple venue scope, isolated browser tabs, group and venue dashboards');
 
+await page.setViewportSize({width:1440,height:1000});
 await page.goto(base+'/app');
 await page.locator('#sidebar a[href="/app/pets"]').click();
 await page.getByRole('heading',{name:'Галерея питомцев',exact:true}).waitFor();
